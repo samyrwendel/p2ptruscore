@@ -8,7 +8,8 @@ import {
 
 @Injectable()
 export class HelpCommandHandler implements ITextCommandHandler {
-  command = 'help';
+  // Aceita: /help, /comandos
+  command = /^\/(help|comandos)$/;
 
   constructor(private readonly keyboardService: TelegramKeyboardService) {}
 
@@ -22,35 +23,55 @@ export class HelpCommandHandler implements ITextCommandHandler {
     }
 
     const helpMessage = `
-Hello! I'm the Karma Bot. Here's how you can interact with me:
+Olá! Eu sou o P2P Score Bot. Veja como você pode interagir comigo:
 
-*Basic Karma:*
-  • Reply to a message with \`+1\` to give karma.
-  • Reply to a message with \`-1\` to give hate (negative karma).
-  *(Cooldown: 1 minute between giving karma/hate)*
+*Score Básico:*
+  • Responda a uma mensagem com \`+1\` para dar pontos positivos.
+  • Responda a uma mensagem com \`-1\` para dar pontos negativos.
+  *(Cooldown: 1 minuto entre dar pontos)*
 
-*Check Karma:*
-  • \`/me\`: Shows your current karma, given karma, and given hate.
-  • \`/getkarma <name or @username>\`: Shows the karma details of a specific user.
+*Verificar Score:*
+  • \`/me\` ou \`/meuscore\`: Mostra sua reputação atual, pontos dados e recebidos.
+  • \`/getkarma\` ou \`/score <nome ou @usuario>\`: Mostra os detalhes de score de um usuário específico.
 
-*Leaderboards:*
-  • \`/top\`: Top 10 users with the most karma.
-  • \`/hate\`: Top 10 users with the least karma (most hated).
-  • \`/mostgivers\`: Top 10 users who gave the most karma and hate.
-  • \`/today\`: Top 10 users who received the most karma in the last 24 hours.
-  • \`/month\`: Top 10 users who received the most karma in the last 30 days.
-  • \`/year\`: Top 10 users who received the most karma in the last 365 days.
+*Rankings:*
+  • \`/top\` ou \`/melhorscore\`: Top 10 usuários com mais reputação.
+  • \`/hate\` ou \`/piorscore\`: Top 10 usuários com menos reputação.
+  • \`/mostgivers\` ou \`/doadorscore\`: Top 10 usuários que mais deram reputação.
+  • \`/today\` ou \`/hoje\`: Top 10 usuários que receberam mais pontos nas últimas 24 horas.
+  • \`/month\` ou \`/mes\`: Top 10 usuários que receberam mais pontos nos últimos 30 dias.
+  • \`/year\` ou \`/ano\`: Top 10 usuários que receberam mais pontos nos últimos 365 dias.
 
-*History:*
-  • \`/history\`: Shows your last 10 karma changes.
-  • \`/gethistory <name or @username>\`: Shows the last 10 karma changes for a specific user.
+*Histórico:*
+  • \`/history\` ou \`/meuhistorico\`: Mostra suas últimas 10 mudanças de score.
+  • \`/gethistory\` ou \`/verhistorico <nome ou @usuario>\`: Mostra as últimas 10 mudanças de score de um usuário.
 
-*Transfer Karma:*
-  • \`/send <amount>\`: Reply to a user's message to send them a specific amount of your karma. (e.g., \`/send 5\`)
+*Transferir Pontos:*
+  • \`/send\` ou \`/transferir <quantidade>\`: Responda a mensagem de um usuário para enviar uma quantidade específica dos seus pontos. (ex: \`/transferir 5\`)
 
-*Other:*
-  • \`/help\`: Shows this help message.
-    `;
+*Comandos P2P:*
+  • \`/avaliar positiva [comentário]\`: Responda a uma mensagem para dar avaliação positiva (+2 pontos)
+  • \`/avaliar negativa [comentário]\`: Responda a uma mensagem para dar avaliação negativa (-1 ponto)
+  • \`/reputacao [usuário]\`: Ver reputação P2P detalhada de um usuário
+  • \`/confianca\`: Ver ranking de confiança P2P do grupo
+
+*Operações P2P:*
+  • \`/criaroperacao\`: Criar nova operação de compra/venda
+  • \`/minhasoperacoes\`: Ver suas operações ativas
+  • \`/operacoesdisponiveis\`: Ver operações disponíveis no grupo
+  • \`/aceitaroperacao [ID]\`: Aceitar uma operação específica
+  • \`/cancelaroperacao [ID]\`: Cancelar uma operação específica
+  • \`/cancelarordem [ID]\`: Cancelar e deletar ordem do grupo (teste)
+  • \`/concluiroperacao [ID]\`: Concluir uma operação
+  • \`/reverteroperacao [ID]\`: Reverter uma operação
+  • \`/fecharoperacao [ID]\`: Fechar uma operação
+  • \`/apagaroperacoespendentes\`: Apagar operações pendentes antigas
+
+*Outros:*
+  • \`/help\` ou \`/comandos\`: Mostra esta mensagem de ajuda.
+  • \`/start\`: Iniciar interação com o bot
+  • \`/hello\`: Saudação do bot
+`;
     await ctx.reply(helpMessage.trim(), extra);
   }
 }

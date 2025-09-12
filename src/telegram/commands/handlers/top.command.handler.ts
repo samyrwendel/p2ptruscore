@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { KarmaService } from '../../../karma/karma.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { ExtraReplyMessage } from 'telegraf/typings/telegram-types';
@@ -10,7 +10,9 @@ import { formatUsernameForDisplay } from '../command.helpers';
 
 @Injectable()
 export class TopCommandHandler implements ITextCommandHandler {
-  command = 'top';
+  private readonly logger = new Logger(TopCommandHandler.name);
+  // Aceita: /top, /melhorscore
+  readonly command = /^\/(top|melhorscore)$/;
 
   constructor(
     private readonly karmaService: KarmaService,
@@ -31,14 +33,14 @@ export class TopCommandHandler implements ITextCommandHandler {
     }
 
     if (topUsers.length === 0) {
-      await ctx.reply('No karma data available yet for this group.', extra);
+      await ctx.reply('Ainda não há dados de score disponíveis para este grupo.', extra);
       return;
     }
 
-    let message = '🏆 Top 10 Karma Users:\n\n';
+    let message = '■ Top 10 Melhores Usuários:\n\n';
     topUsers.forEach((userKarma, index) => {
       const name = formatUsernameForDisplay(userKarma.user);
-      message += `${index + 1}. ${name} has ${userKarma.karma} karma\n`;
+      message += `${index + 1}. ${name} tem ${userKarma.karma} de reputação\n`;
     });
 
     await ctx.reply(message, extra);

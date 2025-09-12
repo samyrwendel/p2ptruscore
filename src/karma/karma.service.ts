@@ -194,4 +194,71 @@ export class KarmaService {
     const groupIds = [...new Set(karmaRecords.map((r) => r.group))];
     return this.groupsService.findPublicGroupsByIds(groupIds);
   }
+
+  public async getTotalKarmaForUser(userQuery: string): Promise<{ user: User; totalKarma: number; totalGiven: number; totalHate: number } | null> {
+    const user = await this.usersService.findOneByUsernameOrName(userQuery);
+    if (!user) return null;
+
+    const karmaRecords = await this.karmaRepository.findByUserId(user._id);
+    if (karmaRecords.length === 0) return { user, totalKarma: 0, totalGiven: 0, totalHate: 0 };
+
+    const totalKarma = karmaRecords.reduce((sum, record) => sum + (record.karma || 0), 0);
+    const totalGiven = karmaRecords.reduce((sum, record) => sum + (record.givenKarma || 0), 0);
+    const totalHate = karmaRecords.reduce((sum, record) => sum + (record.givenHate || 0), 0);
+
+    return { user, totalKarma, totalGiven, totalHate };
+  }
+
+  public async registerEvaluation(
+    evaluatorData: ITelegramUser,
+    evaluatedData: ITelegramUser,
+    chatData: ITelegramChat,
+    points: number,
+    comment: string,
+  ): Promise<{ evaluatorKarma: PopulatedKarma; evaluatedKarma: PopulatedKarma }> {
+    const [groupDoc, evaluatorUserDoc, evaluatedUserDoc] = await Promise.all([
+      this.groupsService.findOrCreate(chatData),
+      this.usersService.findOrCreate(evaluatorData),
+      this.usersService.findOrCreate(evaluatedData),
+    ]);
+
+    try {
+      // Atualizar karma do avaliador (quem deu a avaliação)
+      const evaluatorKarma = await this.karmaRepository.updateSenderKarmaWithComment(
+        evaluatorUserDoc._id,
+        groupDoc._id,
+        points > 0 ? 1 : -1,
+      );
+
+      // Atualizar karma do avaliado (quem recebeu a avaliação)
+      const evaluatedKarma = await this.karmaRepository.updateReceiverKarmaWithComment(
+        evaluatedUserDoc._id,
+        groupDoc._id,
+        points,
+        comment,
+        evaluatorUserDoc._id,
+        evaluatorData.username || evaluatorData.first_name,
+      );
+
+      // Buscar os documentos populados
+      const [populatedEvaluatorKarma, populatedEvaluatedKarma] = await Promise.all([
+        this.karmaRepository.findOneByUserAndGroupAndPopulate(
+          evaluatorUserDoc._id,
+          groupDoc._id,
+        ),
+        this.karmaRepository.findOneByUserAndGroupAndPopulate(
+          evaluatedUserDoc._id,
+          groupDoc._id,
+        ),
+      ]);
+
+      return {
+        evaluatorKarma: populatedEvaluatorKarma!,
+        evaluatedKarma: populatedEvaluatedKarma!,
+      };
+    } catch (error) {
+      this.logger.error('Erro ao registrar avaliação:', error);
+      throw error;
+    }
+  }
 }

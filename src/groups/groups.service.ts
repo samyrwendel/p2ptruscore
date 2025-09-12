@@ -42,4 +42,8 @@ export class GroupsService {
   async findByIds(groupIds: any[]): Promise<Group[]> {
     return this.groupsRepository.findByIds(groupIds);
   }
+
+  async findById(id: string): Promise<Group | null> {
+    return this.groupsRepository.findById(id);
+  }
 }

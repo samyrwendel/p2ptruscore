@@ -11,6 +11,15 @@ class KarmaHistory {
 
   @Prop({ required: true })
   karmaChange: number;
+
+  @Prop({ required: false })
+  comment?: string;
+
+  @Prop({ type: Types.ObjectId, ref: User.name, required: false })
+  evaluator?: Types.ObjectId;
+
+  @Prop({ required: false })
+  evaluatorName?: string;
 }
 
 @Schema({ timestamps: true, versionKey: false })

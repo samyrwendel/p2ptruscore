@@ -43,14 +43,13 @@ export class UsersRepository extends AbstractRepository<User> {
     const isUsername = input.startsWith('@');
     const queryValue = isUsername ? input.substring(1) : input;
 
-    const filterQuery = isUsername
-      ? { userName: new RegExp(`^${queryValue}$`, 'i') }
-      : {
-          $or: [
-            { firstName: new RegExp(`^${queryValue}$`, 'i') },
-            { lastName: new RegExp(`^${queryValue}$`, 'i') },
-          ],
-        };
+    const filterQuery = {
+      $or: [
+        { userName: new RegExp(`^${queryValue}$`, 'i') },
+        { firstName: new RegExp(`^${queryValue}$`, 'i') },
+        { lastName: new RegExp(`^${queryValue}$`, 'i') },
+      ],
+    };
 
     return this.findOne(filterQuery).catch(() => null);
   }

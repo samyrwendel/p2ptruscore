@@ -25,6 +25,11 @@ export class TelegramKeyboardService {
     }
 
     const url = `https://t.me/${this.botUsername}?startapp=chatId${chat.id}`;
-    return Markup.inlineKeyboard([Markup.button.url('Open Mini App', url)]);
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.url('📱 Enviar Mensagem', `https://t.me/${this.botUsername}`),
+        Markup.button.url('🚀 Boraaa!', url),
+      ],
+    ]);
   }
 }

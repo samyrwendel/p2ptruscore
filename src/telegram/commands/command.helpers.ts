@@ -1,6 +1,8 @@
 type KarmaHistoryEntry = {
   timestamp: Date;
   karmaChange: number;
+  comment?: string;
+  evaluatorName?: string;
 };
 
 type UserLike = {
@@ -13,17 +15,27 @@ export const formatKarmaHistory = (
   history: KarmaHistoryEntry[] | undefined,
 ): string => {
   if (!history || history.length === 0) {
-    return 'No karma history found.';
+    return 'Nenhum histórico de score encontrado.';
   }
 
   return history
     .slice(-10)
     .map((entry) => {
       const sign = entry.karmaChange > 0 ? '+' : '';
-      const dateString = new Date(entry.timestamp).toLocaleString();
-      return `${dateString}: ${sign}${entry.karmaChange}`;
+      const dateString = new Date(entry.timestamp).toLocaleString('pt-BR');
+      let result = `${dateString}: ${sign}${entry.karmaChange}`;
+      
+      if (entry.evaluatorName) {
+        result += ` (por ${entry.evaluatorName})`;
+      }
+      
+      if (entry.comment) {
+        result += `\n   💬 "${entry.comment}"`;
+      }
+      
+      return result;
     })
-    .join('\n');
+    .join('\n\n');
 };
 
 export const formatUsernameForDisplay = (user: UserLike): string => {
@@ -39,5 +51,5 @@ export const formatUsernameForDisplay = (user: UserLike): string => {
     return user.userName;
   }
 
-  return 'An unknown user';
+  return 'Usuário desconhecido';
 };

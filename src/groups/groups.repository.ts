@@ -23,7 +23,10 @@ export class GroupsRepository extends AbstractRepository<Group> {
   async findOrCreate(chatData: ITelegramChat): Promise<Group | null> {
     const filterQuery: FilterQuery<Group> = { groupId: chatData.id };
     const documentToUpsert: UpdateQuery<Group> = {
-      $set: { groupName: chatData.title },
+      $set: { 
+        groupId: chatData.id,
+        groupName: chatData.title 
+      },
     };
     return this.upsert(filterQuery, documentToUpsert);
   }

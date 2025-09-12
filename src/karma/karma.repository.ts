@@ -56,6 +56,43 @@ export class KarmaRepository extends AbstractRepository<Karma> {
     return this.upsert(filterQuery, updateQuery);
   }
 
+  async updateReceiverKarmaWithComment(
+    receiverId: Types.ObjectId,
+    groupId: Types.ObjectId,
+    incValue: number,
+    comment: string,
+    evaluatorId: Types.ObjectId,
+    evaluatorName: string,
+  ) {
+    const filterQuery: FilterQuery<Karma> = {
+      user: receiverId,
+      group: groupId,
+    };
+    const updateQuery: UpdateQuery<Karma> = {
+      $inc: { karma: incValue },
+      $push: { 
+        history: { 
+          karmaChange: incValue,
+          comment: comment,
+          evaluator: evaluatorId,
+          evaluatorName: evaluatorName
+        } as any 
+      },
+    };
+    return this.upsert(filterQuery, updateQuery);
+  }
+
+  async updateSenderKarmaWithComment(
+    senderId: Types.ObjectId,
+    groupId: Types.ObjectId,
+    incValue: number,
+  ) {
+    const filterQuery: FilterQuery<Karma> = { user: senderId, group: groupId };
+    const updateQuery: UpdateQuery<Karma> =
+      incValue === 1 ? { $inc: { givenKarma: 1 } } : { $inc: { givenHate: 1 } };
+    return this.upsert(filterQuery, updateQuery);
+  }
+
   async findTopKarma(
     groupId: Types.ObjectId,
     ascending: boolean,

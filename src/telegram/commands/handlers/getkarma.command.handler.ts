@@ -11,7 +11,8 @@ import { formatUsernameForDisplay } from '../command.helpers';
 @Injectable()
 export class GetKarmaCommandHandler implements ITextCommandHandler {
   private readonly logger = new Logger(GetKarmaCommandHandler.name);
-  command = /^\/getkarma(?:@\w+)?\s+(.+)$/;
+  // Aceita: /getkarma, /score
+  readonly command = /^\/(getkarma|score)\s*(.*)$/;
 
   constructor(
     private readonly karmaService: KarmaService,
@@ -22,7 +23,7 @@ export class GetKarmaCommandHandler implements ITextCommandHandler {
     const match = ctx.message.text.match(this.command);
     if (!match) return;
 
-    const input = match[1].trim();
+    const input = match[2].trim();
 
     const keyboard = this.keyboardService.getGroupWebAppKeyboard(ctx.chat);
     const extra: ExtraReplyMessage = {};
@@ -37,24 +38,22 @@ export class GetKarmaCommandHandler implements ITextCommandHandler {
       );
       if (!karma) {
         await ctx.reply(
-          `No karma found for user "${input}" in this group.`,
+          `Nenhum score encontrado para o usuário "${input}" neste grupo.`,
           extra,
         );
         return;
       }
 
       const displayName = formatUsernameForDisplay(karma.user);
-      const message = `
-👤 User: ${displayName}
-✨ Karma: ${karma.karma || 0} in this group
+      const message = `■ Usuário: ${displayName}
+● Score: ${karma.karma || 0} neste grupo
 
-♥ Given karma: ${karma.givenKarma || 0}.
-😠 Given hate: ${karma.givenHate || 0}.
-      `;
+▲ Score dado: ${karma.givenKarma || 0}.
+▼ Score negativo dado: ${karma.givenHate || 0}.`;
       await ctx.reply(message.trim(), extra);
     } catch (error) {
       this.logger.error(error);
-      await ctx.reply(`Sorry, I couldn't retrieve karma for "${input}".`);
+      await ctx.reply('Desculpe, não consegui recuperar o score para "' + input + '".');
     }
   }
 }

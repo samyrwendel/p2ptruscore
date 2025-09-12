@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { KarmaService } from '../../../karma/karma.service';
+import { UsersService } from '../../../users/users.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { ExtraReplyMessage } from 'telegraf/typings/telegram-types';
 import {
@@ -10,22 +11,52 @@ import {
 @Injectable()
 export class MeCommandHandler implements ITextCommandHandler {
   private readonly logger = new Logger(MeCommandHandler.name);
-  readonly command = 'me';
+  // Aceita: /me, /meu, /meuscore
+  readonly command = /^\/(me|meu|meuscore)$/;
 
   constructor(
     private readonly karmaService: KarmaService,
+    private readonly usersService: UsersService,
     private readonly keyboardService: TelegramKeyboardService,
   ) {}
+
+  private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
+    try {
+      // Primeiro tentar buscar karma no grupo atual
+      const groupKarma = await this.karmaService.getKarmaForUser(user.userId, chatId);
+      
+      if (groupKarma && groupKarma.karma !== undefined) {
+        return groupKarma;
+      }
+      
+      // Se não encontrar no grupo atual, buscar karma total
+      const totalKarma = await this.karmaService.getTotalKarmaForUser(user.userName || user.firstName);
+      
+      if (totalKarma) {
+        // Simular estrutura de karma do grupo para compatibilidade
+        return {
+          karma: totalKarma.totalKarma,
+          givenKarma: totalKarma.totalGiven,
+          givenHate: totalKarma.totalHate,
+          user: totalKarma.user,
+          history: [] // Histórico vazio para karma total
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      this.logger.error('Erro ao buscar karma com fallback:', error);
+      return null;
+    }
+  }
 
   async handle(ctx: TextCommandContext): Promise<void> {
     const user = ctx.from;
     const chat = ctx.chat;
 
     try {
-      const karmaDoc = await this.karmaService.getKarmaForUser(
-        user.id,
-        chat.id,
-      );
+      const userDoc = await this.usersService.findOneByUserId(user.id);
+      const karmaDoc = await this.getKarmaForUserWithFallback(userDoc, chat.id);
       const userName = user.username ? `@${user.username}` : user.first_name;
 
       const keyboard = this.keyboardService.getGroupWebAppKeyboard(ctx.chat);
@@ -36,16 +67,11 @@ export class MeCommandHandler implements ITextCommandHandler {
       }
 
       let message: string;
-      if (
-        !karmaDoc ||
-        (karmaDoc.karma === 0 &&
-          karmaDoc.givenKarma === 0 &&
-          karmaDoc.givenHate === 0)
-      ) {
-        message = `🙋 Hi ${userName}, your karma is 0 in this group.\n\n♥ Given karma: 0.\n😠 Given hate: 0.`;
-      } else {
-        message = `🙋 Hi ${userName}, your karma is ${karmaDoc.karma || 0} in this group.\n\n♥ Given karma: ${karmaDoc.givenKarma || 0}.\n😠 Given hate: ${karmaDoc.givenHate || 0}.`;
-      }
+      const karma = karmaDoc?.karma || 0;
+      const givenKarma = karmaDoc?.givenKarma || 0;
+      const givenHate = karmaDoc?.givenHate || 0;
+      
+      message = `● Olá ${userName}, sua reputação é ${karma} neste grupo.\n\n▲ Pontos dados: ${givenKarma}.\n▼ Pontos negativos dados: ${givenHate}.`;
 
       await ctx.reply(message, extra);
     } catch (error) {

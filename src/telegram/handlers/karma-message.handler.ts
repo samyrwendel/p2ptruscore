@@ -103,7 +103,7 @@ export class KarmaMessageHandler {
       extra.reply_markup = keyboard.reply_markup;
     }
 
-    const message = `${receiverName} now has ${newKarma} karma.`;
+    const message = `${receiverName} agora tem ${newKarma} pontos de reputação.`;
 
     await ctx.telegram.sendMessage(ctx.chat.id, message, extra);
   }

@@ -11,7 +11,7 @@ import { formatUsernameForDisplay } from '../command.helpers';
 @Injectable()
 export class TopReceivedCommandHandler implements ITextCommandHandler {
   private readonly logger = new Logger(TopReceivedCommandHandler.name);
-  command = /^\/(today|month|year)/;
+  command = /^\/(today|month|year|hoje|mes|ano)$/;
 
   constructor(
     private readonly karmaService: KarmaService,
@@ -28,16 +28,19 @@ export class TopReceivedCommandHandler implements ITextCommandHandler {
 
     switch (commandName) {
       case 'today':
+      case 'hoje':
         daysBack = 1;
-        periodName = 'last 24 hours';
+        periodName = 'últimas 24 horas';
         break;
       case 'month':
+      case 'mes':
         daysBack = 30;
-        periodName = 'last 30 days';
+        periodName = 'últimos 30 dias';
         break;
       case 'year':
+      case 'ano':
         daysBack = 365;
-        periodName = 'last 365 days';
+        periodName = 'últimos 365 dias';
         break;
       default:
         return;
@@ -58,23 +61,23 @@ export class TopReceivedCommandHandler implements ITextCommandHandler {
 
       if (topUsers.length === 0) {
         await ctx.reply(
-          `No users received karma in the ${periodName} in this group.`,
+          `Nenhum usuário recebeu pontos nas ${periodName} neste grupo.`,
           extra,
         );
         return;
       }
 
-      let message = `🌟 Top 10 users by karma received in the ${periodName}:\n\n`;
+      let message = `■ Top 10 usuários que mais receberam pontos nas ${periodName}:\n\n`;
       topUsers.forEach((user, index) => {
         const name = formatUsernameForDisplay(user);
-        message += `${index + 1}. ${name} received ${user.totalKarmaReceived} karma\n`;
+        message += `${index + 1}. ${name} recebeu ${user.totalKarmaReceived} de reputação\n`;
       });
 
       await ctx.reply(message, extra);
     } catch (error) {
       this.logger.error(`Error handling /${commandName}`, error);
       await ctx.reply(
-        `Sorry, I couldn't retrieve the top users for the ${periodName}.`,
+        `Desculpe, não consegui buscar os usuários do ranking das ${periodName}.`,
       );
     }
   }

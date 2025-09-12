@@ -32,4 +32,8 @@ export class UsersService {
   async count(): Promise<number> {
     return this.usersRepository.countDocuments();
   }
+
+  async findById(id: string): Promise<User | null> {
+    return this.usersRepository.findById(id);
+  }
 }

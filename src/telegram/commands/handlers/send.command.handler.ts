@@ -10,7 +10,8 @@ import {
 @Injectable()
 export class SendCommandHandler implements ITextCommandHandler {
   private readonly logger = new Logger(SendCommandHandler.name);
-  command = /^\/send(?:@\w+)?\s+(\d+)$/;
+  // Aceita: /send, /transferir
+  readonly command = /^\/(send|transferir)\s*(\d+)?$/;
 
   constructor(
     private readonly karmaService: KarmaService,
@@ -32,7 +33,7 @@ export class SendCommandHandler implements ITextCommandHandler {
         ctx.message.text.match(this.command)
       ) {
         await ctx.reply(
-          "You need to reply to a user's message to send them karma.",
+          'Você precisa responder à mensagem de um usuário para enviar pontos.',
         );
       }
       return;
@@ -40,7 +41,7 @@ export class SendCommandHandler implements ITextCommandHandler {
 
     const match = ctx.message.text.match(this.command);
     if (!match) {
-      await ctx.reply('You need to specify the amount to send. Ex: /send 10');
+      await ctx.reply('Você precisa especificar a quantidade a enviar. Ex: /transferir 10');
       return;
     }
 
@@ -49,16 +50,16 @@ export class SendCommandHandler implements ITextCommandHandler {
     const quantity = parseInt(match[1], 10);
 
     if (receiver.id === sender.id) {
-      await ctx.reply('You cannot send karma to yourself.');
+      await ctx.reply('Você não pode enviar pontos para si mesmo.');
       return;
     }
     if (receiver.is_bot) {
-      await ctx.reply('You cannot send karma to bots.');
+      await ctx.reply('Você não pode enviar pontos para bots.');
       return;
     }
     if (isNaN(quantity) || quantity <= 0) {
       await ctx.reply(
-        'The amount must be a positive whole number. Ex: /send 10',
+        'A quantidade deve ser um número inteiro positivo. Ex: /transferir 10',
       );
       return;
     }
@@ -86,7 +87,7 @@ export class SendCommandHandler implements ITextCommandHandler {
         ? `@${result.receiverKarma.user.userName}`
         : result.receiverKarma.user.firstName;
 
-      const message = `💸 ${senderName} has sent ${quantity} karma to ${receiverName}!\n\n${senderName} new karma: ${result.senderKarma.karma}\n${receiverName} new karma: ${result.receiverKarma.karma}`;
+      const message = `💸 ${senderName} enviou ${quantity} pontos para ${receiverName}!\n\n${senderName} novo score: ${result.senderKarma.karma}\n${receiverName} novo score: ${result.receiverKarma.karma}`;
 
       await ctx.telegram.sendMessage(ctx.chat.id, message, extra);
     } catch (error) {
@@ -99,7 +100,7 @@ export class SendCommandHandler implements ITextCommandHandler {
         await ctx.reply(error.message, extra);
       } else {
         await ctx.reply(
-          'A critical error occurred during the karma transfer.',
+          'Ocorreu um erro crítico durante a transferência de pontos.',
           extra,
         );
       }

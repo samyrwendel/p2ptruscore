@@ -11,7 +11,8 @@ import {
 @Injectable()
 export class GetHistoryCommandHandler implements ITextCommandHandler {
   private readonly logger = new Logger(GetHistoryCommandHandler.name);
-  command = /^\/gethistory(?:@\w+)?\s+(.+)$/;
+  // Aceita: /gethistory, /verhistorico
+  readonly command = /^\/(gethistory|verhistorico)\s*(.*)$/;
 
   constructor(
     private readonly karmaService: KarmaService,
@@ -22,12 +23,12 @@ export class GetHistoryCommandHandler implements ITextCommandHandler {
     const match = ctx.message.text.match(this.command);
     if (!match) {
       await ctx.reply(
-        'Please specify a user. Usage: /gethistory <name or @username>',
+        'Por favor, especifique um usuário. Uso: /verhistorico <nome ou @usuario>',
       );
       return;
     }
 
-    const input = match[1].trim();
+    const input = match[2].trim();
     try {
       const karma = await this.karmaService.findKarmaByUserQuery(
         input,
@@ -39,8 +40,9 @@ export class GetHistoryCommandHandler implements ITextCommandHandler {
         extra.reply_markup = keyboard.reply_markup;
       }
       const historyMessage = formatKarmaHistory(karma?.history);
+      const targetUserName = karma?.user?.firstName || input;
 
-      const message = `📜 Karma history for ${input} (last 10 changes):\n\n${historyMessage}`;
+      const message = `■ Reputação de ${targetUserName} (últimas 10 mudanças):\n\n${historyMessage}`;
 
       await ctx.reply(message, extra);
     } catch (error) {
@@ -48,7 +50,7 @@ export class GetHistoryCommandHandler implements ITextCommandHandler {
         `Error handling /gethistory for input "${input}"`,
         error,
       );
-      await ctx.reply(`Sorry, I couldn't retrieve the history for "${input}".`);
+      await ctx.reply(`Desculpe, não consegui recuperar a reputação de "${input}"`);
     }
   }
 }

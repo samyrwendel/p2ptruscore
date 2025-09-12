@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { KarmaService } from '../../../karma/karma.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { ExtraReplyMessage } from 'telegraf/typings/telegram-types';
@@ -10,7 +10,9 @@ import { formatUsernameForDisplay } from '../command.helpers';
 
 @Injectable()
 export class MostGiversCommandHandler implements ITextCommandHandler {
-  command = 'mostgivers';
+  private readonly logger = new Logger(MostGiversCommandHandler.name);
+  // Aceita: /mostgivers, /doadorscore
+  readonly command = /^\/(mostgivers|doadorscore)$/;
 
   constructor(
     private readonly karmaService: KarmaService,
@@ -31,27 +33,27 @@ export class MostGiversCommandHandler implements ITextCommandHandler {
 
     let message = '';
     if (topGivenKarma.length > 0) {
-      message += '♥ Top 10 Karma Givers:\n\n';
+      message += '▲ Top 10 Doadores de Score:\n\n';
       topGivenKarma.forEach((userKarma, index) => {
         const name = userKarma.user.userName
           ? `@${userKarma.user.userName}`
           : userKarma.user.firstName;
-        message += `${index + 1}. ${name} has given ${userKarma.givenKarma} karma\n`;
+        message += `${index + 1}. ${name} deu ${userKarma.givenKarma} reputação positiva\n`;
       });
     } else {
-      message += '♥ No users have given positive karma yet.\n';
+      message += '▲ Nenhum usuário deu pontos positivos ainda.\n';
     }
 
     message += '\n'; // Separador
 
     if (topGivenHate.length > 0) {
-      message += '😠 Top 10 Hate Givers:\n\n';
+      message += '▼ Top 10 Doadores de Pontos Negativos:\n\n';
       topGivenHate.forEach((userKarma, index) => {
         const name = formatUsernameForDisplay(userKarma.user);
-        message += `${index + 1}. ${name} has given ${userKarma.givenHate} hate\n`;
+        message += `${index + 1}. ${name} deu ${userKarma.givenHate} reputação negativa\n`;
       });
     } else {
-      message += '😠 No users have given negative karma (hate) yet.\n';
+      message += '▼ Nenhum usuário deu pontos negativos ainda.\n';
     }
 
     await ctx.reply(message.trim(), extra);

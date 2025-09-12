@@ -1,14 +1,8 @@
-# ✨ KarmaBot: A Modern Telegram Karma Bot ✨
+# ✨ P2P Score Bot: Bot Moderno de Score P2P para Telegram ✨
 
-[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
-[![NestJS](https://img.shields.io/badge/NestJS-v10.x-red?logo=nestjs)](https://nestjs.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Telegraf](https://img.shields.io/badge/Telegraf-v4.x-blue?logo=telegram)](https://telegraf.js.org/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-green?logo=mongodb)](https://mongoosejs.com/)
+Um bot sofisticado do Telegram projetado para rastrear perfeitamente a reputação do usuário (score) em chats de grupo, agora reconstruído com o poder e estrutura do **NestJS**.
 
-A sophisticated Telegram bot designed to seamlessly track user reputation (karma) within group chats, now rebuilt with the power and structure of **NestJS**.
-
-KarmaBot allows group members to easily give or take karma points from each other, fostering community interaction and providing valuable insights. It features comprehensive leaderboards, individual karma tracking, and exposes a robust API perfect for its accompanying **Telegram Mini App**.
+O P2P Score Bot permite que membros do grupo facilmente deem ou tirem pontos uns dos outros, promovendo interação da comunidade e fornecendo insights valiosos. Possui rankings abrangentes, rastreamento individual de score e expõe uma API robusta perfeita para seu **Telegram Mini App** acompanhante.
 
 ## 📖 Table of Contents
 
@@ -29,31 +23,31 @@ KarmaBot allows group members to easily give or take karma points from each othe
 
 ## 🚀 For Group Members
 
-### Key Features
+### Funcionalidades Principais
 
-- 👍 **Give Karma:** Reply `+1` to a message to award a karma point.
-- 👎 **Give Hate:** Reply `-1` to a message to deduct a karma point (hate).
-- ⏱️ **Cooldown System:** A 1-minute cooldown prevents spamming karma.
-- 👤 **Your Status (`/me`):** Check your own karma score and see how much karma and hate you've given.
-- 🏆 **Leaderboards:**
-  - `/top`: The top 10 users with the most karma.
-  - `/hate`: The top 10 users with the least karma.
-  - `/mostgivers`: See who gives the most karma and hate.
-- 📅 **Periodic Rankings:**
-  - `/today`: Top users by karma received in the last 24 hours.
-  - `/month`: Top users by karma received in the last 30 days.
-  - `/year`: Top users by karma received in the last 365 days.
-- 💸 **Transfer Karma (`/send <amount>`):** Reply to a user's message to send them some of your own karma points.
-- 📜 **Karma History:**
-  - `/history`: View your own last 10 karma changes.
-  - `/gethistory <user>`: View the history for a specific user.
-- 📱 **Mini App Integration:** Most commands include an "Open Mini App" button for a rich, interactive experience.
+- 👍 **Dar Score:** Responda `+1` a uma mensagem para dar um ponto de score.
+- 👎 **Dar Score Negativo:** Responda `-1` a uma mensagem para deduzir um ponto de score.
+- ⏱️ **Sistema de Cooldown:** Um cooldown de 1 minuto previne spam de score.
+- 👤 **Seu Status (`/me`):** Verifique seu próprio score e veja quanto score positivo e negativo você deu.
+- 🏆 **Rankings:**
+  - `/melhorscore`: Os 10 usuários com melhor score.
+  - `/piorscore`: Os 10 usuários com pior score.
+  - `/mostgivers`: Veja quem mais dá score positivo e negativo.
+- 📅 **Rankings Periódicos:**
+  - `/hoje`: Melhores usuários por score recebido nas últimas 24 horas.
+  - `/mes`: Melhores usuários por score recebido nos últimos 30 dias.
+  - `/ano`: Melhores usuários por score recebido nos últimos 365 dias.
+- 💸 **Transferir Score (`/transferir <quantidade>`):** Responda à mensagem de um usuário para enviar alguns dos seus pontos de score.
+- 📜 **Histórico de Score:**
+  - `/history`: Veja suas últimas 10 mudanças de score.
+  - `/gethistory <usuário>`: Veja o histórico de um usuário específico.
+- 📱 **Integração Mini App:** A maioria dos comandos inclui um botão "Abrir Mini App" para uma experiência rica e interativa.
 
-### Getting Started
+### Como Começar
 
-1.  **Add the Bot:** An admin must invite KarmaBot to your Telegram group.
-2.  **Give Karma:** Simply **reply** to a user's message with `+1` or `-1`.
-3.  **Use Commands:** Type commands like `/me`, `/top`, or `/help` directly in the chat to interact with the bot.
+1.  **Adicionar o Bot:** Um admin deve convidar o P2P Score Bot para seu grupo do Telegram.
+2.  **Dar Score:** Simplesmente **responda** à mensagem de um usuário com `+1` ou `-1`.
+3.  **Usar Comandos:** Digite comandos como `/meuscore`, `/melhorscore`, ou `/comandos` diretamente no chat para interagir com o bot.
 
 ---
 
@@ -83,104 +77,104 @@ The codebase is structured following SOLID principles to ensure it is maintainab
 | **Configuration**     | [**@nestjs/config**](https://docs.nestjs.com/techniques/configuration) with **Joi** - For type-safe environment variable management and validation. |
 | **API Rate Limiting** | [**@nestjs/throttler**](https://docs.nestjs.com/security/rate-limiting) - To protect API endpoints from abuse.                                      |
 
-### 🔧 Installation & Setup
+### 🔧 Instalação e Configuração
 
-1.  **Prerequisites:**
-    - Node.js (v18.x or higher)
-    - npm or yarn
-    - A running MongoDB instance (local or cloud)
-    - A Telegram Bot Token and Username (from [@BotFather](https://t.me/BotFather))
+1.  **Pré-requisitos:**
+    - Node.js (v18.x ou superior)
+    - npm ou yarn
+    - Uma instância MongoDB rodando (local ou na nuvem)
+    - Um Token e Username do Bot do Telegram (do [@BotFather](https://t.me/BotFather))
 
-2.  **Clone the Repository:**
+2.  **Clonar o Repositório:**
 
     ```bash
     git clone https://github.com/WilliamsMata/karma_bot
     cd karma_bot
     ```
 
-3.  **Install Dependencies:**
+3.  **Instalar Dependências:**
 
     ```bash
     npm install
     ```
 
-4.  **Configure Environment Variables:**
-    Create a `.env` file in the project root by copying the example: `cp .env.example .env`. Then, fill in the required variables:
+4.  **Configurar Variáveis de Ambiente:**
+    Crie um arquivo `.env` na raiz do projeto copiando o exemplo: `cp .env.example .env`. Em seguida, preencha as variáveis necessárias:
 
     ```dotenv
     # .env
 
-    # Your Telegram bot token from @BotFather
-    TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN_HERE
+    # Seu token do bot do Telegram do @BotFather
+    TELEGRAM_BOT_TOKEN=SEU_TOKEN_DO_BOT_AQUI
 
-    # Your bot's username
-    TELEGRAM_BOT_USERNAME=YOUR_TELEGRAM_BOT_USERNAME_HERE
+    # O username do seu bot
+    TELEGRAM_BOT_USERNAME=SEU_USERNAME_DO_BOT_AQUI
 
-    # MongoDB connection string
+    # String de conexão do MongoDB
     MONGODB_CNN=mongodb://localhost:27017/karma_bot
 
-    # The port for the API server
+    # A porta para o servidor da API
     PORT=3000
     ```
 
-5.  **Run the Application:**
-    - **Development Mode (with auto-reload):**
+5.  **Executar a Aplicação:**
+    - **Modo de Desenvolvimento (com auto-reload):**
       ```bash
       npm run start:dev
       ```
-    - **Production Mode:**
+    - **Modo de Produção:**
       ```bash
       npm run build
       npm run start:prod
       ```
 
-### 📂 Project Structure
+### 📂 Estrutura do Projeto
 
 ```
 src
-├── api/                # API controllers and modules (for the Mini App)
+├── api/                # Controladores e módulos da API (para o Mini App)
 │   ├── karma/
 │   └── users/
-├── karma/              # Core business logic for karma
+├── karma/              # Lógica de negócio principal para score
 │   ├── dto/
 │   ├── schemas/
 │   ├── karma.module.ts
 │   ├── karma.repository.ts
 │   └── karma.service.ts
-├── telegram/           # All Telegram-specific logic
-│   ├── commands/       # Command pattern implementation
-│   │   ├── handlers/   # Individual classes for each command (/me, /top, etc.)
+├── telegram/           # Toda a lógica específica do Telegram
+│   ├── commands/       # Implementação do padrão Command
+│   │   ├── handlers/   # Classes individuais para cada comando (/meuscore, /melhorscore, etc.)
 │   │   └── commands.module.ts
-│   ├── handlers/       # Handlers for non-command events (e.g., +1 messages)
-│   ├── shared/         # Shared utilities (e.g., keyboard service)
+│   ├── handlers/       # Handlers para eventos não-comando (ex: mensagens +1)
+│   ├── shared/         # Utilitários compartilhados (ex: serviço de teclado)
 │   ├── telegram.module.ts
-│   └── telegram.service.ts # Main service for bot connection and event routing
-├── users/              # Business logic for users
-├── groups/             # Business logic for groups
-├── database/           # Abstract repository and database module setup
-├── app.module.ts       # Root module of the application
-└── main.ts             # Application entry point
+│   └── telegram.service.ts # Serviço principal para conexão do bot e roteamento de eventos
+├── users/              # Lógica de negócio para usuários
+├── groups/             # Lógica de negócio para grupos
+├── database/           # Configuração do repositório abstrato e módulo de banco de dados
+├── app.module.ts       # Módulo raiz da aplicação
+└── main.ts             # Ponto de entrada da aplicação
 ```
 
 ---
 
-### 🙌 Contributing
+### 🙌 Contribuindo
 
-Contributions are highly welcome! If you have ideas for improvements or find a bug, please feel free to:
+Contribuições são muito bem-vindas! Se você tem ideias para melhorias ou encontrou um bug, sinta-se à vontade para:
 
-1.  **Fork** the repository.
-2.  Create a new **branch** for your feature or fix.
-3.  Make your changes and **commit** them with clear messages.
-4.  Push to your branch and open a **Pull Request**.
+1.  **Fazer Fork** do repositório.
+2.  Criar uma nova **branch** para sua funcionalidade ou correção.
+3.  Fazer suas alterações e **commit** com mensagens claras.
+4.  Fazer push para sua branch e abrir um **Pull Request**.
 
-### 📜 License
+### 📜 Licença
 
-This project is licensed under the **ISC License**.
+Este projeto está licenciado sob a **Licença ISC**.
 
-### 👤 Author
+### 👤 Autor
 
 - **Williams Mata** - [GitHub](https://github.com/WilliamsMata)
 
-### 🙏 Acknowledgments
+### 🙏 Agradecimentos
 
-This project was inspired by the [karma bot](https://github.com/hbourgeot/karmagobot) from [hbourgeot](https://github.com/hbourgeot).
+Este projeto foi inspirado pelo [karma bot](https://github.com/hbourgeot/karmagobot) de [hbourgeot](https://github.com/hbourgeot).
