@@ -196,30 +196,11 @@ export class OperationsBroadcastService {
       // Formatação do nome do usuário
       const userName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
       
-      // Informações de reputação com ícones padronizados
-       const scoreTotal = karmaInfo?.karma || 0;
-       let nivelConfianca = 'Iniciante';
-       let reputationIcon = '🔰';
-       
-       if (scoreTotal < 0) {
-         nivelConfianca = 'Problemático';
-         reputationIcon = '🔴';
-       } else if (scoreTotal < 50) {
-         nivelConfianca = 'Iniciante';
-         reputationIcon = '🔰';
-       } else if (scoreTotal < 100) {
-         nivelConfianca = 'Bronze';
-         reputationIcon = '🥉';
-       } else if (scoreTotal < 200) {
-         nivelConfianca = 'Prata';
-         reputationIcon = '🥈';
-       } else if (scoreTotal < 500) {
-         nivelConfianca = 'Ouro';
-         reputationIcon = '🥇';
-       } else {
-         nivelConfianca = 'Mestre P2P';
-         reputationIcon = '🏆';
-       }
+      // Informações de reputação usando função centralizada
+      const reputationInfo = getReputationInfo(karmaInfo);
+      const scoreTotal = reputationInfo.score;
+      const nivelConfianca = reputationInfo.nivel;
+      const reputationIcon = reputationInfo.icone;
       
       let message = (
           `🚀 **Nova Operação P2P Disponível!**\n\n` +
@@ -425,7 +406,7 @@ export class OperationsBroadcastService {
       
       const message = (
         `✅ **Operação Aceita!**\n\n` +
-        `@depixoficial aceitou a operação de ${typeText}\n\n` +
+        `${acceptorName} aceitou a operação de ${typeText}\n\n` +
         `**Ativos:** ${assetsText}\n` +
         `**Quantidade:** ${operation.amount} ${assetUnit}\n` +
         `**Preço:** ${operation.quotationType === 'google' ? 'Calculado na Transação' : `R$ ${operation.price.toFixed(2)}`}\n` +
@@ -549,9 +530,16 @@ export class OperationsBroadcastService {
       }
       
       const creator = await this.usersService.findById(operation.creator.toString());
-      const acceptor = operation.acceptedBy
-        ? await this.usersService.findById(operation.acceptedBy.toString())
-        : null;
+      
+      // Verificar tanto acceptedBy quanto acceptor
+      let acceptor: any = null;
+      if (operation.acceptedBy) {
+        acceptor = await this.usersService.findById(operation.acceptedBy.toString());
+      } else if (operation.acceptor) {
+        acceptor = await this.usersService.findById(operation.acceptor.toString());
+      }
+      
+      this.logger.log(`Operation completion - Creator: ${creator?._id}, Acceptor: ${acceptor?._id}, AcceptedBy: ${operation.acceptedBy}, AcceptorField: ${operation.acceptor}`);
 
       if (!group || !creator) {
         this.logger.warn('Missing data for operation completion notification');
@@ -565,14 +553,20 @@ export class OperationsBroadcastService {
       const assetsText = operation.assets.join(', ');
       const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
       
+      // Formatar nomes com @ quando disponível
+      const creatorName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
+      const acceptorName = acceptor?.userName ? `@${acceptor.userName}` : acceptor?.firstName || 'Usuário';
+
       let message = (
         `🎉 **Operação Concluída com Sucesso!**\n\n` +
         `${typeEmoji} **${typeText} ${assetsText}**\n\n` +
-        `👤 **Criador:** ${creator.firstName || 'Usuário'}\n`
+        `👤 **Criador:** ${creatorName}\n`
       );
 
       if (acceptor) {
-        message += `🤝 **Parceiro:** ${acceptor.firstName || 'Usuário'}\n`;
+        message += `🤝 **Negociador:** ${acceptorName}\n\n`;
+      } else {
+        message += '\n';
       }
 
       message += (
@@ -581,29 +575,31 @@ export class OperationsBroadcastService {
         `💸 **Total:** R$ ${total.toFixed(2)}\n` +
         `🌐 **Redes:** ${networksText}\n\n` +
         `🆔 **ID:** \`${operation._id}\`\n\n` +
-        `💡 **Não esqueçam de se avaliarem mutuamente usando:**\n` +
-        `\`/avaliar @usuario [1-5] comentário\`\n\n` +
+        `💡 **Não esqueçam de se avaliarem mutuamente usando:**\n\n` +
         `🚀 **Continuem negociando com segurança!**`
       );
 
-      // Restaurar botões originais da operação pendente
+      // Para operações concluídas, criar botões de reputação
       const botUsername = 'p2pscorebot';
-      const userId = creator?.userName || creator?.firstName || creator?.userId;
-      const privateUrl = `https://t.me/${botUsername}?start=reputacao_${userId}`;
+      const creatorUserId = creator?.userName || creator?.firstName || creator?.userId;
+      const acceptorUserId = acceptor?.userName || acceptor?.firstName || acceptor?.userId;
+      
+      const buttons = [
+        {
+          text: `📊 ${creatorName}`,
+          url: `https://t.me/${botUsername}?start=reputacao_${creatorUserId}`
+        }
+      ];
+      
+      if (acceptor) {
+        buttons.push({
+          text: `📊 ${acceptorName}`,
+          url: `https://t.me/${botUsername}?start=reputacao_${acceptorUserId}`
+        });
+      }
       
       const inlineKeyboard = {
-        inline_keyboard: [
-          [
-            {
-              text: '🚀 Aceitar Operação',
-              callback_data: `accept_operation_${operation._id}`
-            },
-            {
-              text: '📊 Ver Reputação',
-              url: privateUrl
-            }
-          ]
-        ]
+        inline_keyboard: [buttons]
       };
 
       // Configurar envio para tópico específico se for o grupo mencionado

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { OperationsService } from '../../../operations/operations.service';
+import { UsersService } from '../../../users/users.service';
+import { PendingEvaluationService } from '../../../operations/pending-evaluation.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import {
   ITextCommandHandler,
@@ -14,6 +16,8 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
 
   constructor(
     private readonly operationsService: OperationsService,
+    private readonly usersService: UsersService,
+    private readonly pendingEvaluationService: PendingEvaluationService,
     private readonly keyboardService: TelegramKeyboardService,
   ) {}
 
@@ -71,6 +75,167 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
       } else {
         await ctx.reply('▼ Erro ao concluir operação. Tente novamente.');
       }
+    }
+  }
+
+  async handleCallback(ctx: any): Promise<boolean> {
+    const data = ctx.callbackQuery.data;
+    
+    if (!data.startsWith('complete_operation_')) {
+      return false;
+    }
+
+    try {
+      // Tentar responder ao callback, mas ignorar se expirado
+      try {
+        await ctx.answerCbQuery();
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no concluir operação:', cbError.description);
+        } else {
+          throw cbError;
+        }
+      }
+
+      const operationId = data.replace('complete_operation_', '');
+      
+      // Buscar o usuário no banco de dados
+      const userData = {
+        id: ctx.from.id,
+        username: ctx.from.username,
+        first_name: ctx.from.first_name,
+        last_name: ctx.from.last_name
+      };
+      
+      let user;
+      try {
+        user = await this.usersService.findOrCreate(userData);
+        this.logger.log(`Usuário encontrado para conclusão via callback: ${user._id}`);
+      } catch (error) {
+        this.logger.error(`Erro ao buscar usuário:`, error);
+        await ctx.editMessageText('❌ Erro interno ao processar usuário.');
+        return true;
+      }
+      
+      const userId = user._id;
+
+      try {
+        const completedOperation = await this.operationsService.completeOperation(
+          new Types.ObjectId(operationId),
+          userId,
+        );
+
+        const typeText = completedOperation.type === 'buy' ? 'COMPRA' : 'VENDA';
+        const total = completedOperation.amount * completedOperation.price;
+        
+        // Atualizar mensagem com confirmação
+        await ctx.editMessageText(
+          `✅ **Operação Concluída com Sucesso!**\n\n` +
+          `${typeText}\n` +
+          `💰 **Ativos:** ${completedOperation.assets.join(', ')}\n` +
+          `📊 **Quantidade:** ${completedOperation.amount}\n` +
+          `💵 **Total:** R$ ${total.toFixed(2)}\n` +
+          `🌐 **Redes:** ${completedOperation.networks.map(n => n.toUpperCase()).join(', ')}\n\n` +
+          `🎉 **Parabéns pela transação bem-sucedida!**\n\n` +
+          `⏳ **Redirecionando para avaliação...**`,
+          { parse_mode: 'Markdown' }
+        );
+
+        // Aguardar um momento para o usuário ler
+        setTimeout(async () => {
+          try {
+            // Criar avaliação pendente para o aceitador
+            if (completedOperation.acceptor) {
+              await this.pendingEvaluationService.createPendingEvaluation(
+                new Types.ObjectId(operationId), // ID da operação
+                userId, // Quem vai avaliar (criador)
+                completedOperation.acceptor // Quem será avaliado (aceitador)
+              );
+
+              // Mostrar interface de avaliação obrigatória
+              const evaluationMessage = 
+                `⭐ **Avaliação Obrigatória**\n\n` +
+                `Você concluiu uma operação com sucesso!\n` +
+                `Para finalizar, é obrigatório avaliar seu parceiro de negociação.\n\n` +
+                `**Como foi a experiência?**\n` +
+                `Escolha quantas estrelas você daria:`;
+
+              const evaluationKeyboard = {
+                inline_keyboard: [
+                  [
+                    {
+                      text: '⭐',
+                      callback_data: `eval_star_1_${operationId}`
+                    },
+                    {
+                      text: '⭐⭐',
+                      callback_data: `eval_star_2_${operationId}`
+                    },
+                    {
+                      text: '⭐⭐⭐',
+                      callback_data: `eval_star_3_${operationId}`
+                    }
+                  ],
+                  [
+                    {
+                      text: '⭐⭐⭐⭐',
+                      callback_data: `eval_star_4_${operationId}`
+                    },
+                    {
+                      text: '⭐⭐⭐⭐⭐',
+                      callback_data: `eval_star_5_${operationId}`
+                    }
+                  ]
+                ]
+              };
+
+              await ctx.editMessageText(evaluationMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: evaluationKeyboard
+              });
+            } else {
+              // Se não há aceitador, apenas mostrar conclusão
+              await ctx.editMessageText(
+                `✅ **Operação Concluída!**\n\n` +
+                `A operação foi marcada como concluída com sucesso.`,
+                { parse_mode: 'Markdown' }
+              );
+            }
+          } catch (evalError) {
+            this.logger.error('Erro ao criar avaliação pendente:', evalError);
+            await ctx.editMessageText(
+              `✅ **Operação Concluída!**\n\n` +
+              `A operação foi concluída, mas houve um problema ao configurar a avaliação.\n` +
+              `Você pode avaliar manualmente usando o comando /avaliar.`
+            );
+          }
+        }, 2000); // 2 segundos de delay
+
+        this.logger.log(
+          `Operation ${operationId} completed via callback by user ${userId}`,
+        );
+        
+      } catch (error) {
+        this.logger.error('Error completing operation via callback:', error);
+        
+        if (error instanceof Error) {
+          await ctx.editMessageText(`❌ ${error.message}`);
+        } else {
+          await ctx.editMessageText('❌ Erro ao concluir operação. Tente novamente.');
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      this.logger.error('Erro ao processar callback de conclusão:', error);
+      try {
+        await ctx.answerCbQuery('❌ Erro ao processar conclusão', { show_alert: true });
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no tratamento de erro:', cbError.description);
+        }
+      }
+      return true;
     }
   }
 }

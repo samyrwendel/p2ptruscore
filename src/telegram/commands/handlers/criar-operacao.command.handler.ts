@@ -16,6 +16,7 @@ import {
   NetworkType,
   AssetType,
   QuotationType,
+  OperationStatus,
 } from '../../../operations/schemas/operation.schema';
 
 interface OperationSession {
@@ -250,15 +251,145 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     const sessionKey = `${ctx.from.id}_${ctx.chat.id}`;
 
     // Verificar se este callback pertence a este handler
-    if (!data.startsWith('op_') && !this.sessions.has(sessionKey)) {
+    if (!data.startsWith('op_') && !data.startsWith('view_operation_details_') && !data.startsWith('cancel_operation_') && !this.sessions.has(sessionKey)) {
       return false; // Não é um callback deste handler
+    }
+
+    // Processar callbacks de operações criadas
+    if (data.startsWith('view_operation_details_')) {
+      const operationId = data.replace('view_operation_details_', '');
+      
+      try {
+        await ctx.answerCbQuery();
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado - ver detalhes:', cbError.description);
+        }
+      }
+      
+      try {
+        const operation = await this.operationsService.getOperationById(new Types.ObjectId(operationId));
+        if (!operation) {
+          await ctx.editMessageText('❌ Operação não encontrada.');
+          return true;
+        }
+        
+        const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+        const total = operation.amount * operation.price;
+        
+        const detailsMessage = 
+          `📊 **Detalhes da Operação**\n\n` +
+          `🔹 **Tipo:** ${typeText}\n` +
+          `💰 **Ativos:** ${operation.assets.join(', ')}\n` +
+          `🌐 **Redes:** ${operation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
+          `📊 **Quantidade:** ${operation.amount}\n` +
+          `💵 **Preço Unitário:** R$ ${operation.price.toFixed(2)}\n` +
+          `💸 **Total:** R$ ${total.toFixed(2)}\n` +
+          `📝 **Descrição:** ${operation.description || 'Sem descrição'}\n` +
+           `⏰ **Status:** ${operation.status === OperationStatus.PENDING ? 'Pendente' : operation.status}`;
+        
+        const backKeyboard = {
+          inline_keyboard: [
+            [
+              {
+                text: '🔙 Voltar',
+                callback_data: `back_to_operation_${operationId}`
+              }
+            ]
+          ]
+        };
+        
+        await ctx.editMessageText(detailsMessage, {
+          parse_mode: 'Markdown',
+          reply_markup: backKeyboard
+        });
+        
+      } catch (error) {
+        this.logger.error('Erro ao buscar detalhes da operação:', error);
+        await ctx.editMessageText('❌ Erro ao carregar detalhes da operação.');
+      }
+      
+      return true;
+    }
+    
+    if (data.startsWith('back_to_operation_')) {
+      const operationId = data.replace('back_to_operation_', '');
+      
+      try {
+        await ctx.answerCbQuery();
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado - voltar:', cbError.description);
+        }
+      }
+      
+      try {
+        const operation = await this.operationsService.getOperationById(new Types.ObjectId(operationId));
+        if (!operation) {
+          await ctx.editMessageText('❌ Operação não encontrada.');
+          return true;
+        }
+        
+        const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+        const total = operation.amount * operation.price;
+        
+        const confirmationMessage = 
+          `✅ **Operação Criada com Sucesso!**\n\n` +
+          `🔹 **Tipo:** ${typeText}\n` +
+          `💰 **Ativos:** ${operation.assets.join(', ')}\n` +
+          `🌐 **Redes:** ${operation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
+          `📊 **Quantidade:** ${operation.amount}\n` +
+          `💵 **Total:** R$ ${total.toFixed(2)}\n` +
+          
+          `🎯 Sua operação foi publicada no grupo e está disponível para negociação!`;
+        
+        const controlKeyboard = {
+          inline_keyboard: [
+            [
+              {
+                text: '❌ Cancelar Operação',
+                callback_data: `cancel_operation_${operation._id}`
+              },
+              {
+                text: '✅ Concluir Operação',
+                callback_data: `complete_operation_${operation._id}`
+              }
+            ],
+            [
+              {
+                text: '📊 Ver Detalhes',
+                callback_data: `view_operation_details_${operation._id}`
+              }
+            ]
+          ]
+        };
+        
+        await ctx.editMessageText(confirmationMessage, {
+          parse_mode: 'Markdown',
+          reply_markup: controlKeyboard
+        });
+        
+      } catch (error) {
+        this.logger.error('Erro ao voltar para operação:', error);
+        await ctx.editMessageText('❌ Erro ao carregar operação.');
+      }
+      
+      return true;
     }
 
     if (data === 'op_cancel') {
       this.sessions.delete(sessionKey);
       
       // Responder com popup temporário
-      await ctx.answerCbQuery('❌ Operação cancelada com sucesso!', { show_alert: false });
+      try {
+        await ctx.answerCbQuery('❌ Operação cancelada com sucesso!', { show_alert: false });
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado - cancelamento:', cbError.description);
+        } else {
+          this.logger.error('Erro ao responder callback - cancelamento:', cbError);
+        }
+      }
       
       // Editar mensagem com notificação temporária
       const tempMessage = await ctx.editMessageText(
@@ -292,10 +423,18 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         session.data.price = suggestedPrice;
         
         // Responder ao callback
-        await ctx.answerCbQuery(
-          `💡 Cotação atual aplicada: R$ ${suggestedPrice.toFixed(2)}`,
-          { show_alert: false }
-        );
+        try {
+          await ctx.answerCbQuery(
+            `💡 Cotação atual aplicada: R$ ${suggestedPrice.toFixed(2)}`,
+            { show_alert: false }
+          );
+        } catch (cbError: any) {
+          if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+            this.logger.warn('Callback query expirado - cotação aplicada:', cbError.description);
+          } else {
+            this.logger.error('Erro ao responder callback - cotação aplicada:', cbError);
+          }
+        }
         
         // Avançar para próxima etapa (descrição)
         await this.showDescriptionInput(ctx);
@@ -526,13 +665,12 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     try {
       await ctx.answerCbQuery();
       return true; // Callback processado com sucesso
-    } catch (error) {
-      // Ignorar erro de callback expirado - é comum e não afeta o funcionamento
-      if (error.message && error.message.includes('query is too old')) {
-        this.logger.warn('Callback query expirado - ignorando:', error.message);
+    } catch (cbError: any) {
+      if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+        this.logger.warn('Callback query expirado - ignorando:', cbError.description);
         return true; // Ainda consideramos como processado
       } else {
-        this.logger.error('Erro ao responder callback query:', error);
+        this.logger.error('Erro ao responder callback query:', cbError);
         return false; // Erro no processamento
       }
     }
@@ -1816,7 +1954,15 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       this.logger.error('Error creating operation:', error);
       
       // Mostrar popup de erro
-      await ctx.answerCbQuery('❌ Erro ao criar operação. Tente novamente.', { show_alert: true });
+      try {
+        await ctx.answerCbQuery('❌ Erro ao criar operação. Tente novamente.', { show_alert: true });
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no tratamento de erro (createOperation):', cbError.description);
+        } else {
+          this.logger.error('Erro ao responder callback de erro (createOperation):', cbError);
+        }
+      }
       
       // Enviar mensagem temporária que desaparece em 5 segundos
       const errorMessage = await ctx.reply('❌ Erro ao criar operação. Tente novamente.');
