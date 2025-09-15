@@ -21,6 +21,10 @@ export interface CurrencyApiResponse {
   EURBRL?: CurrencyRate;
   BTCUSD?: CurrencyRate;
   BTCBRL?: CurrencyRate;
+  ETHUSD?: CurrencyRate;
+  ETHBRL?: CurrencyRate;
+  SOLUSD?: CurrencyRate;
+  SOLBRL?: CurrencyRate;
 }
 
 @Injectable()
@@ -33,7 +37,7 @@ export class CurrencyApiService {
 
   async getCurrentRates(): Promise<CurrencyApiResponse> {
     try {
-      const url = `${this.baseUrl}/USD-BRL,EUR-BRL,BTC-USD,BTC-BRL?token=${this.apiKey}`;
+      const url = `${this.baseUrl}/USD-BRL,EUR-BRL,BTC-USD,BTC-BRL,ETH-USD,ETH-BRL,SOL-USD,SOL-BRL?token=${this.apiKey}`;
       
       this.logger.log('Fetching current currency rates...');
       const response = await firstValueFrom(
@@ -56,9 +60,12 @@ export class CurrencyApiService {
       const assetMapping: { [key: string]: keyof CurrencyApiResponse } = {
         'USDT': 'USDBRL',
         'USDC': 'USDBRL',
+        'USDE': 'USDBRL',
         'DAI': 'USDBRL',
         'BUSD': 'USDBRL',
         'BTC': 'BTCBRL',
+        'ETH': 'ETHBRL',
+        'SOL': 'SOLBRL',
         'EUR': 'EURBRL'
       };
       
@@ -105,6 +112,14 @@ export class CurrencyApiService {
       
       if (rates.BTCBRL) {
         message += this.formatCurrencyRate(rates.BTCBRL) + '\n\n';
+      }
+      
+      if (rates.ETHBRL) {
+        message += this.formatCurrencyRate(rates.ETHBRL) + '\n\n';
+      }
+      
+      if (rates.SOLBRL) {
+        message += this.formatCurrencyRate(rates.SOLBRL) + '\n\n';
       }
       
       if (rates.EURBRL) {

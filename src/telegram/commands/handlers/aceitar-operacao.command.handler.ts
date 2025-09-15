@@ -221,4 +221,124 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
     // Outros casos
     return '';
   }
+
+  async handleCallback(ctx: any): Promise<boolean> {
+    const data = ctx.callbackQuery.data;
+    
+    // Verificar se este callback pertence a este handler
+    if (!data.startsWith('accept_operation_')) {
+      return false;
+    }
+    
+    try {
+      // Extrair o ID da operação do callback
+      const operationId = data.replace('accept_operation_', '');
+      
+      this.logger.log(`📞 Processando aceitar operação: ${operationId}`);
+      this.logger.log(`📞 ID length: ${operationId.length}, ID: ${operationId}`);
+      
+      // Validar se é um ObjectId válido
+      if (!Types.ObjectId.isValid(operationId)) {
+        this.logger.error(`❌ ID de operação inválido: ${operationId}`);
+        try {
+          await ctx.answerCbQuery('❌ ID de operação inválido', { show_alert: true });
+        } catch (cbError: any) {
+          if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+            this.logger.warn('Callback query expirado - ID inválido:', cbError.description);
+          } else {
+            this.logger.error('Erro ao responder callback - ID inválido:', cbError);
+          }
+        }
+        return true;
+      }
+      
+      // Buscar a operação
+      const operation = await this.operationsService.getOperationById(new Types.ObjectId(operationId));
+      if (!operation) {
+        try {
+          await ctx.answerCbQuery('❌ Operação não encontrada', { show_alert: true });
+        } catch (cbError: any) {
+          if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+            this.logger.warn('Callback query expirado - operação não encontrada:', cbError.description);
+          } else {
+            this.logger.error('Erro ao responder callback - operação não encontrada:', cbError);
+          }
+        }
+        return true;
+      }
+      
+      // Verificar se a operação ainda está disponível
+      if (operation.status !== 'pending') {
+        try {
+          await ctx.answerCbQuery('❌ Esta operação não está mais disponível', { show_alert: true });
+        } catch (cbError: any) {
+          if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+            this.logger.warn('Callback query expirado - operação indisponível:', cbError.description);
+          } else {
+            this.logger.error('Erro ao responder callback - operação indisponível:', cbError);
+          }
+        }
+        return true;
+      }
+      
+      // Verificar se não é o próprio criador tentando aceitar
+      if (operation.creator.toString() === ctx.from.id.toString()) {
+        try {
+          await ctx.answerCbQuery('❌ Você não pode aceitar sua própria operação', { show_alert: true });
+        } catch (cbError: any) {
+          if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+            this.logger.warn('Callback query expirado - própria operação:', cbError.description);
+          } else {
+            this.logger.error('Erro ao responder callback - própria operação:', cbError);
+          }
+        }
+        return true;
+      }
+      
+      // Buscar ou criar usuário aceitador
+      const acceptorUser = await this.usersService.findOrCreate({
+        id: ctx.from.id,
+        username: ctx.from.username,
+        first_name: ctx.from.first_name,
+        last_name: ctx.from.last_name
+      });
+      
+      // Processar a aceitação da operação
+      await this.operationsService.acceptOperation(new Types.ObjectId(operationId), acceptorUser._id);
+      
+      try {
+        await ctx.answerCbQuery('✅ Operação aceita com sucesso!', { show_alert: true });
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado - sucesso:', cbError.description);
+        } else {
+          this.logger.error('Erro ao responder callback - sucesso:', cbError);
+        }
+      }
+      
+      this.logger.log(`✅ Operação ${operationId} aceita por ${acceptorUser._id}`);
+      
+      return true;
+      
+    } catch (error) {
+      this.logger.error('❌ Erro ao processar callback de aceitar operação:', error);
+      
+      let errorMessage = '❌ Erro ao aceitar operação';
+      if (error instanceof Error) {
+        errorMessage = `❌ ${error.message}`;
+      }
+      
+      try {
+        await ctx.answerCbQuery(errorMessage, { show_alert: true });
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no tratamento de erro:', cbError.description);
+        } else {
+          this.logger.error('Erro ao responder callback de erro:', cbError);
+        }
+      }
+      
+      return false;
+    }
+  }
 }

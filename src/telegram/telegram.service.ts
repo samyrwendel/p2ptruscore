@@ -178,13 +178,13 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         return;
       }
 
-      this.logger.log(`📞 Callback query recebido: ${callbackData}`);
-
       // Procurar handler que pode processar este callback
       for (const handler of this.commandHandlers.values()) {
         if (handler && typeof handler.handleCallback === 'function') {
           const handled = await handler.handleCallback(ctx);
+          
           if (handled) {
+            this.logger.log(`📞 Callback ${callbackData} processado por: ${handler.constructor.name}`);
             await ctx.answerCbQuery();
             return;
           }

@@ -105,4 +105,92 @@ export class CancelarOperacaoCommandHandler implements ITextCommandHandler {
       }
     }
   }
+
+  async handleCallback(ctx: any): Promise<boolean> {
+    const data = ctx.callbackQuery.data;
+    
+    if (!data.startsWith('cancel_operation_')) {
+      return false;
+    }
+
+    try {
+      // Tentar responder ao callback, mas ignorar se expirado
+      try {
+        await ctx.answerCbQuery();
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no cancelar operação:', cbError.description);
+        } else {
+          throw cbError;
+        }
+      }
+
+      const operationId = data.replace('cancel_operation_', '');
+      
+      // Buscar o usuário no banco de dados
+      const userData = {
+        id: ctx.from.id,
+        username: ctx.from.username,
+        first_name: ctx.from.first_name,
+        last_name: ctx.from.last_name
+      };
+      
+      let user;
+      try {
+        user = await this.usersService.findOrCreate(userData);
+      } catch (error) {
+        this.logger.error(`Erro ao buscar usuário:`, error);
+        await ctx.editMessageText('❌ Erro interno ao processar usuário.');
+        return true;
+      }
+      
+      const userId = user._id;
+
+      try {
+        const cancelledOperation = await this.operationsService.cancelOperation(
+          new Types.ObjectId(operationId),
+          userId,
+        );
+
+        const typeText = cancelledOperation.type === 'buy' ? 'COMPRA' : 'VENDA';
+        const total = cancelledOperation.amount * cancelledOperation.price;
+        
+        await ctx.editMessageText(
+          `❌ **Operação Cancelada**\n\n` +
+          `${typeText}\n` +
+          `💰 **Ativos:** ${cancelledOperation.assets.join(', ')}\n` +
+          `📊 **Quantidade:** ${cancelledOperation.amount}\n` +
+          `💵 **Preço:** R$ ${total.toFixed(2)}\n` +
+          `🌐 **Redes:** ${cancelledOperation.networks.map(n => n.toUpperCase()).join(', ')}\n\n` +
+          `✅ A operação foi cancelada com sucesso.`,
+          { parse_mode: 'Markdown' }
+        );
+
+        this.logger.log(
+          `Operation ${operationId} cancelled via callback by user ${userId}`,
+        );
+        
+      } catch (error) {
+        this.logger.error('Error cancelling operation via callback:', error);
+        
+        if (error instanceof Error) {
+          await ctx.editMessageText(`❌ ${error.message}`);
+        } else {
+          await ctx.editMessageText('❌ Erro ao cancelar operação. Tente novamente.');
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      this.logger.error('Erro ao processar callback de cancelamento:', error);
+      try {
+        await ctx.answerCbQuery('❌ Erro ao processar cancelamento', { show_alert: true });
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no tratamento de erro:', cbError.description);
+        }
+      }
+      return true;
+    }
+  }
 }

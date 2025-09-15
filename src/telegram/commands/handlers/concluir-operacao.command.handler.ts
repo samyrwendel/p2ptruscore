@@ -86,17 +86,6 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
     }
 
     try {
-      // Tentar responder ao callback, mas ignorar se expirado
-      try {
-        await ctx.answerCbQuery();
-      } catch (cbError: any) {
-        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
-          this.logger.warn('Callback query expirado no concluir operação:', cbError.description);
-        } else {
-          throw cbError;
-        }
-      }
-
       const operationId = data.replace('complete_operation_', '');
       
       // Buscar o usuário no banco de dados
@@ -215,13 +204,37 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
           `Operation ${operationId} completed via callback by user ${userId}`,
         );
         
+        // Responder ao callback com sucesso
+        try {
+          await ctx.answerCbQuery('✅ Operação concluída com sucesso!');
+        } catch (cbError: any) {
+          if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+            this.logger.warn('Callback query expirado após conclusão bem-sucedida:', cbError.description);
+          }
+        }
+        
       } catch (error) {
         this.logger.error('Error completing operation via callback:', error);
         
+        // Não alterar a mensagem da operação, apenas mostrar popup de erro
+        let errorMessage = '❌ Erro ao concluir operação. Tente novamente.';
         if (error instanceof Error) {
-          await ctx.editMessageText(`❌ ${error.message}`);
-        } else {
-          await ctx.editMessageText('❌ Erro ao concluir operação. Tente novamente.');
+          if (error.message.includes('só pode ser concluída')) {
+            errorMessage = '⚠️ Esta operação ainda não foi aceita por outro usuário. Aguarde alguém aceitar a operação antes de tentar concluí-la.';
+          } else if (error.message.includes('não pode ser concluída')) {
+            errorMessage = '⚠️ Esta operação não pode ser concluída no momento. Verifique se ela foi aceita por outro usuário.';
+          } else {
+            errorMessage = `❌ ${error.message}`;
+          }
+        }
+        
+        // Mostrar apenas popup de erro, sem alterar a mensagem da operação
+        try {
+          await ctx.answerCbQuery(errorMessage, { show_alert: true });
+        } catch (cbError: any) {
+          if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+            this.logger.warn('Callback query expirado no tratamento de erro de conclusão:', cbError.description);
+          }
         }
       }
       

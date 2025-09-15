@@ -20,6 +20,9 @@ class KarmaHistory {
 
   @Prop({ required: false })
   evaluatorName?: string;
+
+  @Prop({ required: false, min: 1, max: 5 })
+  starRating?: number;
 }
 
 @Schema({ timestamps: true, versionKey: false })
@@ -41,6 +44,22 @@ export class Karma extends AbstractDocument {
 
   @Prop({ default: 0 })
   givenHate: number;
+
+  // Contadores de estrelas recebidas
+  @Prop({ default: 0 })
+  stars5: number;
+
+  @Prop({ default: 0 })
+  stars4: number;
+
+  @Prop({ default: 0 })
+  stars3: number;
+
+  @Prop({ default: 0 })
+  stars2: number;
+
+  @Prop({ default: 0 })
+  stars1: number;
 }
 
 export const KarmaSchema = SchemaFactory.createForClass(Karma);

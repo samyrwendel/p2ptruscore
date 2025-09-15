@@ -76,7 +76,15 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
     
     try {
       if (data === 'refresh_rates') {
+        try {
         await ctx.answerCbQuery('🔄 Atualizando cotações...');
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado ao atualizar cotações:', cbError.description);
+        } else {
+          throw cbError;
+        }
+      }
         
         const cotacoesMessage = await this.currencyApiService.getAllRatesFormatted();
         
@@ -111,12 +119,28 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
         const usdRate = rates.USDBRL?.bid;
         
         if (usdRate) {
-          await ctx.answerCbQuery(
-            `💰 Cotação USD: R$ ${parseFloat(usdRate).toFixed(2)}\n\nUse este valor ao criar sua operação!`,
-            { show_alert: true }
-          );
+          try {
+            await ctx.answerCbQuery(
+              `💰 Cotação USD: R$ ${parseFloat(usdRate).toFixed(2)}\n\nUse este valor ao criar sua operação!`,
+              { show_alert: true }
+            );
+          } catch (cbError: any) {
+            if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+              this.logger.warn('Callback query expirado ao mostrar cotação USD:', cbError.description);
+            } else {
+              throw cbError;
+            }
+          }
         } else {
-          await ctx.answerCbQuery('❌ Cotação USD não disponível', { show_alert: true });
+          try {
+            await ctx.answerCbQuery('❌ Cotação USD não disponível', { show_alert: true });
+          } catch (cbError: any) {
+            if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+              this.logger.warn('Callback query expirado ao mostrar erro USD:', cbError.description);
+            } else {
+              this.logger.error('Erro ao responder callback USD:', cbError);
+            }
+          }
         }
         
       } else if (data === 'use_btc_rate') {
@@ -124,12 +148,28 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
         const btcRate = rates.BTCBRL?.bid;
         
         if (btcRate) {
-          await ctx.answerCbQuery(
-            `₿ Cotação BTC: R$ ${parseFloat(btcRate).toFixed(2)}\n\nUse este valor ao criar sua operação!`,
-            { show_alert: true }
-          );
+          try {
+            await ctx.answerCbQuery(
+              `₿ Cotação BTC: R$ ${parseFloat(btcRate).toFixed(2)}\n\nUse este valor ao criar sua operação!`,
+              { show_alert: true }
+            );
+          } catch (cbError: any) {
+            if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+              this.logger.warn('Callback query expirado ao mostrar cotação BTC:', cbError.description);
+            } else {
+              throw cbError;
+            }
+          }
         } else {
-          await ctx.answerCbQuery('❌ Cotação BTC não disponível', { show_alert: true });
+          try {
+            await ctx.answerCbQuery('❌ Cotação BTC não disponível', { show_alert: true });
+          } catch (cbError: any) {
+            if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+              this.logger.warn('Callback query expirado ao mostrar erro BTC:', cbError.description);
+            } else {
+              this.logger.error('Erro ao responder callback BTC:', cbError);
+            }
+          }
         }
       }
       
@@ -138,12 +178,11 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
       this.logger.error('Erro ao processar callback de cotações:', error);
       try {
         await ctx.answerCbQuery('❌ Erro ao processar solicitação', { show_alert: true });
-      } catch (cbError) {
-        // Ignorar erro de callback expirado
-        if (cbError.message && cbError.message.includes('query is too old')) {
-          this.logger.warn('Callback query expirado no tratamento de erro:', cbError.message);
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no tratamento de erro geral:', cbError.description);
         } else {
-          this.logger.error('Erro ao responder callback query:', cbError);
+          this.logger.error('Erro ao responder callback de erro geral:', cbError);
         }
       }
       return false; // Erro no processamento

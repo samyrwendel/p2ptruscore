@@ -251,7 +251,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     const sessionKey = `${ctx.from.id}_${ctx.chat.id}`;
 
     // Verificar se este callback pertence a este handler
-    if (!data.startsWith('op_') && !data.startsWith('view_operation_details_') && !data.startsWith('cancel_operation_') && !this.sessions.has(sessionKey)) {
+    if (!data.startsWith('op_') && !data.startsWith('view_operation_details_') && !data.startsWith('back_to_operation_') && !this.sessions.has(sessionKey)) {
       return false; // Não é um callback deste handler
     }
 
@@ -330,18 +330,56 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
           return true;
         }
         
-        const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
-        const total = operation.amount * operation.price;
+        // Usar exatamente a mesma formatação da mensagem original
+        const typeEmoji = operation.type === 'buy' ? '🟢' : operation.type === 'sell' ? '🔴' : operation.type === 'announcement' ? '📰' : '🔁';
+        const typeText = operation.type === 'buy' ? 'COMPRA' : operation.type === 'sell' ? 'VENDA' : operation.type === 'announcement' ? 'ANÚNCIO' : 'TROCA';
+        const assetsText = operation.assets.join(', ');
         
-        const confirmationMessage = 
-          `✅ **Operação Criada com Sucesso!**\n\n` +
-          `🔹 **Tipo:** ${typeText}\n` +
-          `💰 **Ativos:** ${operation.assets.join(', ')}\n` +
-          `🌐 **Redes:** ${operation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
-          `📊 **Quantidade:** ${operation.amount}\n` +
-          `💵 **Total:** R$ ${total.toFixed(2)}\n` +
+        // Calcular total e formatação
+        const total = operation.amount * operation.price;
+        const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
+        const quotationText = operation.quotationType === 'google' ? '🔍GOOGLE' : operation.quotationType.toUpperCase();
+        
+        // Formatação da data de expiração
+        const expirationDate = new Date(operation.expiresAt);
+        const now = new Date();
+        const diffMs = expirationDate.getTime() - now.getTime();
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        const expiresIn = `${diffHours}h ${diffMinutes}m`;
+        
+        let confirmationMessage = (
+          `✅ **Operação criada com sucesso!**\n\n` +
+          `${typeEmoji} **${typeText} ${assetsText}**\n` +
+          `Redes: ${networksText}\n`
+        );
+        
+        // Só mostrar cotação se for Google
+        if (operation.quotationType === 'google') {
+          confirmationMessage += `**Cotação:** ${quotationText}\n`;
+        }
+        
+        confirmationMessage += `**Quantidade:** ${operation.amount} (total)\n\n`;
+        
+        if (operation.quotationType !== 'google') {
+          const assetsText = operation.assets.join(', ');
+          const buyText = operation.type === 'buy' ? `${operation.amount} ${assetsText}` : `${operation.amount} ${assetsText}`;
+          const payText = operation.type === 'buy' ? `R$ ${total.toFixed(2)}` : `R$ ${total.toFixed(2)}`;
+          const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
           
-          `🎯 Sua operação foi publicada no grupo e está disponível para negociação!`;
+          confirmationMessage += (
+            `⬅️ **${actionText}:** ${buyText}\n` +
+            `➡️ **Quero pagar:** ${payText}\n` +
+            `💱 **Cotação:** ${operation.price.toFixed(2)}\n\n`
+          );
+        }
+        
+        confirmationMessage += (
+          `⏰ **Expira em:** ${expiresIn}\n` +
+          `🆔 **ID:** \`${operation._id}\`\n\n` +
+          `🚀 **Sua operação está sendo enviada para todos os grupos ativos...**\n\n` +
+          `Use os botões abaixo para gerenciar sua operação:`
+        );
         
         const controlKeyboard = {
           inline_keyboard: [
@@ -353,12 +391,6 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
               {
                 text: '✅ Concluir Operação',
                 callback_data: `complete_operation_${operation._id}`
-              }
-            ],
-            [
-              {
-                text: '📊 Ver Detalhes',
-                callback_data: `view_operation_details_${operation._id}`
               }
             ]
           ]
@@ -1928,12 +1960,6 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
             {
               text: '✅ Concluir Operação',
               callback_data: `complete_operation_${operation._id}`
-            }
-          ],
-          [
-            {
-              text: '📊 Ver Detalhes',
-              callback_data: `view_operation_details_${operation._id}`
             }
           ]
         ]

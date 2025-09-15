@@ -36,7 +36,7 @@ async function addKarmaToUser() {
     
     // Dados do avaliador (sistema)
     const evaluatorData = {
-      id: 0,
+      id: 999999999, // ID único para sistema administrativo
       username: 'sistema',
       first_name: 'Sistema',
       last_name: 'Admin'
@@ -50,7 +50,7 @@ async function addKarmaToUser() {
       userData,
       groupData,
       501,
-      'Pontos adicionados via comando administrativo - Teste de nível Mestre P2P 🏆'
+      'Pontos administrativos'
     );
     
     console.log('✅ Karma adicionado com sucesso!');

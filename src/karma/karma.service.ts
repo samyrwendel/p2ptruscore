@@ -261,4 +261,57 @@ export class KarmaService {
       throw error;
     }
   }
+
+  public async registerStarEvaluation(
+    evaluatorData: ITelegramUser,
+    evaluatedData: ITelegramUser,
+    chatData: ITelegramChat,
+    starRating: number,
+    comment: string,
+  ): Promise<{ evaluatorKarma: PopulatedKarma; evaluatedKarma: PopulatedKarma }> {
+    const [groupDoc, evaluatorUserDoc, evaluatedUserDoc] = await Promise.all([
+      this.groupsService.findOrCreate(chatData),
+      this.usersService.findOrCreate(evaluatorData),
+      this.usersService.findOrCreate(evaluatedData),
+    ]);
+
+    try {
+      // Atualizar karma do avaliador (quem deu a avaliação)
+      const evaluatorKarma = await this.karmaRepository.updateSenderKarmaWithComment(
+        evaluatorUserDoc._id,
+        groupDoc._id,
+        starRating >= 3 ? 1 : -1, // 3+ estrelas = positivo, <3 = negativo
+      );
+
+      // Atualizar karma do avaliado (quem recebeu a avaliação) com sistema de estrelas
+      const evaluatedKarma = await this.karmaRepository.updateReceiverKarmaWithStarRating(
+        evaluatedUserDoc._id,
+        groupDoc._id,
+        starRating,
+        comment,
+        evaluatorUserDoc._id,
+        evaluatorData.username || evaluatorData.first_name,
+      );
+
+      // Buscar os documentos populados
+      const [populatedEvaluatorKarma, populatedEvaluatedKarma] = await Promise.all([
+        this.karmaRepository.findOneByUserAndGroupAndPopulate(
+          evaluatorUserDoc._id,
+          groupDoc._id,
+        ),
+        this.karmaRepository.findOneByUserAndGroupAndPopulate(
+          evaluatedUserDoc._id,
+          groupDoc._id,
+        ),
+      ]);
+
+      return {
+        evaluatorKarma: populatedEvaluatorKarma!,
+        evaluatedKarma: populatedEvaluatedKarma!,
+      };
+    } catch (error) {
+      this.logger.error('Erro ao registrar avaliação com estrelas:', error);
+      throw error;
+    }
+  }
 }

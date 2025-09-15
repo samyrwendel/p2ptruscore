@@ -117,16 +117,19 @@ export class OperationsBroadcastService {
         const group = await this.groupsService.findById(operation.group.toString());
         if (group) {
           await this.broadcastOperationToSpecificGroup(operation, group.groupId);
-          this.logger.log(`Operation ${operation._id} sent to specific group ${group.groupId}`);
+          this.logger.log(`📤 Operação ${operation._id} enviada para grupo ${group.groupId}`);
           return;
+        } else {
+          this.logger.warn(`❌ Grupo ${operation.group} não encontrado`);
         }
       } catch (error) {
-        this.logger.warn(`Group ${operation.group} not found, falling back to all groups`);
+        this.logger.error(`❌ Erro ao buscar grupo ${operation.group}:`, error);
       }
     }
     
     // Se não tem grupo específico ou grupo não encontrado, enviar para todos
     await this.broadcastOperationToAllGroups(operation);
+    this.logger.log(`📡 Operação ${operation._id} enviada para todos os grupos`);
     
     // Código antigo comentado para referência
     // Tentar encontrar o grupo, se não existir, criar automaticamente
@@ -154,7 +157,7 @@ export class OperationsBroadcastService {
     try {
       const creator = await this.usersService.findById(operation.creator.toString());
       if (!creator) {
-        this.logger.warn(`Creator not found: ${operation.creator}`);
+        this.logger.error(`❌ Criador não encontrado: ${operation.creator}`);
         return;
       }
 
@@ -252,8 +255,8 @@ export class OperationsBroadcastService {
       // Criar botões inline
       // Criar URL para chat privado com reputação
       const botUsername = 'p2pscorebot'; // Nome do bot
-      const userId = creator.userName || creator.firstName || creator.userId;
-      const privateUrl = `https://t.me/${botUsername}?start=reputacao_${userId}`;
+      const creatorUserId = creator?.userName || creator?.firstName || creator?.userId;
+       const privateUrl = `https://t.me/${botUsername}?start=reputacao_${creatorUserId}`;
       
       // Criar teclado inline apenas com botões apropriados para grupos
       const inlineKeyboard = {
@@ -301,20 +304,25 @@ export class OperationsBroadcastService {
             { _id: operation._id },
             updateData
           );
-          this.logger.log(`Saved messageId ${sentMessage.message_id} for operation ${operation._id}`);
         } catch (error) {
-          this.logger.warn(`Failed to save messageId for operation ${operation._id}: ${error.message}`);
+          this.logger.warn(`⚠️ Failed to save messageId for operation ${operation._id}: ${error.message}`);
         }
       }
-
-      this.logger.log(
-        `Operation ${operation._id} broadcasted to group ${groupId}`
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to broadcast operation ${operation._id}:`,
-        error
-      );
+    } catch (error: any) {
+      this.logger.error(`❌ ERRO ao enviar operação ${operation._id} para grupo ${groupId}:`);
+      this.logger.error(`📋 Tipo do erro: ${error.constructor.name}`);
+      this.logger.error(`💬 Mensagem: ${error.message}`);
+      
+      if (error.response) {
+        this.logger.error(`🔍 Resposta da API Telegram:`, error.response.data || error.response);
+      }
+      
+      if (error.code) {
+        this.logger.error(`🏷️ Código do erro: ${error.code}`);
+      }
+      
+      // Log completo do erro para debug
+      this.logger.error(`🔧 Stack trace:`, error.stack);
     }
   }
 
@@ -760,15 +768,27 @@ export class OperationsBroadcastService {
         `🆔 **ID da Operação:** ${operation._id}`
       );
 
-      // Adicionar botão de aceitar operação para operação reaberta
+      // Criar botões inline EXATAMENTE como no broadcast original
+      // Criar URL para chat privado com reputação
+      const botUsername = 'p2pscorebot'; // Nome do bot
+      const creatorUserId = creator?.userName || creator?.firstName || creator?.userId;
+       const privateUrl = `https://t.me/${botUsername}?start=reputacao_${creatorUserId}`;
+      
+      // Criar teclado inline apenas com botões apropriados para grupos
       const inlineKeyboard = {
         inline_keyboard: [
           [
             {
               text: '🚀 Aceitar Operação',
               callback_data: `accept_operation_${operation._id}`
+            },
+            {
+              text: '📊 Ver Reputação',
+              url: privateUrl
             }
           ]
+          // Removidos botões 'Minhas Operações' e 'Ver Todas' do grupo
+          // Estes botões devem aparecer apenas no chat privado
         ]
       };
 

@@ -43,7 +43,8 @@ export class UsersRepository extends AbstractRepository<User> {
     const isUsername = input.startsWith('@');
     const queryValue = isUsername ? input.substring(1) : input;
 
-    const filterQuery = {
+    // Primeiro tentar busca exata
+    let filterQuery = {
       $or: [
         { userName: new RegExp(`^${queryValue}$`, 'i') },
         { firstName: new RegExp(`^${queryValue}$`, 'i') },
@@ -51,7 +52,33 @@ export class UsersRepository extends AbstractRepository<User> {
       ],
     };
 
-    return this.findOne(filterQuery).catch(() => null);
+    let user = await this.findOne(filterQuery).catch(() => null);
+    
+    // Se não encontrou, tentar busca parcial (contém)
+    if (!user) {
+      filterQuery = {
+        $or: [
+          { userName: new RegExp(queryValue, 'i') },
+          { firstName: new RegExp(queryValue, 'i') },
+          { lastName: new RegExp(queryValue, 'i') },
+        ],
+      };
+      user = await this.findOne(filterQuery).catch(() => null);
+    }
+    
+    // Se ainda não encontrou e o input tem mais de 4 caracteres, tentar busca por prefixo
+    if (!user && queryValue.length > 4) {
+      const prefix = queryValue.substring(0, Math.min(queryValue.length - 2, 6)); // Pegar primeiros caracteres
+      filterQuery = {
+        $or: [
+          { userName: new RegExp(`^${prefix}`, 'i') },
+          { firstName: new RegExp(`^${prefix}`, 'i') },
+        ],
+      };
+      user = await this.findOne(filterQuery).catch(() => null);
+    }
+
+    return user;
   }
 
   async countDocuments(filterQuery: FilterQuery<User> = {}): Promise<number> {

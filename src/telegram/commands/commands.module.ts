@@ -29,6 +29,7 @@ import { ApagarOperacoesPendentesCommandHandler } from './handlers/apagar-operac
 import { FecharOperacaoCommandHandler } from './handlers/fechar-operacao.command.handler';
 import { StartCommandHandler } from './handlers/start.command.handler';
 import { CotacoesCommandHandler } from './handlers/cotacoes.command.handler';
+import { EditarAvaliacaoCommandHandler } from './handlers/editar-avaliacao.command.handler';
 import { TelegramSharedModule } from '../shared/telegram-shared.module';
 
 export const commandHandlers = [
@@ -58,6 +59,7 @@ export const commandHandlers = [
   FecharOperacaoCommandHandler,
   StartCommandHandler,
   CotacoesCommandHandler,
+  EditarAvaliacaoCommandHandler,
 ];
 
 @Module({

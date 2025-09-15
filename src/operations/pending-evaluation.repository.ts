@@ -63,9 +63,19 @@ export class PendingEvaluationRepository extends AbstractRepository<PendingEvalu
     operationId: Types.ObjectId,
     evaluatorId: Types.ObjectId
   ): Promise<PendingEvaluation | null> {
-    return this.findOne({ 
-      operation: operationId, 
-      evaluator: evaluatorId 
+    return this.findOne({
+      operation: operationId,
+      evaluator: evaluatorId
     });
+  }
+
+  async deletePendingEvaluationsByOperation(
+    operationId: Types.ObjectId
+  ): Promise<number> {
+    const result = await this.model.deleteMany({
+      operation: operationId,
+      completed: false
+    });
+    return result.deletedCount || 0;
   }
 }

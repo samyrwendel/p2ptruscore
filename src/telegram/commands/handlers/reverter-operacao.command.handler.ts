@@ -98,4 +98,93 @@ export class ReverterOperacaoCommandHandler implements ITextCommandHandler {
       await ctx.reply(errorMessage);
     }
   }
+
+  async handleCallback(ctx: any): Promise<boolean> {
+    const data = ctx.callbackQuery?.data;
+    
+    if (!data || !data.startsWith('revert_operation_')) {
+      return false;
+    }
+
+    try {
+      // Tentar responder ao callback, mas ignorar se expirado
+      try {
+        await ctx.answerCbQuery();
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no reverter operação:', cbError.description);
+        } else {
+          throw cbError;
+        }
+      }
+
+      const operationId = data.replace('revert_operation_', '');
+      
+      // Buscar o usuário no banco de dados
+      const userData = {
+        id: ctx.from.id,
+        username: ctx.from.username,
+        first_name: ctx.from.first_name,
+        last_name: ctx.from.last_name
+      };
+      
+      let user;
+      try {
+        user = await this.usersService.findOrCreate(userData);
+        this.logger.log(`Usuário encontrado para reversão via callback: ${user._id}`);
+      } catch (error) {
+        this.logger.error(`Erro ao buscar usuário:`, error);
+        await ctx.editMessageText('❌ Erro interno ao processar usuário.');
+        return true;
+      }
+      
+      const userId = user._id;
+
+      try {
+        const revertedOperation = await this.operationsService.revertOperation(
+          new Types.ObjectId(operationId),
+          userId,
+        );
+
+        // Não editar a mensagem aqui - o notifyOperationReverted já cuida disso
+        // A mensagem será automaticamente atualizada pelo broadcast service
+        // para mostrar a operação disponível novamente
+
+        this.logger.log(
+          `Operation ${operationId} reverted via callback by user ${userId}`,
+        );
+        
+      } catch (error) {
+         this.logger.error('Error reverting operation via callback:', error);
+         
+         // Para erros de permissão, apenas mostrar popup sem alterar a mensagem
+         let errorMessage = '❌ Erro ao reverter operação. Tente novamente.';
+         if (error instanceof Error) {
+           if (error.message.includes('só pode reverter')) {
+             errorMessage = '❌ Você só pode reverter operações que criou ou aceitou.';
+           } else if (error.message.includes('Apenas operações aceitas')) {
+             errorMessage = '❌ Apenas operações aceitas podem ser revertidas.';
+           } else {
+             errorMessage = `❌ ${error.message}`;
+           }
+         }
+         
+         // Mostrar apenas popup de erro, sem alterar a mensagem da operação
+         try {
+           await ctx.answerCbQuery(errorMessage, { show_alert: true });
+         } catch (cbError: any) {
+           if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+             this.logger.warn('Callback query expirado ao mostrar erro:', cbError.description);
+           } else {
+             this.logger.error('Erro ao mostrar popup de erro:', cbError);
+           }
+         }
+       }
+      
+      return true;
+    } catch (error) {
+      this.logger.error('Error in revert operation callback:', error);
+      return true;
+    }
+  }
 }

@@ -14,6 +14,9 @@ FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
 
+# Instalar wget para health check
+RUN apk add --no-cache wget
+
 RUN chown -R node:node /usr/src/app
 
 USER node

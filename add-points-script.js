@@ -41,7 +41,7 @@ async function addPointsToUser() {
         history: [{
           timestamp: new Date(),
           karmaChange: 501,
-          comment: 'Pontos adicionados via script administrativo',
+          comment: 'Pontos administrativos',
           evaluatorName: 'Sistema'
         }]
       };
@@ -60,7 +60,7 @@ async function addPointsToUser() {
             history: {
               timestamp: new Date(),
               karmaChange: 501,
-              comment: 'Pontos adicionados via script administrativo',
+              comment: 'Pontos administrativos',
               evaluatorName: 'Sistema'
             }
           }

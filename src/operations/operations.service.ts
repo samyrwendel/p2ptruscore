@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { OperationsRepository } from './operations.repository';
 import { OperationsBroadcastService } from './operations-broadcast.service';
+import { PendingEvaluationRepository } from './pending-evaluation.repository';
 import {
   Operation,
   OperationType,
@@ -36,6 +37,7 @@ export class OperationsService {
     private readonly broadcastService: OperationsBroadcastService,
     private readonly usersService: UsersService,
     private readonly groupsService: GroupsService,
+    private readonly pendingEvaluationRepository: PendingEvaluationRepository,
   ) {}
 
   async createOperation(dto: CreateOperationDto): Promise<Operation> {
@@ -211,6 +213,14 @@ export class OperationsService {
     }
     
     this.logger.log(`Operation ${operationId} reverted to pending by user ${userId}`);
+    
+    // Excluir avaliações pendentes relacionadas a esta operação
+    try {
+      const deletedCount = await this.pendingEvaluationRepository.deletePendingEvaluationsByOperation(operationId);
+      this.logger.log(`Removed ${deletedCount} pending evaluations for reverted operation ${operationId}`);
+    } catch (error) {
+      this.logger.warn(`Could not remove pending evaluations for operation ${operationId}:`, error);
+    }
     
     // Notificar o grupo sobre a reversão
     await this.broadcastService.notifyOperationReverted(updatedOperation, userId);

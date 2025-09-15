@@ -35,11 +35,24 @@ export class HistoryCommandHandler implements ITextCommandHandler {
         );
         
         if (!karmaDoc) {
-          await ctx.reply(`❌ Usuário "${userQuery}" não encontrado neste grupo.`);
-          return;
+          // Se não encontrou no grupo, tentar buscar como usuário geral (mesmo comportamento do /reputacao)
+          try {
+            const totalKarma = await this.karmaService.getTotalKarmaForUser(userQuery);
+            if (totalKarma) {
+              // Buscar histórico de um grupo específico para chat privado
+              karmaDoc = await this.karmaService.getKarmaForUser(totalKarma.user.userId, -1002907400287);
+              targetUserName = totalKarma.user.firstName || userQuery;
+            } else {
+              await ctx.reply(`❌ Usuário "${userQuery}" não encontrado.`);
+              return;
+            }
+          } catch (fallbackError) {
+            await ctx.reply(`❌ Usuário "${userQuery}" não encontrado neste grupo.`);
+            return;
+          }
+        } else {
+          targetUserName = karmaDoc.user?.firstName || userQuery;
         }
-        
-        targetUserName = karmaDoc.user?.firstName || userQuery;
       } else {
         // Buscar próprio histórico
         karmaDoc = await this.karmaService.getKarmaForUser(
@@ -56,10 +69,37 @@ export class HistoryCommandHandler implements ITextCommandHandler {
         extra.reply_markup = keyboard.reply_markup;
       }
       
-      const historyMessage = formatKarmaHistory(karmaDoc?.history);
+      // Formatar histórico no mesmo formato da primeira imagem
+      const recentHistory = karmaDoc?.history?.slice(-10) || [];
+      let historyMessage = '';
+      
+      if (recentHistory.length === 0) {
+        historyMessage = 'Nenhuma avaliação encontrada.';
+      } else {
+        historyMessage = recentHistory
+          .reverse() // Mostrar mais recentes primeiro
+          .map((entry, index) => {
+            const dateString = new Date(entry.timestamp).toLocaleDateString('pt-BR');
+            let result = '';
+            
+            // Se tem starRating, mostrar estrelas
+            if (entry.starRating) {
+              const starEmojis = '⭐'.repeat(entry.starRating);
+              result = `${starEmojis}: "${entry.comment || 'Sem comentário'}" - ${entry.evaluatorName ? `@${entry.evaluatorName}` : 'Anônimo'}`;
+            } else {
+              // Fallback para o formato antigo
+              const emoji = entry.karmaChange > 0 ? '👍' : '👎';
+              result = `${emoji}: "${entry.comment || 'Avaliação P2P'}" - ${entry.evaluatorName ? `@${entry.evaluatorName}` : 'Anônimo'}`;
+            }
+            
+            return result;
+          })
+          .join('\n\n');
+      }
+      
       const message = userQuery 
-        ? `■ Reputação de ${targetUserName} (últimas 10 mudanças):\n\n${historyMessage}`
-        : `■ ${targetUserName} reputação (últimas 10 mudanças):\n\n${historyMessage}`;
+        ? `■ Sua reputação (últimas 10 mudanças):\n\n${historyMessage}`
+        : `■ Sua reputação (últimas 10 mudanças):\n\n${historyMessage}`;
 
       await ctx.reply(message, extra);
     } catch (error) {

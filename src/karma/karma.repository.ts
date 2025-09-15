@@ -82,6 +82,54 @@ export class KarmaRepository extends AbstractRepository<Karma> {
     return this.upsert(filterQuery, updateQuery);
   }
 
+  async updateReceiverKarmaWithStarRating(
+    receiverId: Types.ObjectId,
+    groupId: Types.ObjectId,
+    starRating: number,
+    comment: string,
+    evaluatorId: Types.ObjectId,
+    evaluatorName: string,
+  ) {
+    // Converter estrelas para pontos de karma
+    const karmaPoints = this.convertStarsToKarma(starRating);
+    
+    const filterQuery: FilterQuery<Karma> = {
+      user: receiverId,
+      group: groupId,
+    };
+    
+    // Incrementar contador de estrelas específico
+    const starField = `stars${starRating}`;
+    const updateQuery: UpdateQuery<Karma> = {
+      $inc: { 
+        karma: karmaPoints,
+        [starField]: 1
+      },
+      $push: { 
+        history: { 
+          karmaChange: karmaPoints,
+          comment: comment,
+          evaluator: evaluatorId,
+          evaluatorName: evaluatorName,
+          starRating: starRating
+        } as any 
+      },
+    };
+    return this.upsert(filterQuery, updateQuery);
+  }
+
+  private convertStarsToKarma(stars: number): number {
+    // Conversão de estrelas para pontos de karma
+    switch (stars) {
+      case 5: return 5;  // 5 estrelas = +5 pontos
+      case 4: return 2;  // 4 estrelas = +2 pontos
+      case 3: return 0;  // 3 estrelas = neutro
+      case 2: return -2; // 2 estrelas = -2 pontos
+      case 1: return -5; // 1 estrela = -5 pontos
+      default: return 0;
+    }
+  }
+
   async updateSenderKarmaWithComment(
     senderId: Types.ObjectId,
     groupId: Types.ObjectId,

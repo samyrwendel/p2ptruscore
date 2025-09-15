@@ -3,6 +3,7 @@ import { KarmaService } from '../../../karma/karma.service';
 import { UsersService } from '../../../users/users.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { formatKarmaHistory } from '../command.helpers';
+import { getReputationInfo } from '../../../shared/reputation.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -21,30 +22,67 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
  
    private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
      try {
+       this.logger.log(`🔍 getKarmaForUserWithFallback - user: ${JSON.stringify({userId: user.userId, userName: user.userName, firstName: user.firstName})}, chatId: ${chatId}`);
+       
        // Primeiro tentar buscar karma no grupo atual
        const groupKarma = await this.karmaService.getKarmaForUser(user.userId, chatId);
+       this.logger.log(`📊 groupKarma no chat ${chatId}: ${JSON.stringify(groupKarma ? {karma: groupKarma.karma, historyLength: groupKarma.history?.length, stars5: groupKarma.stars5} : 'null')}`);
        
        if (groupKarma && groupKarma.karma !== undefined) {
+         this.logger.log(`✅ Retornando groupKarma do chat atual`);
          return groupKarma;
        }
        
        // Se não encontrar no grupo atual, buscar karma total
        const totalKarma = await this.karmaService.getTotalKarmaForUser(user.userName || user.firstName);
+       this.logger.log(`📈 totalKarma: ${JSON.stringify(totalKarma ? {totalKarma: totalKarma.totalKarma, user: totalKarma.user?.userName} : 'null')}`);
        
        if (totalKarma) {
-         // Simular estrutura de karma do grupo para compatibilidade
-         return {
+         // Buscar histórico de qualquer grupo onde o usuário tenha dados
+         let karmaWithHistory = await this.karmaService.getKarmaForUser(user.userId, -1002907400287);
+         this.logger.log(`🏠 karmaWithHistory grupo principal: ${JSON.stringify(karmaWithHistory ? {historyLength: karmaWithHistory.history?.length, stars5: karmaWithHistory.stars5} : 'null')}`);
+         
+         // Se não encontrar no grupo principal, buscar em qualquer grupo
+          if (!karmaWithHistory || (!karmaWithHistory.history && (!karmaWithHistory.stars5 && !karmaWithHistory.stars4 && !karmaWithHistory.stars3 && !karmaWithHistory.stars2 && !karmaWithHistory.stars1))) {
+            this.logger.log(`🔄 Buscando em outros grupos...`);
+            // Buscar todos os grupos onde o usuário tem karma usando o UsersService
+            const userGroups = await this.karmaService.getGroupsForUser(user.userId);
+            this.logger.log(`👥 userGroups encontrados: ${userGroups?.length || 0}`);
+            if (userGroups && userGroups.length > 0) {
+              // Tentar buscar karma em cada grupo até encontrar um com histórico
+              for (const group of userGroups) {
+                const groupKarma = await this.karmaService.getKarmaForUser(user.userId, group.groupId);
+                this.logger.log(`🔍 Grupo ${group.groupId}: ${JSON.stringify(groupKarma ? {historyLength: groupKarma.history?.length, stars5: groupKarma.stars5} : 'null')}`);
+                if (groupKarma && (groupKarma.history?.length > 0 || groupKarma.stars5 > 0)) {
+                  karmaWithHistory = groupKarma;
+                  this.logger.log(`✅ Encontrado histórico no grupo ${group.groupId}`);
+                  break;
+                }
+              }
+            }
+          }
+         
+         const result = {
            karma: totalKarma.totalKarma,
            givenKarma: totalKarma.totalGiven,
            givenHate: totalKarma.totalHate,
            user: totalKarma.user,
-           history: [] // Histórico vazio para karma total
+           history: karmaWithHistory?.history || [],
+           stars5: karmaWithHistory?.stars5 || 0,
+           stars4: karmaWithHistory?.stars4 || 0,
+           stars3: karmaWithHistory?.stars3 || 0,
+           stars2: karmaWithHistory?.stars2 || 0,
+           stars1: karmaWithHistory?.stars1 || 0
          };
+         
+         this.logger.log(`📋 Resultado final: historyLength=${result.history.length}, stars5=${result.stars5}, totalKarma=${result.karma}`);
+         return result;
        }
        
+       this.logger.log(`❌ Nenhum karma encontrado`);
        return null;
      } catch (error) {
-       console.error('Erro ao buscar karma com fallback:', error);
+       this.logger.error('Erro ao buscar karma com fallback:', error);
        return null;
      }
    }
@@ -54,9 +92,10 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
     const input = match?.[1]?.trim();
     
     let targetUser;
+    let karmaData;
+    
     if (input) {
-      // Buscar usuário específico
-      let karma;
+      // Usar exatamente a mesma lógica do start.command.handler.ts (botão Ver Reputação)
       
       // Verificar se input é numérico (ID do Telegram) ou texto (nome/username)
       if (/^\d+$/.test(input)) {
@@ -74,126 +113,90 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         
         // Usar o nome de usuário ou firstName para buscar karma
         const userIdentifier = user.userName || user.firstName || input;
-        karma = await this.karmaService.findKarmaByUserQuery(userIdentifier, ctx.chat.id);
+        karmaData = await this.karmaService.getTotalKarmaForUser(userIdentifier);
         targetUser = user;
       } else {
         // É um nome/username, buscar diretamente
-        karma = await this.karmaService.findKarmaByUserQuery(input, ctx.chat.id);
-        if (karma) {
-          targetUser = karma.user;
-        }
-      }
-      
-      if (!karma) {
-        // Verificar se estamos em um contexto de callback (refreshReputation)
-        if (ctx.callbackQuery) {
-          await ctx.answerCbQuery(`❌ Usuário "${input}" não encontrado neste grupo.`, { show_alert: true });
+        this.logger.log(`🔍 Buscando karma total para: ${input}`);
+        karmaData = await this.karmaService.getTotalKarmaForUser(input);
+        this.logger.log(`📊 Resultado getTotalKarmaForUser: ${karmaData ? 'encontrado' : 'não encontrado'}`);
+        
+        if (!karmaData) {
+          // Se não encontrou, tentar buscar por username/nome nos grupos
+          this.logger.log(`🔄 Tentando buscar usuário por nome/username: ${input}`);
+          const userByName = await this.usersService.findOneByUsernameOrName(input);
+          this.logger.log(`👤 Usuário encontrado por nome: ${userByName ? JSON.stringify({userId: userByName.userId, userName: userByName.userName, firstName: userByName.firstName}) : 'não encontrado'}`);
+          
+          if (userByName) {
+            const userIdentifier = userByName.userName || userByName.firstName;
+            this.logger.log(`🔍 Buscando karma com identificador: ${userIdentifier}`);
+            karmaData = await this.karmaService.getTotalKarmaForUser(userIdentifier);
+            this.logger.log(`📊 Resultado karma com identificador: ${karmaData ? 'encontrado' : 'não encontrado'}`);
+            targetUser = userByName;
+          }
+          
+          if (!karmaData) {
+            this.logger.log(`❌ Nenhum karma encontrado para: ${input}`);
+            // Verificar se estamos em um contexto de callback (refreshReputation)
+            if (ctx.callbackQuery) {
+              await ctx.answerCbQuery(`❌ Usuário "${input}" não encontrado.`, { show_alert: true });
+            } else {
+              await ctx.reply(`❌ Usuário "${input}" não encontrado.`);
+            }
+            return;
+          }
         } else {
-          await ctx.reply(`❌ Usuário "${input}" não encontrado neste grupo.`);
+          targetUser = karmaData.user;
         }
-        return;
-      }
-      
-      if (!targetUser) {
-        targetUser = karma.user;
       }
     } else {
-      // Mostrar própria reputação
-      targetUser = ctx.from;
+      // Buscar próprio karma
+      const userIdentifier = ctx.from.username || ctx.from.first_name;
+      karmaData = await this.karmaService.getTotalKarmaForUser(userIdentifier);
+      if (!karmaData) {
+        await ctx.reply(`❌ Você ainda não possui reputação registrada.`);
+        return;
+      }
+      targetUser = karmaData.user;
     }
 
     try {
-      let karmaDoc;
-      if (input) {
-        // Verificar se estamos em um chat privado (ID positivo) ou grupo (ID negativo)
-        if (ctx.chat.id > 0) {
-          // Chat privado - buscar karma total em todos os grupos
-          const totalKarma = await this.karmaService.getTotalKarmaForUser(input);
-          if (totalKarma) {
-            // Simular estrutura de karmaDoc para compatibilidade
-            karmaDoc = {
-              karma: totalKarma.totalKarma,
-              givenKarma: totalKarma.totalGiven,
-              givenHate: totalKarma.totalHate,
-              history: [] // Histórico vazio para chat privado
-            };
-            targetUser = totalKarma.user;
-          }
-        } else {
-          // Grupo - buscar karma específico do grupo
-          karmaDoc = await this.karmaService.findKarmaByUserQuery(input, ctx.chat.id);
-        }
-      } else {
-        // Buscar próprio karma
-        if (ctx.chat.id > 0) {
-          // Chat privado - buscar karma total
-          const totalKarma = await this.karmaService.getTotalKarmaForUser(targetUser.username || targetUser.firstName);
-          if (totalKarma) {
-            karmaDoc = {
-              karma: totalKarma.totalKarma,
-              givenKarma: totalKarma.totalGiven,
-              givenHate: totalKarma.totalHate,
-              history: []
-            };
-          }
-        } else {
-          // Grupo - buscar karma específico do grupo
-          const userDoc = await this.usersService.findOneByUserId(targetUser.id);
-      karmaDoc = userDoc ? await this.getKarmaForUserWithFallback(userDoc, ctx.chat.id) : null;
-        }
-      }
+      // Usar exatamente a mesma lógica do start.command.handler.ts
+      const karmaValue = karmaData.totalKarma;
+      const avaliacoesPositivas = karmaData.totalGiven;
+      const avaliacoesNegativas = karmaData.totalHate;
+
+      // Determinar nível de confiança usando função utilitária
+      const reputationInfo = getReputationInfo(karmaValue);
+      const nivelConfianca = reputationInfo.nivel;
+      const nivelIcon = reputationInfo.icone;
+
+      const userName = targetUser.userName ? `@${targetUser.userName}` : targetUser.firstName || 'Usuário';
       
-      const nomeUsuario = targetUser.username ? `@${targetUser.username}` : targetUser.firstName;
+      // Buscar histórico de avaliações do usuário
+      const karmaDoc = await this.getKarmaForUserWithFallback(targetUser, ctx.chat.id);
       
-      const scoreTotal = karmaDoc?.karma || 0;
-      const avaliacoesPositivas = karmaDoc?.givenKarma || 0;
-      const avaliacoesNegativas = karmaDoc?.givenHate || 0;
+
       
-      // Calcular nível de confiança com ícones de reputação
-      let nivelConfianca = '';
-      let nivelIcon = '';
-      
-      if (scoreTotal < 0) {
-        nivelConfianca = 'Problemático';
-        nivelIcon = '🔴';
-      } else if (scoreTotal < 50) {
-        nivelConfianca = 'Iniciante';
-        nivelIcon = '🔰';
-      } else if (scoreTotal < 100) {
-        nivelConfianca = 'Bronze';
-        nivelIcon = '🥉';
-      } else if (scoreTotal < 200) {
-        nivelConfianca = 'Prata';
-        nivelIcon = '🥈';
-      } else if (scoreTotal < 500) {
-        nivelConfianca = 'Ouro';
-        nivelIcon = '🥇';
-      } else {
-        nivelConfianca = 'Mestre P2P';
-        nivelIcon = '🏆';
-      }
-      
-      // Formatar histórico das últimas 10 avaliações
-      const recentHistory = karmaDoc?.history?.slice(-10) || [];
-      let historyMessage = '';
-      
-      if (recentHistory.length === 0) {
-        historyMessage = 'Nenhuma avaliação encontrada.';
-      } else {
+      // Formatar histórico das últimas 10 avaliações (igual ao start.command.handler.ts)
+      let historyMessage = 'Nenhuma avaliação encontrada.';
+      if (karmaDoc && karmaDoc.history && karmaDoc.history.length > 0) {
+        const recentHistory = karmaDoc.history.slice(-10); // Últimas 10 avaliações
         historyMessage = recentHistory
-          .reverse() // Mostrar mais recentes primeiro
-          .map((entry, index) => {
-            const sign = entry.karmaChange > 0 ? '+' : '';
-            const emoji = entry.karmaChange > 0 ? '👍' : '👎';
-            const dateString = new Date(entry.timestamp).toLocaleDateString('pt-BR');
-            let result = `${emoji} ${sign}${entry.karmaChange} pts`;
+          .reverse()
+          .map((entry) => {
+            let result = '';
             
-            if (entry.evaluatorName) {
-              result += ` - ${entry.evaluatorName}`;
-            }
-            
-            if (entry.comment) {
-              result += `\n    💬 "${entry.comment}"`;
+            // Se tem starRating, mostrar estrelas
+            if (entry.starRating) {
+              const starEmojis = '⭐'.repeat(entry.starRating);
+              const evaluatorName = entry.evaluatorName ? `@${entry.evaluatorName}` : 'Anônimo';
+              result = `${starEmojis}: "${entry.comment || 'Sem comentário'}" - ${evaluatorName}`;
+            } else {
+              // Formato antigo (compatibilidade)
+              const emoji = entry.karmaChange > 0 ? '👍' : '👎';
+              const evaluatorName = entry.evaluatorName ? `@${entry.evaluatorName}` : 'Anônimo';
+              result = `${emoji}: "${entry.comment || 'Avaliação P2P'}" - ${evaluatorName}`;
             }
             
             return result;
@@ -201,34 +204,62 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
           .join('\n\n');
       }
       
-      const message = `**Reputação P2P de** ${nomeUsuario}\n\n` +
-         `${nivelIcon} **Nível**: ${nivelConfianca}\n` +
-         `⭐ **Score Total**: ${scoreTotal} pts\n\n` +
-         `👍🏽 **Avaliações Positivas Dadas**: ${avaliacoesPositivas}\n` +
-         `👎🏽 **Avaliações Negativas Dadas**: ${avaliacoesNegativas}\n\n` +
-         `📋 **Últimas Avaliações Recebidas:**\n${historyMessage}`;
+      // Contadores de estrelas em formato de 2 colunas
+      const stars5 = karmaDoc?.stars5 || 0;
+      const stars4 = karmaDoc?.stars4 || 0;
+      const stars3 = karmaDoc?.stars3 || 0;
+      const stars2 = karmaDoc?.stars2 || 0;
+      const stars1 = karmaDoc?.stars1 || 0;
       
-      // Criar botões de navegação e filtros
+      const starCounters = `5⭐️: ${stars5}      2⭐️: ${stars2}\n4⭐️: ${stars4}      1⭐️: ${stars1}\n3⭐️: ${stars3}`;
+      
+      const message = 
+        `**Reputação P2P do Criador da Operação**\n` +
+        `👤 **Usuário:** ${userName}\n\n` +
+        `${nivelIcon} **Nível:** ${nivelConfianca}\n` +
+        `⭐️ **Score Total:** ${karmaValue} pts\n\n` +
+        `**Distribuição de Avaliações:**\n${starCounters}\n\n\n` +
+        `📋 **Últimas 10 Avaliações Recebidas:**\n\n${historyMessage}`;
+      
+      // Criar botões de navegação melhorados (igual ao botão Ver Reputação)
       const keyboard = {
         inline_keyboard: [
           [
             {
-              text: '👍 Positivas',
-              callback_data: `reputation_filter_positive_${targetUser.userId || targetUser.id}`
+              text: '5⭐',
+              callback_data: `reputation_filter_star_5_${targetUser.userId || targetUser.id}`
             },
             {
-              text: '👎 Negativas', 
-              callback_data: `reputation_filter_negative_${targetUser.userId || targetUser.id}`
+              text: '4⭐',
+              callback_data: `reputation_filter_star_4_${targetUser.userId || targetUser.id}`
+            },
+            {
+              text: '3⭐',
+              callback_data: `reputation_filter_star_3_${targetUser.userId || targetUser.id}`
             }
           ],
           [
             {
-              text: '📋 Ver Mais',
-              callback_data: `reputation_more_${targetUser.userId || targetUser.id}_10`
+              text: '2⭐',
+              callback_data: `reputation_filter_star_2_${targetUser.userId || targetUser.id}`
             },
             {
-              text: '🔄 Atualizar',
+              text: '1⭐',
+              callback_data: `reputation_filter_star_1_${targetUser.userId || targetUser.id}`
+            },
+            {
+              text: '🔄️ Atualizar',
               callback_data: `reputation_refresh_${targetUser.userId || targetUser.id}`
+            }
+          ],
+          [
+            {
+              text: '❌',
+              callback_data: `reputation_close_${targetUser.userId || targetUser.id}`
+            },
+            {
+              text: '➡️',
+              callback_data: `reputation_more_${targetUser.userId || targetUser.id}_10`
             }
           ]
         ]
@@ -254,7 +285,12 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
     }
     
     try {
-      if (data.startsWith('reputation_filter_positive_')) {
+      if (data.startsWith('reputation_filter_star_')) {
+        const parts = data.replace('reputation_filter_star_', '').split('_');
+        const starRating = parts[0];
+        const userId = parts[1];
+        await this.showFilteredStarReviews(ctx, userId, parseInt(starRating));
+      } else if (data.startsWith('reputation_filter_positive_')) {
         const userId = data.replace('reputation_filter_positive_', '');
         await this.showFilteredReviews(ctx, userId, 'positive');
       } else if (data.startsWith('reputation_filter_negative_')) {
@@ -267,8 +303,15 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         await this.showMoreReviews(ctx, userId, currentOffset);
       } else if (data.startsWith('reputation_refresh_')) {
         const userId = data.replace('reputation_refresh_', '');
+        await this.refreshReputation(ctx, userId);
+        return true; // ✅ Sair após processar para evitar answerCbQuery duplicado
+      } else if (data.startsWith('reputation_main_')) {
+        const userId = data.replace('reputation_main_', '');
         await this.showMainReputation(ctx, userId);
         return true; // ✅ Sair após processar para evitar answerCbQuery duplicado
+      } else if (data.startsWith('reputation_close_')) {
+        await ctx.deleteMessage();
+        return true;
       }
       
       try {
@@ -294,6 +337,103 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
     }
   }
 
+  private async showFilteredStarReviews(ctx: any, userId: string, starRating: number): Promise<void> {
+    try {
+      // Buscar informações do usuário
+      let userName = 'Usuário';
+      let karmaDoc;
+      
+      if (/^\d+$/.test(userId)) {
+        // É um ID numérico, buscar usuário pelo ID
+        const user = await this.usersService.findOneByUserId(parseInt(userId));
+        if (user) {
+          userName = user.userName ? `@${user.userName}` : user.firstName || 'Usuário';
+        }
+        
+        // Determinar se é chat privado ou grupo
+        if (ctx.chat.type === 'private') {
+          // Chat privado - buscar karma total em todos os grupos COM histórico
+          const userIdentifier = user?.userName || user?.firstName || '';
+           if (userIdentifier) {
+             const totalKarma = await this.karmaService.getTotalKarmaForUser(userIdentifier);
+             if (totalKarma) {
+               // Buscar histórico de um grupo específico (usar o primeiro grupo encontrado)
+               const karmaWithHistory = await this.getKarmaForUserWithFallback(user, -1002907400287); // ID do grupo principal
+               karmaDoc = {
+                 karma: totalKarma.totalKarma,
+                 givenKarma: totalKarma.totalGiven,
+                 givenHate: totalKarma.totalHate,
+                 history: karmaWithHistory?.history || [],
+                 stars5: karmaWithHistory?.stars5 || 0,
+                 stars4: karmaWithHistory?.stars4 || 0,
+                 stars3: karmaWithHistory?.stars3 || 0,
+                 stars2: karmaWithHistory?.stars2 || 0,
+                 stars1: karmaWithHistory?.stars1 || 0
+               };
+             }
+           }
+        } else {
+          // Grupo - buscar karma específico do grupo
+          const user = await this.usersService.findOneByUserId(parseInt(userId));
+          karmaDoc = user ? await this.getKarmaForUserWithFallback(user, ctx.chat.id) : null;
+        }
+      } else {
+        // É um nome/username
+        userName = userId.startsWith('@') ? userId : `@${userId}`;
+      }
+      
+      const history = karmaDoc?.history || [];
+      
+      const filteredHistory = history.filter(entry => 
+        entry.starRating === starRating
+      ).slice(-10);
+      
+      // Calcular informações de reputação usando função centralizada
+      const scoreTotal = karmaDoc?.karma || 0;
+      const reputationInfo = getReputationInfo(karmaDoc);
+      const nivelConfianca = reputationInfo.nivel;
+      const nivelIcon = reputationInfo.icone;
+      
+      const starEmojis = '⭐'.repeat(starRating);
+      let message = `**Reputação P2P do Criador da Operação**\n` +
+                   `👤 **Usuário:** ${userName}\n\n` +
+                   `${nivelIcon} **Nível:** ${nivelConfianca}\n` +
+                   `⭐️ **Score Total:** ${scoreTotal} pts\n\n` +
+                   `${starEmojis} **Avaliações ${starRating} Estrelas:**\n\n`;
+      
+      if (filteredHistory.length === 0) {
+        message += `Nenhuma avaliação ${starRating} estrelas encontrada.`;
+      } else {
+        message += filteredHistory
+          .reverse()
+          .map(entry => {
+            const evaluatorName = entry.evaluatorName ? `@${entry.evaluatorName}` : 'Anônimo';
+            return `${starEmojis}: "${entry.comment || 'Sem comentário'}" - ${evaluatorName}`;
+          })
+          .join('\n\n');
+      }
+      
+      // Criar botão de voltar
+      const keyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: '🔙 Voltar',
+              callback_data: `reputation_main_${userId}`
+            }
+          ]
+        ]
+      };
+      
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
+    } catch (error) {
+      this.logger.error('Erro ao filtrar avaliações por estrelas:', error);
+    }
+  }
+
   private async showFilteredReviews(ctx: any, userId: string, filter: 'positive' | 'negative'): Promise<void> {
     try {
       // Buscar informações do usuário
@@ -311,16 +451,23 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
       
       let karmaDoc;
       if (ctx.chat.id > 0) {
-        // Chat privado - buscar karma total em todos os grupos
+        // Chat privado - buscar karma total em todos os grupos COM histórico
         const user = await this.usersService.findOneByUserId(parseInt(userId));
         if (user) {
           const totalKarma = await this.karmaService.getTotalKarmaForUser(user.userName || user.firstName);
           if (totalKarma) {
+            // Buscar histórico de um grupo específico (usar o primeiro grupo encontrado)
+            const karmaWithHistory = await this.getKarmaForUserWithFallback(user, -1002907400287); // ID do grupo principal
             karmaDoc = {
               karma: totalKarma.totalKarma,
               givenKarma: totalKarma.totalGiven,
               givenHate: totalKarma.totalHate,
-              history: [] // Histórico vazio para chat privado
+              history: karmaWithHistory?.history || [],
+              stars5: karmaWithHistory?.stars5 || 0,
+              stars4: karmaWithHistory?.stars4 || 0,
+              stars3: karmaWithHistory?.stars3 || 0,
+              stars2: karmaWithHistory?.stars2 || 0,
+              stars1: karmaWithHistory?.stars1 || 0
             };
           }
         }
@@ -335,9 +482,21 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         filter === 'positive' ? entry.karmaChange > 0 : entry.karmaChange < 0
       ).slice(-10);
       
+      // Calcular informações de reputação usando função centralizada
+      const scoreTotal = karmaDoc?.karma || 0;
+      const avaliacoesPositivas = karmaDoc?.givenKarma || 0;
+      const avaliacoesNegativas = karmaDoc?.givenHate || 0;
+      const reputationInfo = getReputationInfo(karmaDoc);
+      const nivelConfianca = reputationInfo.nivel;
+      const nivelIcon = reputationInfo.icone;
+      
       let message = `**Reputação P2P do Criador da Operação**\n` +
                    `👤 **Usuário:** ${userName}\n\n` +
-                   `${filter === 'positive' ? '👍' : '👎'} **Avaliações ${filter === 'positive' ? 'Positivas' : 'Negativas'}:**\n\n`;
+                   `${nivelIcon} **Nível**: ${nivelConfianca}\n` +
+                   `⭐ **Score Total**: ${scoreTotal} pts\n\n` +
+                   `👍🏽 **Avaliações Positivas Dadas**: ${avaliacoesPositivas}\n` +
+                   `👎🏽 **Avaliações Negativas Dadas**: ${avaliacoesNegativas}\n\n` +
+                   `${filter === 'positive' ? '👍' : '👎'} **Avaliações ${filter === 'positive' ? 'Positivas' : 'Negativas'} Recebidas:**\n\n`;
       
       if (filteredHistory.length === 0) {
         message += `Nenhuma avaliação ${filter === 'positive' ? 'positiva' : 'negativa'} encontrada.`;
@@ -345,18 +504,29 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         message += filteredHistory
           .reverse()
           .map(entry => {
-            const sign = entry.karmaChange > 0 ? '+' : '';
-            const emoji = entry.karmaChange > 0 ? '👍' : '👎';
             const dateString = new Date(entry.timestamp).toLocaleDateString('pt-BR');
-            let result = `${emoji} ${sign}${entry.karmaChange} pts`;
+            let result = '';
+            
+            // Se tem starRating, mostrar estrelas
+            if (entry.starRating) {
+              const starEmojis = '⭐'.repeat(entry.starRating);
+              result = `${starEmojis} ${entry.starRating}⭐`;
+            } else {
+              // Fallback para o formato antigo
+              const sign = entry.karmaChange > 0 ? '+' : '';
+              const emoji = entry.karmaChange > 0 ? '👍' : '👎';
+              result = `${emoji} ${sign}${entry.karmaChange} pts`;
+            }
             
             if (entry.evaluatorName) {
-              result += ` - ${entry.evaluatorName}`;
+              result += ` (por ${entry.evaluatorName})`;
             }
             
             if (entry.comment) {
               result += `\n    💬 "${entry.comment}"`;
             }
+            
+            result += ` - ${dateString}`;
             
             return result;
           })
@@ -368,16 +538,25 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
           [
             {
               text: '🔙 Voltar',
-              callback_data: `reputation_refresh_${userId}`
+              callback_data: `reputation_main_${userId}`
             }
           ]
         ]
       };
       
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-      });
+      try {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          reply_markup: keyboard
+        });
+      } catch (editError) {
+        if (editError.description && editError.description.includes('message is not modified')) {
+          this.logger.log(`ℹ️ Mensagem de filtro já está atualizada, ignorando erro`);
+          await ctx.answerCbQuery('✅ Filtro aplicado');
+        } else {
+          throw editError;
+        }
+      }
     } catch (error) {
       this.logger.error('Erro ao filtrar avaliações:', error);
     }
@@ -432,18 +611,29 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         message += nextBatch
           .reverse()
           .map(entry => {
-            const sign = entry.karmaChange > 0 ? '+' : '';
-            const emoji = entry.karmaChange > 0 ? '👍' : '👎';
             const dateString = new Date(entry.timestamp).toLocaleDateString('pt-BR');
-            let result = `${emoji} ${sign}${entry.karmaChange} pts`;
+            let result = '';
+            
+            // Se tem starRating, mostrar estrelas
+            if (entry.starRating) {
+              const starEmojis = '⭐'.repeat(entry.starRating);
+              result = `${starEmojis} ${entry.starRating}⭐`;
+            } else {
+              // Fallback para o formato antigo
+              const sign = entry.karmaChange > 0 ? '+' : '';
+              const emoji = entry.karmaChange > 0 ? '👍' : '👎';
+              result = `${emoji} ${sign}${entry.karmaChange} pts`;
+            }
             
             if (entry.evaluatorName) {
-              result += ` - ${entry.evaluatorName}`;
+              result += ` (por ${entry.evaluatorName})`;
             }
             
             if (entry.comment) {
               result += `\n    💬 "${entry.comment}"`;
             }
+            
+            result += ` - ${dateString}`;
             
             return result;
           })
@@ -459,7 +649,7 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
             },
             {
               text: '🔙 Voltar',
-              callback_data: `reputation_refresh_${userId}`
+              callback_data: `reputation_main_${userId}`
             }
           ]
         ]
@@ -476,7 +666,16 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
 
   private async showMainReputation(ctx: any, userId: string): Promise<void> {
     try {
-      await ctx.answerCbQuery(); // Responder ao callback primeiro
+      // Tentar responder ao callback, mas ignorar se expirado
+      try {
+        await ctx.answerCbQuery();
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado, continuando processamento:', cbError.description);
+        } else {
+          throw cbError; // Re-lançar outros erros
+        }
+      }
       
       this.logger.log(`🔄 ShowMainReputation chamado para userId: ${userId}`);
       
@@ -499,14 +698,21 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         
         // Buscar karma (sempre em chat privado quando vem de callback)
         if (ctx.chat.id > 0) {
-          // Chat privado - buscar karma total em todos os grupos
+          // Chat privado - buscar karma total em todos os grupos COM histórico
           const totalKarma = await this.karmaService.getTotalKarmaForUser(user.userName || user.firstName);
           if (totalKarma) {
+            // Buscar histórico de um grupo específico (usar o primeiro grupo encontrado)
+            const karmaWithHistory = await this.getKarmaForUserWithFallback(user, -1002907400287); // ID do grupo principal
             karmaDoc = {
               karma: totalKarma.totalKarma,
               givenKarma: totalKarma.totalGiven,
               givenHate: totalKarma.totalHate,
-              history: [] // Histórico vazio para chat privado
+              history: karmaWithHistory?.history || [],
+              stars5: karmaWithHistory?.stars5 || 0,
+              stars4: karmaWithHistory?.stars4 || 0,
+              stars3: karmaWithHistory?.stars3 || 0,
+              stars2: karmaWithHistory?.stars2 || 0,
+              stars1: karmaWithHistory?.stars1 || 0
             };
           }
         } else {
@@ -519,11 +725,18 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         const totalKarma = await this.karmaService.getTotalKarmaForUser(userId);
         if (totalKarma) {
           targetUser = totalKarma.user;
+          // Buscar histórico de um grupo específico para chat privado
+          const karmaWithHistory = await this.getKarmaForUserWithFallback(totalKarma.user, -1002907400287);
           karmaDoc = {
             karma: totalKarma.totalKarma,
             givenKarma: totalKarma.totalGiven,
             givenHate: totalKarma.totalHate,
-            history: []
+            history: karmaWithHistory?.history || [],
+            stars5: karmaWithHistory?.stars5 || 0,
+            stars4: karmaWithHistory?.stars4 || 0,
+            stars3: karmaWithHistory?.stars3 || 0,
+            stars2: karmaWithHistory?.stars2 || 0,
+            stars1: karmaWithHistory?.stars1 || 0
           };
         }
       }
@@ -539,7 +752,15 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
       
     } catch (error) {
       this.logger.error('Erro ao mostrar reputação principal:', error);
-      await ctx.answerCbQuery('❌ Erro ao carregar reputação', { show_alert: true });
+      try {
+        await ctx.answerCbQuery('❌ Erro ao carregar reputação', { show_alert: true });
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no tratamento de erro:', cbError.description);
+        } else {
+          this.logger.error('Erro ao processar callback de reputação:', cbError);
+        }
+      }
     }
   }
   
@@ -550,33 +771,23 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
     const avaliacoesPositivas = karmaDoc?.givenKarma || 0;
     const avaliacoesNegativas = karmaDoc?.givenHate || 0;
     
-    // Calcular nível de confiança com ícones de reputação
-    let nivelConfianca = '';
-    let nivelIcon = '';
+    // Calcular nível de confiança usando função centralizada
+    const reputationInfo = getReputationInfo(karmaDoc);
+    const nivelConfianca = reputationInfo.nivel;
+    const nivelIcon = reputationInfo.icone;
     
-    if (scoreTotal < 0) {
-      nivelConfianca = 'Problemático';
-      nivelIcon = '🔴';
-    } else if (scoreTotal < 50) {
-      nivelConfianca = 'Iniciante';
-      nivelIcon = '🔰';
-    } else if (scoreTotal < 100) {
-      nivelConfianca = 'Bronze';
-      nivelIcon = '🥉';
-    } else if (scoreTotal < 200) {
-      nivelConfianca = 'Prata';
-      nivelIcon = '🥈';
-    } else if (scoreTotal < 500) {
-      nivelConfianca = 'Ouro';
-      nivelIcon = '🥇';
-    } else {
-      nivelConfianca = 'Diamante';
-      nivelIcon = '💎';
-    }
-    
-    // Processar histórico
+    // Contadores de estrelas em formato de 2 colunas
+     const stars5 = karmaDoc?.stars5 || 0;
+     const stars4 = karmaDoc?.stars4 || 0;
+     const stars3 = karmaDoc?.stars3 || 0;
+     const stars2 = karmaDoc?.stars2 || 0;
+     const stars1 = karmaDoc?.stars1 || 0;
+     
+     const starCounters = `5⭐️: ${stars5}      2⭐️: ${stars2}\n4⭐️: ${stars4}      1⭐️: ${stars1}\n3⭐️: ${stars3}`;
+     
+     // Processar histórico - formato simplificado
     const history = karmaDoc?.history || [];
-    const recentHistory = history.slice(-5);
+    const recentHistory = history.slice(-10);
     let historyMessage = '';
     
     if (recentHistory.length === 0) {
@@ -585,16 +796,18 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
       historyMessage = recentHistory
         .reverse()
         .map((entry) => {
-          const sign = entry.karmaChange > 0 ? '+' : '';
-          const emoji = entry.karmaChange > 0 ? '👍' : '👎';
-          let result = `${emoji} ${sign}${entry.karmaChange} pts`;
+          let result = '';
           
-          if (entry.evaluatorName) {
-            result += ` - ${entry.evaluatorName}`;
-          }
-          
-          if (entry.comment) {
-            result += `\n    💬 "${entry.comment}"`;
+          // Se tem starRating, mostrar estrelas
+          if (entry.starRating) {
+            const starEmojis = '⭐'.repeat(entry.starRating);
+            const evaluatorName = entry.evaluatorName ? `@${entry.evaluatorName}` : 'Anônimo';
+            result = `${starEmojis}: "${entry.comment || 'Sem comentário'}" - ${evaluatorName}`;
+          } else {
+            // Formato antigo (compatibilidade)
+            const emoji = entry.karmaChange > 0 ? '👍' : '👎';
+            const evaluatorName = entry.evaluatorName ? `@${entry.evaluatorName}` : 'Anônimo';
+            result = `${emoji}: "${entry.comment || 'Avaliação P2P'}" - ${evaluatorName}`;
           }
           
           return result;
@@ -604,49 +817,85 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
     
     const message = `**Reputação P2P do Criador da Operação**\n` +
        `👤 **Usuário:** ${nomeUsuario}\n\n` +
-       `${nivelIcon} **Nível**: ${nivelConfianca}\n` +
-       `⭐ **Score Total**: ${scoreTotal} pts\n\n` +
-       `👍🏽 **Avaliações Positivas Dadas**: ${avaliacoesPositivas}\n` +
-       `👎🏽 **Avaliações Negativas Dadas**: ${avaliacoesNegativas}\n\n` +
-       `📋 **Últimas Avaliações Recebidas:**\n${historyMessage}`;
+       `${nivelIcon} **Nível:** ${nivelConfianca}\n` +
+       `⭐️ **Score Total:** ${scoreTotal} pts\n\n` +
+       `**Distribuição de Avaliações:**\n${starCounters}\n\n\n` +
+       `📋 **Últimas 10 Avaliações Recebidas:**\n\n${historyMessage}`;
     
-    // Criar botões de navegação e filtros
+    // Criar botões de navegação melhorados
     const keyboard = {
       inline_keyboard: [
         [
           {
-            text: '👍 Positivas',
-            callback_data: `reputation_filter_positive_${targetUser.userId || targetUser.id}`
+            text: '5⭐',
+            callback_data: `reputation_filter_star_5_${targetUser.userId || targetUser.id}`
           },
           {
-            text: '👎 Negativas', 
-            callback_data: `reputation_filter_negative_${targetUser.userId || targetUser.id}`
+            text: '4⭐',
+            callback_data: `reputation_filter_star_4_${targetUser.userId || targetUser.id}`
+          },
+          {
+            text: '3⭐',
+            callback_data: `reputation_filter_star_3_${targetUser.userId || targetUser.id}`
           }
         ],
         [
           {
-            text: '📋 Ver Mais',
-            callback_data: `reputation_more_${targetUser.userId || targetUser.id}_10`
+            text: '2⭐',
+            callback_data: `reputation_filter_star_2_${targetUser.userId || targetUser.id}`
           },
           {
-            text: '🔄 Atualizar',
+            text: '1⭐',
+            callback_data: `reputation_filter_star_1_${targetUser.userId || targetUser.id}`
+          },
+          {
+            text: '🔄️ Atualizar',
             callback_data: `reputation_refresh_${targetUser.userId || targetUser.id}`
+          }
+        ],
+        [
+          {
+            text: '❌',
+            callback_data: `reputation_close_${targetUser.userId || targetUser.id}`
+          },
+          {
+            text: '➡️',
+            callback_data: `reputation_more_${targetUser.userId || targetUser.id}_10`
           }
         ]
       ]
     };
     
-    await ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
-      reply_markup: keyboard
-    });
-    
-    this.logger.log(`✅ Tela principal renderizada com sucesso`);
+    try {
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
+      
+      this.logger.log(`✅ Tela principal renderizada com sucesso`);
+    } catch (error) {
+      if (error.description && error.description.includes('message is not modified')) {
+        this.logger.log(`ℹ️ Mensagem já está atualizada, ignorando erro`);
+        await ctx.answerCbQuery('✅ Dados atualizados');
+      } else {
+        this.logger.error('Erro ao renderizar tela principal:', error);
+        throw error;
+      }
+    }
   }
 
   private async refreshReputation(ctx: any, userId: string): Promise<void> {
     try {
-      await ctx.answerCbQuery(); // Responder ao callback primeiro
+      // Tentar responder ao callback, mas ignorar se expirado
+      try {
+        await ctx.answerCbQuery();
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no refresh, continuando processamento:', cbError.description);
+        } else {
+          throw cbError; // Re-lançar outros erros
+        }
+      }
       
       this.logger.log(`🔄 RefreshReputation chamado para userId: ${userId}`);
       
@@ -697,8 +946,12 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
       this.logger.error('Erro ao atualizar reputação no reputacao handler:', error);
       try {
         await ctx.answerCbQuery('❌ Erro ao atualizar reputação', { show_alert: true });
-      } catch (cbError) {
-        this.logger.error('Erro ao responder callback de erro:', cbError);
+      } catch (cbError: any) {
+        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+          this.logger.warn('Callback query expirado no tratamento de erro do refresh:', cbError.description);
+        } else {
+          this.logger.error('Erro ao responder callback de erro:', cbError);
+        }
       }
     }
   }
