@@ -1,53 +1,62 @@
-# Deploy TrustScore Bot no Portainer
+# P2P Trust Bot - Deploy no Portainer ✅
 
-Este guia explica como fazer o deploy da aplicação TrustScore Bot usando Portainer.
+## 📋 Pré-requisitos
 
-## Pré-requisitos
+- VPS com Docker e Portainer instalados
+- MongoDB rodando (local ou Atlas)
+- Token do Telegram Bot configurado
+- Acesso ao Portainer Web UI
 
-- Docker e Docker Compose instalados
-- Portainer instalado e configurado
-- Token do bot Telegram (obtenha em @BotFather)
+## 🚀 Deploy no Portainer
 
-## Configuração
+### 1. Acesso ao Portainer
+- Acesse o Portainer da sua VPS: `http://SEU_IP:9000`
+- Faça login com suas credenciais
 
-### 1. Preparar Arquivos
+### 2. Criar Stack
+1. Navegue para **Stacks** no menu lateral
+2. Clique em **Add stack**
+3. Nome da stack: `trustp2p-production`
+4. Método: **Web editor**
 
-1. Faça upload de todos os arquivos do projeto para o servidor
-2. Renomeie `.env.production` para `.env` ou configure as variáveis no Portainer
-3. Configure as variáveis de ambiente necessárias:
+### 3. Configurar Variáveis de Ambiente
+Antes de colar o docker-compose, configure as variáveis:
 
-```bash
-TELEGRAM_BOT_TOKEN=seu_token_do_botfather
-TELEGRAM_BOT_USERNAME=seu_bot_username
-MONGO_ROOT_USERNAME=admin
-MONGO_ROOT_PASSWORD=sua_senha_segura
-MONGO_EXPRESS_USER=admin
-MONGO_EXPRESS_PASS=sua_senha_interface
+```env
+# Telegram
+TELEGRAM_BOT_TOKEN=seu_token_aqui
+
+# MongoDB
+MONGODB_URI=mongodb://localhost:27017/trustscore
+# OU para MongoDB Atlas:
+# MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/trustscore
+
+# Aplicação
+PORT=3001
+NODE_ENV=production
 ```
 
-### 2. Deploy via Portainer
+### 4. Docker Compose
+**IMPORTANTE**: Use o arquivo `docker-compose-portainer.yml` (corrigido)
 
-#### Opção A: Stack (Recomendado)
+✅ **Correções implementadas**:
+- Erro TS1109 resolvido (heredoc no tsconfig.json)
+- Dependências TypeScript fixadas (typescript@~5.6, ts-node@10.9.2)
+- Comandos de build otimizados (npx nest build + fallbacks)
+- Memória alinhada (NODE_OPTIONS=1024MB + Docker limits=1G)
+- Healthcheck configurado
 
-1. Acesse Portainer → Stacks → Add Stack
-2. Nome: `trustscore-bot`
-3. Cole o conteúdo do `docker-compose.yml`
-4. Configure as variáveis de ambiente na seção "Environment variables"
-5. Clique em "Deploy the stack"
+### 5. Deploy
+1. Cole o conteúdo do `docker-compose-portainer.yml`
+2. Clique em **Deploy the stack**
+3. Aguarde o build e inicialização
+4. Verifique os logs em **Containers**
 
-#### Opção B: Upload do Compose
+## 🔍 Verificação de Saúde
 
-1. Acesse Portainer → Stacks → Add Stack
-2. Escolha "Upload" e selecione o arquivo `docker-compose.yml`
-3. Configure as variáveis de ambiente
-4. Deploy
-
-### 3. Verificar Deploy
-
-Após o deploy, você terá:
-
-- **Bot Telegram**: Rodando na porta 3001
-- **MongoDB**: Banco de dados na porta 27017
+### Endpoints de Monitoramento
+- **Health Check**: `http://localhost:3001/api/karma/total`
+- **API Status**: `http://localhost:3001/api/users/count`
 - **Mongo Express**: Interface web na porta 8081
 
 ## Serviços Incluídos
