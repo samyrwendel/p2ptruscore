@@ -11,6 +11,7 @@ import { KarmaApiModule } from './api/karma/karma-api.module';
 import { UsersApiModule } from './api/users/users-api.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { ConfigModule as CustomConfigModule } from './config/config.module';
 
 @Module({
   imports: [
@@ -45,6 +46,9 @@ import { APP_GUARD } from '@nestjs/core';
     // API modules for external access
     KarmaApiModule,
     UsersApiModule,
+    
+    // Config management module
+    CustomConfigModule,
   ],
   controllers: [],
   providers: [
