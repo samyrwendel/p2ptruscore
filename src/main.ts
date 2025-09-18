@@ -4,32 +4,31 @@ import { ValidationPipe } from '@nestjs/common'
 import { config } from 'dotenv'
 import * as path from 'path'
 
-// Carregar arquivo .env padrão
+// Carrega .env padrão
 config() // Carrega .env padrão
 
-// Proteção global: não derrubar app em caso de TelegramError 409 durante polling
 process.on('unhandledRejection', (reason: any) => {
-  const code = (reason as any)?.response?.error_code
-  const description = (reason as any)?.response?.description || (reason as any)?.description
-  if (code === 409 || (typeof description === 'string' && description.includes('getUpdates'))) {
-    // eslint-disable-next-line no-console
-    console.warn('⚠️ Ignorando TelegramError 409 (getUpdates em outra instância). API seguirá ativa em modo degradado.')
-    return
-  }
-  // eslint-disable-next-line no-console
   console.error('Unhandled Rejection:', reason)
+  if (reason && reason.stack) {
+    console.error('Stack trace:', reason.stack)
+  }
+  if (reason && reason.response) {
+    console.error('Response data:', reason.response.data)
+    console.error('Response status:', reason.response.status)
+    console.error('Response headers:', reason.response.headers)
+  }
 })
 
 process.on('uncaughtException', (err: any) => {
-  const code = (err as any)?.response?.error_code
-  const description = (err as any)?.response?.description || (err as any)?.description
-  if (code === 409 || (typeof description === 'string' && description.includes('getUpdates'))) {
-    // eslint-disable-next-line no-console
-    console.warn('⚠️ Ignorando TelegramError 409 (getUpdates em outra instância) em uncaughtException. Mantendo API ativa.')
-    return
-  }
-  // eslint-disable-next-line no-console
   console.error('Uncaught Exception:', err)
+  if (err && err.stack) {
+    console.error('Stack trace:', err.stack)
+  }
+  if (err && err.response) {
+    console.error('Response data:', err.response.data)
+    console.error('Response status:', err.response.status)
+    console.error('Response headers:', err.response.headers)
+  }
 })
 
 async function bootstrap() {
@@ -37,7 +36,7 @@ async function bootstrap() {
 
   app.enableCors()
 
-  app.setGlobalPrefix('api')
+  // app.setGlobalPrefix('api') // Removido para acesso direto
   app.useGlobalPipes(new ValidationPipe())
 
   await app.listen(process.env.PORT ?? 3000)

@@ -68,6 +68,9 @@ export class ConfigManagementService {
       '# Username do bot (sem @)',
       `TELEGRAM_BOT_USERNAME=${this.escapeValue(config.TELEGRAM_BOT_USERNAME || '')}`,
       '',
+      '# IDs dos grupos Telegram (um por linha, separados por vírgula)',
+      `TELEGRAM_GROUPS=${this.escapeValue(config.TELEGRAM_GROUPS || '')}`,
+      '',
       '# MongoDB Connection String',
       `MONGODB_CNN=${this.escapeValue(config.MONGODB_CNN || '')}`,
       '',
@@ -100,6 +103,7 @@ export class ConfigManagementService {
     return {
       TELEGRAM_BOT_TOKEN: '',
       TELEGRAM_BOT_USERNAME: '',
+      TELEGRAM_GROUPS: '',
       MONGODB_CNN: 'mongodb://localhost:27017/trustscore',
       PORT: '3001',
       NODE_ENV: 'production'
