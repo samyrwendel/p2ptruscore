@@ -506,7 +506,7 @@ export class OperationsBroadcastService {
         `Operation acceptance ${operation._id} notified to group ${group.groupId}`
       );
 
-      // Enviar mensagem privada ao negociador com botão de avaliação
+      // Enviar mensagem privada ao negociador com botões de ação
       await this.sendPrivateEvaluationMessage(operation, acceptor, creator);
     } catch (error) {
       this.logger.error(
@@ -654,6 +654,11 @@ export class OperationsBroadcastService {
       this.logger.log(
         `Operation completion ${operation._id} notified to group ${group.groupId}`
       );
+      
+      // Enviar mensagens de avaliação bidirecional
+      if (creator && acceptor) {
+        await this.sendBidirectionalEvaluationMessages(operation, creator, acceptor);
+      }
     } catch (error) {
       this.logger.error(
         `Failed to notify operation completion ${operation._id}:`,
@@ -671,6 +676,9 @@ export class OperationsBroadcastService {
         this.logger.warn('Operation has no associated group for revert notification');
         return;
       }
+      
+      // Remover avaliações pendentes e mensagens privadas quando operação é revertida
+      await this.removePendingEvaluationMessages(operation);
       
       // Tentar encontrar o grupo
       let group;
@@ -857,15 +865,15 @@ export class OperationsBroadcastService {
       const creatorName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
       
       const message = (
-        `🎯 **Operação Aceita - Avaliação Necessária**\n\n` +
-        `Você aceitou uma operação P2P e precisa avaliar a experiência.\n\n` +
+        `🎯 **Operação Aceita - Ação Necessária**\n\n` +
+        `Você aceitou uma operação P2P e precisa decidir o próximo passo.\n\n` +
         `**Detalhes da Operação:**\n` +
         `${typeEmoji} **${typeText} ${assetsText}**\n` +
         `🌐 **Redes:** ${networksText}\n` +
         `💰 **Quantidade:** ${operation.amount} ${assetsText}\n` +
         `💵 **Preço:** ${operation.quotationType === 'google' ? 'Calculado na Transação' : `R$ ${operation.price.toFixed(2)}`}\n` +
         `👤 **Criador:** ${creatorName}\n\n` +
-        `⚠️ **Importante:** Você não poderá criar ou aceitar novas operações até avaliar esta transação.\n\n` +
+        `⚠️ **Importante:** Você não poderá criar ou aceitar novas operações até concluir ou desistir desta transação.\n\n` +
         `🆔 **ID da Operação:** ${operation._id}`
       );
 
@@ -873,8 +881,12 @@ export class OperationsBroadcastService {
         inline_keyboard: [
           [
             {
-              text: '⭐ Avaliar Transação',
-              callback_data: `evaluate_operation_${operation._id}`
+              text: '❌ Desistir',
+              callback_data: `revert_operation_${operation._id}`
+            },
+            {
+              text: '✅ Concluir',
+              callback_data: `complete_operation_${operation._id}`
             }
           ]
         ]
@@ -889,17 +901,185 @@ export class OperationsBroadcastService {
         }
       );
 
-      // Criar avaliação pendente no banco de dados
-       await this.pendingEvaluationRepository.createPendingEvaluation(
-         operation._id,
-         new Types.ObjectId(acceptor._id),
-         new Types.ObjectId(creator._id)
-       );
-
        this.logger.log(`Private evaluation message sent to acceptor ${acceptor.userId} for operation ${operation._id}`);
+       // Nota: Avaliações pendentes serão criadas apenas quando a operação for concluída
      } catch (error) {
        this.logger.error(`Failed to send private evaluation message for operation ${operation._id}:`, error);
      }
+  }
+
+  private async sendBidirectionalEvaluationMessages(
+    operation: Operation,
+    creator: any,
+    acceptor: any
+  ): Promise<void> {
+    try {
+      const typeEmoji = operation.type === 'buy' ? '🟢' : '🔴';
+      const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+      const assetsText = operation.assets.join(', ');
+      
+      // Mensagem para o criador avaliar o aceitador
+       const acceptorName = acceptor.userName ? `@${acceptor.userName}` : acceptor.firstName;
+       
+       // Buscar reputação do aceitador para o cabeçalho
+         let acceptorReputationInfo = '';
+         try {
+           if (operation.group) {
+             const groupId = typeof operation.group === 'string' ? parseInt(operation.group) : Number(operation.group);
+             if (!isNaN(groupId)) {
+               const acceptorKarma = await this.getKarmaForUserWithFallback(acceptor, groupId);
+               if (acceptorKarma && acceptorKarma.karma !== undefined) {
+                 const reputation = getReputationInfo(acceptorKarma.karma);
+                 acceptorReputationInfo = `\n📊 **Reputação Atual:** ${reputation.icone} ${reputation.nivel} (${acceptorKarma.karma} pts)\n`;
+               }
+             }
+           }
+         } catch (error) {
+           this.logger.warn('Erro ao buscar reputação do aceitador:', error);
+         }
+       
+       const creatorMessage = (
+         `⭐ **Avaliação Obrigatória**\n\n` +
+         `👤 **Avaliando:** ${acceptorName}${acceptorReputationInfo}\n` +
+         `Você concluiu uma operação com sucesso!\n` +
+         `Para finalizar, é obrigatório avaliar seu parceiro de negociação.\n\n` +
+         `**Como foi a experiência?**\n` +
+         `Escolha quantas estrelas você daria:`
+       );
+      
+      // Mensagem para o aceitador avaliar o criador
+       const creatorName = creator.userName ? `@${creator.userName}` : creator.firstName;
+       
+       // Buscar reputação do criador para o cabeçalho
+         let creatorReputationInfo = '';
+         try {
+           if (operation.group) {
+             const groupId = typeof operation.group === 'string' ? parseInt(operation.group) : Number(operation.group);
+             if (!isNaN(groupId)) {
+               const creatorKarma = await this.getKarmaForUserWithFallback(creator, groupId);
+               if (creatorKarma && creatorKarma.karma !== undefined) {
+                 const reputation = getReputationInfo(creatorKarma.karma);
+                 creatorReputationInfo = `\n📊 **Reputação Atual:** ${reputation.icone} ${reputation.nivel} (${creatorKarma.karma} pts)\n`;
+               }
+             }
+           }
+         } catch (error) {
+           this.logger.warn('Erro ao buscar reputação do criador:', error);
+         }
+       
+       const acceptorMessage = (
+         `⭐ **Avaliação Obrigatória**\n\n` +
+         `👤 **Avaliando:** ${creatorName}${creatorReputationInfo}\n` +
+         `A operação foi concluída com sucesso!\n` +
+         `Para finalizar, é obrigatório avaliar seu parceiro de negociação.\n\n` +
+         `**Como foi a experiência?**\n` +
+         `Escolha quantas estrelas você daria:`
+       );
+      
+      const evaluationKeyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: '⭐',
+              callback_data: `eval_star_1_${operation._id}`
+            },
+            {
+              text: '⭐⭐',
+              callback_data: `eval_star_2_${operation._id}`
+            },
+            {
+              text: '⭐⭐⭐',
+              callback_data: `eval_star_3_${operation._id}`
+            }
+          ],
+          [
+            {
+              text: '⭐⭐⭐⭐',
+              callback_data: `eval_star_4_${operation._id}`
+            },
+            {
+              text: '⭐⭐⭐⭐⭐',
+              callback_data: `eval_star_5_${operation._id}`
+            }
+          ]
+        ]
+      };
+      
+      // Enviar para o criador
+      await this.bot.telegram.sendMessage(
+        creator.userId,
+        creatorMessage,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: evaluationKeyboard
+        }
+      );
+      
+      // Enviar para o aceitador
+      await this.bot.telegram.sendMessage(
+        acceptor.userId,
+        acceptorMessage,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: evaluationKeyboard
+        }
+      );
+      
+      // Criar avaliações pendentes bidirecionais no banco de dados
+      try {
+        // Criador avalia aceitador
+        await this.pendingEvaluationRepository.createPendingEvaluation(
+          operation._id,
+          new Types.ObjectId(creator._id),
+          new Types.ObjectId(acceptor._id)
+        );
+        
+        // Aceitador avalia criador
+        await this.pendingEvaluationRepository.createPendingEvaluation(
+          operation._id,
+          new Types.ObjectId(acceptor._id),
+          new Types.ObjectId(creator._id)
+        );
+        
+        this.logger.log(`Bidirectional pending evaluations created for operation ${operation._id}`);
+      } catch (error) {
+        this.logger.error(`Failed to create pending evaluations for operation ${operation._id}:`, error);
+      }
+      
+      this.logger.log(`Bidirectional evaluation messages sent for operation ${operation._id}`);
+    } catch (error) {
+      this.logger.error(`Failed to send bidirectional evaluation messages for operation ${operation._id}:`, error);
+    }
+  }
+
+  private async removePendingEvaluationMessages(operation: Operation): Promise<void> {
+    try {
+      // Remover avaliações pendentes do banco de dados
+      await this.pendingEvaluationRepository.deletePendingEvaluationsByOperation(operation._id);
+      
+      // Tentar remover mensagens privadas de avaliação se existirem
+      if (operation.acceptor) {
+        const acceptor = await this.usersService.findById(operation.acceptor.toString());
+        if (acceptor) {
+          try {
+            // Enviar mensagem informando que a operação foi revertida
+            await this.bot.telegram.sendMessage(
+              acceptor.userId,
+              `🔄 **Operação Revertida**\n\n` +
+              `A operação que você aceitou foi revertida e não precisa mais ser avaliada.\n\n` +
+              `🆔 **ID:** \`${operation._id}\``,
+              { parse_mode: 'Markdown' }
+            );
+          } catch (error) {
+            this.logger.warn(`Could not notify acceptor about operation revert: ${error.message}`);
+          }
+        }
+      }
+      
+      this.logger.log(`Pending evaluation messages removed for operation ${operation._id}`);
+    } catch (error) {
+      this.logger.error(`Failed to remove pending evaluation messages for operation ${operation._id}:`, error);
+    }
   }
 
   private getTimeUntilExpiration(expiresAt: Date): string {

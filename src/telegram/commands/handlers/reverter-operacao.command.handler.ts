@@ -93,6 +93,8 @@ export class ReverterOperacaoCommandHandler implements ITextCommandHandler {
         errorMessage = '▼ Você só pode reverter operações que criou ou aceitou.';
       } else if (error.message.includes('Apenas operações aceitas')) {
         errorMessage = '▼ Apenas operações aceitas podem ser revertidas.';
+      } else if (error.message.includes('concluídas não podem ser revertidas')) {
+        errorMessage = '▼ Operações concluídas não podem ser revertidas. A transação já foi finalizada.';
       }
       
       await ctx.reply(errorMessage);
@@ -164,6 +166,8 @@ export class ReverterOperacaoCommandHandler implements ITextCommandHandler {
              errorMessage = '❌ Você só pode reverter operações que criou ou aceitou.';
            } else if (error.message.includes('Apenas operações aceitas')) {
              errorMessage = '❌ Apenas operações aceitas podem ser revertidas.';
+           } else if (error.message.includes('concluídas não podem ser revertidas')) {
+             errorMessage = '❌ Operações concluídas não podem ser revertidas. A transação já foi finalizada.';
            } else {
              errorMessage = `❌ ${error.message}`;
            }

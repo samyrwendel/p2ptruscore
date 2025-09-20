@@ -3,6 +3,9 @@ import { AppModule } from './app.module'
 import { ValidationPipe } from '@nestjs/common'
 import { config } from 'dotenv'
 import * as path from 'path'
+import { NestExpressApplication } from '@nestjs/platform-express'
+import { join } from 'path'
+import * as hbs from 'hbs'
 
 // Carregar arquivo .env padrão
 config() // Carrega .env padrão
@@ -33,11 +36,18 @@ process.on('uncaughtException', (err: any) => {
 })
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule)
+  const app = await NestFactory.create<NestExpressApplication>(AppModule)
+
+  // Configurar Handlebars como engine de template
+  app.setBaseViewsDir(join(__dirname, '..', 'views'))
+  app.setViewEngine('hbs')
+  
+  // Registrar helpers do Handlebars se necessário
+  hbs.registerPartials(join(__dirname, '..', 'views', 'partials'))
 
   app.enableCors()
 
-  app.setGlobalPrefix('api')
+  // app.setGlobalPrefix('api') // Removido para acesso direto
   app.useGlobalPipes(new ValidationPipe())
 
   await app.listen(process.env.PORT ?? 3000)

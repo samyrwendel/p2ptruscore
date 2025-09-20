@@ -200,6 +200,11 @@ export class OperationsService {
       throw new Error('Você só pode reverter operações que criou ou aceitou');
     }
 
+    // Bloquear reversão de operações concluídas
+    if (operation.status === OperationStatus.COMPLETED) {
+      throw new Error('Operações concluídas não podem ser revertidas');
+    }
+    
     // Permitir reversão apenas de operações aceitas
     if (operation.status !== OperationStatus.ACCEPTED) {
       throw new Error('Apenas operações aceitas podem ser revertidas');
@@ -243,8 +248,12 @@ export class OperationsService {
       );
     }
 
+    if (operation.status === OperationStatus.COMPLETED) {
+      throw new Error('Esta operação já foi concluída anteriormente');
+    }
+    
     if (operation.status !== OperationStatus.ACCEPTED) {
-      throw new Error('Esta operação não pode ser concluída');
+      throw new Error('Esta operação não pode ser concluída. Status atual: ' + operation.status);
     }
 
     const updatedOperation = await this.operationsRepository.completeOperation(

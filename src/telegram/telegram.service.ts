@@ -36,7 +36,9 @@ import { ApagarOperacoesPendentesCommandHandler } from './commands/handlers/apag
 import { FecharOperacaoCommandHandler } from './commands/handlers/fechar-operacao.command.handler';
 import { StartCommandHandler } from './commands/handlers/start.command.handler';
 import { CotacoesCommandHandler } from './commands/handlers/cotacoes.command.handler';
+import { TermosCommandHandler } from './commands/handlers/termos.command.handler';
 import { KarmaMessageHandler } from './handlers/karma-message.handler';
+import { NewMemberHandler } from './handlers/new-member.handler';
 import { isTextCommandHandler, TextCommandContext } from './telegram.types';
 
 @Injectable()
@@ -78,6 +80,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     private readonly fecharOperacaoHandler: FecharOperacaoCommandHandler,
     private readonly startHandler: StartCommandHandler,
     private readonly cotacoesHandler: CotacoesCommandHandler,
+    private readonly termosHandler: TermosCommandHandler,
+    private readonly newMemberHandler: NewMemberHandler,
   ) {
     // Registrar todos os command handlers
     this.registerCommand(meHandler);
@@ -106,6 +110,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     this.registerCommand(fecharOperacaoHandler);
     this.registerCommand(startHandler);
     this.registerCommand(cotacoesHandler);
+    this.registerCommand(termosHandler);
   }
 
   async onModuleInit() {
@@ -115,23 +120,28 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
   private registerListeners() {
     this.bot.on(message('text'), async (ctx) => {
-      if (ctx.message.text.startsWith('/')) {
-        await this.handleCommand(ctx);
-        return;
+      try {
+        await this.handleTextInput(ctx);
+      } catch (error) {
+        this.logger.error('Error handling text input:', error);
       }
-
-      if (this.karmaMessageHandler.isApplicable(ctx.message.text)) {
-        await this.karmaMessageHandler.handle(ctx);
-        return;
-      }
-
-      // Verificar se há sessões ativas que precisam processar entrada de texto
-      await this.handleTextInput(ctx);
     });
 
-    // Registrar listener para callback queries (botões inline)
     this.bot.on('callback_query', async (ctx) => {
-      await this.handleCallbackQuery(ctx);
+      try {
+        await this.handleCallbackQuery(ctx);
+      } catch (error) {
+        this.logger.error('Error handling callback query:', error);
+      }
+    });
+
+    // Listener para novos membros
+    this.bot.on('new_chat_members', async (ctx) => {
+      try {
+        await this.newMemberHandler.handleNewChatMembers(ctx);
+      } catch (error) {
+        this.logger.error('Error handling new chat members:', error);
+      }
     });
   }
 
@@ -172,31 +182,37 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
   private async handleCallbackQuery(ctx: any) {
     try {
-      const callbackData = ctx.callbackQuery?.data;
-      if (!callbackData) {
-        await ctx.answerCbQuery('❌ Dados do callback não encontrados');
-        return;
-      }
+      // Tentar processar com cada handler que suporta callbacks
+      const handlers = [
+        this.avaliarHandler,
+        this.criarOperacaoHandler,
+        this.aceitarOperacaoHandler,
+        this.minhasOperacoesHandler,
+        this.cancelarOperacaoHandler,
+        this.cancelarOrdemHandler,
+        this.reverterOperacaoHandler,
+        this.concluirOperacaoHandler,
+        this.operacoesDisponiveisHandler,
+        this.apagarOperacoesPendentesHandler,
+        this.fecharOperacaoHandler,
+        this.startHandler,
+        this.termosHandler,
+        this.newMemberHandler,
+      ];
 
-      // Procurar handler que pode processar este callback
-      for (const handler of this.commandHandlers.values()) {
-        if (handler && typeof handler.handleCallback === 'function') {
+      for (const handler of handlers) {
+        if ('handleCallback' in handler && typeof handler.handleCallback === 'function') {
           const handled = await handler.handleCallback(ctx);
-          
           if (handled) {
-            this.logger.log(`📞 Callback ${callbackData} processado por: ${handler.constructor.name}`);
-            await ctx.answerCbQuery();
+            this.logger.log(`📞 Callback ${ctx.callbackQuery?.data} processado por: ${handler.constructor.name}`);
             return;
           }
         }
       }
 
-      // Se nenhum handler processou o callback
-      this.logger.warn(`⚠️ Callback não processado: ${callbackData}`);
-      await ctx.answerCbQuery('❌ Ação não reconhecida');
+      this.logger.warn(`⚠️ Callback não processado: ${ctx.callbackQuery?.data}`);
     } catch (error) {
-      this.logger.error('❌ Erro ao processar callback query:', error);
-      await ctx.answerCbQuery('❌ Erro interno do servidor');
+      this.logger.error('Erro ao processar callback query:', error);
     }
   }
 

@@ -133,13 +133,9 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
         // Aguardar um momento para o usuário ler
         setTimeout(async () => {
           try {
-            // Criar avaliação pendente para o aceitador
+            // As avaliações pendentes bidirecionais são criadas automaticamente
+            // pelo operations-broadcast.service.ts quando as mensagens são enviadas
             if (completedOperation.acceptor) {
-              await this.pendingEvaluationService.createPendingEvaluation(
-                new Types.ObjectId(operationId), // ID da operação
-                userId, // Quem vai avaliar (criador)
-                completedOperation.acceptor // Quem será avaliado (aceitador)
-              );
 
               // Mostrar interface de avaliação obrigatória
               const evaluationMessage = 
@@ -221,6 +217,8 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
         if (error instanceof Error) {
           if (error.message.includes('só pode ser concluída')) {
             errorMessage = '⚠️ Esta operação ainda não foi aceita por outro usuário. Aguarde alguém aceitar a operação antes de tentar concluí-la.';
+          } else if (error.message.includes('já foi concluída anteriormente')) {
+            errorMessage = '✅ Esta operação já foi concluída anteriormente. Não é possível concluir novamente.';
           } else if (error.message.includes('não pode ser concluída')) {
             errorMessage = '⚠️ Esta operação não pode ser concluída no momento. Verifique se ela foi aceita por outro usuário.';
           } else {

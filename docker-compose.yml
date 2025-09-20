@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # Aplicação TrustScore Bot
+  trustscore-bot:
+    build: .
+    container_name: trustscore-bot
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_CNN=mongodb://admin:password123@mongodb:27017/trustscore_bot?authSource=admin
+    depends_on:
+      - mongodb
+    volumes:
+      - ./logs:/usr/src/app/logs
+      - ./.env:/usr/src/app/.env:rw
+    restart: unless-stopped
+    networks:
+      - trustscore-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/config/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:7-jammy
+    container_name: trustscore-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: trustscore_bot
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    networks:
+      - trustscore-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MongoDB Express (Interface Web para MongoDB)
+  mongo-express:
+    image: mongo-express:1.0-alpine
+    container_name: trustscore-mongo-express
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: password123
+      ME_CONFIG_MONGODB_URL: mongodb://admin:password123@mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin123
+      ME_CONFIG_MONGODB_SERVER: mongodb
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+    networks:
+      - trustscore-network
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  trustscore-network:
+    driver: bridge
