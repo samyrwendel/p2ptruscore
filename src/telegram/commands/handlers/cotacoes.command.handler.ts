@@ -18,43 +18,9 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
     this.logger.log(`📊 Comando /cotacoes executado por ${ctx.from.id}`);
     
     try {
-      // Mostrar indicador de "digitando"
-      await ctx.sendChatAction('typing');
-      
-      // Buscar cotações atuais
-      const cotacoesMessage = await this.currencyApiService.getAllRatesFormatted();
-      
-      // Criar botões para sugestões de preço
-      const inlineKeyboard = {
-        inline_keyboard: [
-          [
-            {
-              text: '💰 Usar Cotação USD',
-              callback_data: 'use_usd_rate'
-            },
-            {
-              text: '₿ Usar Cotação BTC',
-              callback_data: 'use_btc_rate'
-            }
-          ],
-          [
-            {
-              text: '🔄 Atualizar Cotações',
-              callback_data: 'refresh_rates'
-            }
-          ]
-        ]
-      };
-      
-      await ctx.reply(cotacoesMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: inlineKeyboard
-      });
-      
-      this.logger.log(`✅ Cotações enviadas para usuário ${ctx.from.id}`);
-      
+      await this.showQuotesMenu(ctx);
     } catch (error) {
-      this.logger.error('Erro ao buscar cotações:', error);
+      this.logger.error('Erro ao mostrar menu de cotações:', error);
       
       await ctx.reply(
         '❌ **Erro ao buscar cotações**\n\n' +
@@ -65,127 +31,332 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
     }
   }
 
+  private async showQuotesMenu(ctx: TextCommandContext): Promise<void> {
+    await ctx.sendChatAction('typing');
+    
+    const message = (
+      '💱 **Central de Cotações TrustScore**\n\n' +
+      '📊 Escolha uma opção para ver as cotações atuais:\n\n' +
+      '💰 **Principais Stablecoins**\n' +
+      '• USD, USDT, USDC, DAI\n\n' +
+      '₿ **Criptomoedas Principais**\n' +
+      '• Bitcoin, Ethereum, Solana\n\n' +
+      '🌍 **Moedas Tradicionais**\n' +
+      '• Euro, Real\n\n' +
+      '⚡ **Rápido:** Veja todas as cotações de uma vez'
+    );
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '📊 Todas as Cotações',
+            callback_data: 'quotes_all'
+          }
+        ],
+        [
+          {
+            text: '💰 USD/Stablecoins',
+            callback_data: 'quotes_stablecoins'
+          },
+          {
+            text: '₿ Bitcoin',
+            callback_data: 'quotes_btc'
+          }
+        ],
+        [
+          {
+            text: '🔷 Ethereum',
+            callback_data: 'quotes_eth'
+          },
+          {
+            text: '🟣 Solana',
+            callback_data: 'quotes_sol'
+          }
+        ],
+        [
+          {
+            text: '🌍 Euro',
+            callback_data: 'quotes_eur'
+          },
+          {
+            text: '🔄 Atualizar',
+            callback_data: 'quotes_refresh'
+          }
+        ],
+        [
+          {
+            text: '🔙 Voltar ao Menu',
+            callback_data: 'quotes_back'
+          }
+        ]
+      ]
+    };
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+  }
+
   // Método para lidar com callbacks relacionados a cotações
   async handleCallback(ctx: any): Promise<boolean> {
     const data = ctx.callbackQuery.data;
     
     // Verificar se este callback pertence a este handler
-    if (!['refresh_rates', 'use_usd_rate', 'use_btc_rate'].includes(data)) {
+    if (!data.startsWith('quotes_')) {
       return false;
     }
     
     try {
-      if (data === 'refresh_rates') {
-        try {
-        await ctx.answerCbQuery('🔄 Atualizando cotações...');
-      } catch (cbError: any) {
-        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
-          this.logger.warn('Callback query expirado ao atualizar cotações:', cbError.description);
-        } else {
-          throw cbError;
-        }
-      }
-        
-        const cotacoesMessage = await this.currencyApiService.getAllRatesFormatted();
-        
-        const inlineKeyboard = {
-          inline_keyboard: [
-            [
-              {
-                text: '💰 Usar Cotação USD',
-                callback_data: 'use_usd_rate'
-              },
-              {
-                text: '₿ Usar Cotação BTC',
-                callback_data: 'use_btc_rate'
-              }
-            ],
-            [
-              {
-                text: '🔄 Atualizar Cotações',
-                callback_data: 'refresh_rates'
-              }
-            ]
-          ]
-        };
-        
-        await ctx.editMessageText(cotacoesMessage, {
-          parse_mode: 'Markdown',
-          reply_markup: inlineKeyboard
-        });
-        
-      } else if (data === 'use_usd_rate') {
-        const rates = await this.currencyApiService.getCurrentRates();
-        const usdRate = rates.USDBRL?.bid;
-        
-        if (usdRate) {
-          try {
-            await ctx.answerCbQuery(
-              `💰 Cotação USD: R$ ${parseFloat(usdRate).toFixed(2)}\n\nUse este valor ao criar sua operação!`,
-              { show_alert: true }
-            );
-          } catch (cbError: any) {
-            if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
-              this.logger.warn('Callback query expirado ao mostrar cotação USD:', cbError.description);
-            } else {
-              throw cbError;
-            }
-          }
-        } else {
-          try {
-            await ctx.answerCbQuery('❌ Cotação USD não disponível', { show_alert: true });
-          } catch (cbError: any) {
-            if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
-              this.logger.warn('Callback query expirado ao mostrar erro USD:', cbError.description);
-            } else {
-              this.logger.error('Erro ao responder callback USD:', cbError);
-            }
-          }
-        }
-        
-      } else if (data === 'use_btc_rate') {
-        const rates = await this.currencyApiService.getCurrentRates();
-        const btcRate = rates.BTCBRL?.bid;
-        
-        if (btcRate) {
-          try {
-            await ctx.answerCbQuery(
-              `₿ Cotação BTC: R$ ${parseFloat(btcRate).toFixed(2)}\n\nUse este valor ao criar sua operação!`,
-              { show_alert: true }
-            );
-          } catch (cbError: any) {
-            if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
-              this.logger.warn('Callback query expirado ao mostrar cotação BTC:', cbError.description);
-            } else {
-              throw cbError;
-            }
-          }
-        } else {
-          try {
-            await ctx.answerCbQuery('❌ Cotação BTC não disponível', { show_alert: true });
-          } catch (cbError: any) {
-            if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
-              this.logger.warn('Callback query expirado ao mostrar erro BTC:', cbError.description);
-            } else {
-              this.logger.error('Erro ao responder callback BTC:', cbError);
-            }
-          }
-        }
+      await ctx.answerCbQuery('⏳ Processando...');
+
+      switch (data) {
+        case 'quotes_all':
+          await this.showAllQuotes(ctx);
+          break;
+        case 'quotes_stablecoins':
+          await this.showStablecoinQuotes(ctx);
+          break;
+        case 'quotes_btc':
+          await this.showBitcoinQuote(ctx);
+          break;
+        case 'quotes_eth':
+          await this.showEthereumQuote(ctx);
+          break;
+        case 'quotes_sol':
+          await this.showSolanaQuote(ctx);
+          break;
+        case 'quotes_eur':
+          await this.showEuroQuote(ctx);
+          break;
+        case 'quotes_refresh':
+          await this.showQuotesMenuRefresh(ctx);
+          break;
+        case 'quotes_back':
+          await this.handleBackToStart(ctx);
+          break;
+        default:
+          return false;
       }
       
-      return true; // Callback processado com sucesso
+      return true;
     } catch (error) {
       this.logger.error('Erro ao processar callback de cotações:', error);
       try {
         await ctx.answerCbQuery('❌ Erro ao processar solicitação', { show_alert: true });
       } catch (cbError: any) {
-        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
-          this.logger.warn('Callback query expirado no tratamento de erro geral:', cbError.description);
-        } else {
-          this.logger.error('Erro ao responder callback de erro geral:', cbError);
-        }
+        this.logger.warn('Erro ao responder callback de erro:', cbError.description || cbError.message);
       }
-      return false; // Erro no processamento
+      return false;
+    }
+  }
+
+  private async showAllQuotes(ctx: any): Promise<void> {
+    await ctx.sendChatAction('typing');
+    const cotacoesMessage = await this.currencyApiService.getAllRatesFormatted();
+    
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '🔙 Voltar ao Menu',
+            callback_data: 'quotes_refresh'
+          }
+        ]
+      ]
+    };
+
+    await ctx.editMessageText(cotacoesMessage, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+  }
+
+  private async showStablecoinQuotes(ctx: any): Promise<void> {
+    const rates = await this.currencyApiService.getCurrentRates();
+    
+    let message = '💰 **Cotações de Stablecoins**\n\n';
+    
+    if (rates.USDBRL) {
+      message += this.currencyApiService.formatCurrencyRate(rates.USDBRL) + '\n\n';
+      message += '💡 **Aplicável para:** USDT, USDC, DAI, BUSD\n\n';
+    }
+    
+    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+
+    await this.editWithBackButton(ctx, message);
+  }
+
+  private async showBitcoinQuote(ctx: any): Promise<void> {
+    const rates = await this.currencyApiService.getCurrentRates();
+    
+    let message = '₿ **Cotação do Bitcoin**\n\n';
+    
+    if (rates.BTCBRL) {
+      message += this.currencyApiService.formatCurrencyRate(rates.BTCBRL) + '\n\n';
+    }
+    
+    if (rates.BTCUSD) {
+      message += '🌍 **BTC/USD:**\n';
+      message += `💰 **Preço:** $${parseFloat(rates.BTCUSD.bid).toFixed(2)}\n`;
+      message += `📊 **Variação:** ${parseFloat(rates.BTCUSD.pctChange).toFixed(2)}%\n\n`;
+    }
+    
+    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+
+    await this.editWithBackButton(ctx, message);
+  }
+
+  private async showEthereumQuote(ctx: any): Promise<void> {
+    const rates = await this.currencyApiService.getCurrentRates();
+    
+    let message = '🔷 **Cotação do Ethereum**\n\n';
+    
+    if (rates.ETHBRL) {
+      message += this.currencyApiService.formatCurrencyRate(rates.ETHBRL) + '\n\n';
+    }
+    
+    if (rates.ETHUSD) {
+      message += '🌍 **ETH/USD:**\n';
+      message += `💰 **Preço:** $${parseFloat(rates.ETHUSD.bid).toFixed(2)}\n`;
+      message += `📊 **Variação:** ${parseFloat(rates.ETHUSD.pctChange).toFixed(2)}%\n\n`;
+    }
+    
+    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+
+    await this.editWithBackButton(ctx, message);
+  }
+
+  private async showSolanaQuote(ctx: any): Promise<void> {
+    const rates = await this.currencyApiService.getCurrentRates();
+    
+    let message = '🟣 **Cotação do Solana**\n\n';
+    
+    if (rates.SOLBRL) {
+      message += this.currencyApiService.formatCurrencyRate(rates.SOLBRL) + '\n\n';
+    }
+    
+    if (rates.SOLUSD) {
+      message += '🌍 **SOL/USD:**\n';
+      message += `💰 **Preço:** $${parseFloat(rates.SOLUSD.bid).toFixed(2)}\n`;
+      message += `📊 **Variação:** ${parseFloat(rates.SOLUSD.pctChange).toFixed(2)}%\n\n`;
+    }
+    
+    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+
+    await this.editWithBackButton(ctx, message);
+  }
+
+  private async showEuroQuote(ctx: any): Promise<void> {
+    const rates = await this.currencyApiService.getCurrentRates();
+    
+    let message = '🌍 **Cotação do Euro**\n\n';
+    
+    if (rates.EURBRL) {
+      message += this.currencyApiService.formatCurrencyRate(rates.EURBRL) + '\n\n';
+    }
+    
+    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+
+    await this.editWithBackButton(ctx, message);
+  }
+
+  private async showQuotesMenuRefresh(ctx: any): Promise<void> {
+    await ctx.sendChatAction('typing');
+    
+    const message = (
+      '💱 **Central de Cotações TrustScore** 🔄\n\n' +
+      '📊 Escolha uma opção para ver as cotações atuais:\n\n' +
+      '💰 **Principais Stablecoins**\n' +
+      '• USD, USDT, USDC, DAI\n\n' +
+      '₿ **Criptomoedas Principais**\n' +
+      '• Bitcoin, Ethereum, Solana\n\n' +
+      '🌍 **Moedas Tradicionais**\n' +
+      '• Euro, Real\n\n' +
+      '⚡ **Rápido:** Veja todas as cotações de uma vez'
+    );
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '📊 Todas as Cotações',
+            callback_data: 'quotes_all'
+          }
+        ],
+        [
+          {
+            text: '💰 USD/Stablecoins',
+            callback_data: 'quotes_stablecoins'
+          },
+          {
+            text: '₿ Bitcoin',
+            callback_data: 'quotes_btc'
+          }
+        ],
+        [
+          {
+            text: '🔷 Ethereum',
+            callback_data: 'quotes_eth'
+          },
+          {
+            text: '🟣 Solana',
+            callback_data: 'quotes_sol'
+          }
+        ],
+        [
+          {
+            text: '🌍 Euro',
+            callback_data: 'quotes_eur'
+          },
+          {
+            text: '🔄 Atualizar',
+            callback_data: 'quotes_refresh'
+          }
+        ],
+        [
+          {
+            text: '🔙 Voltar ao Menu',
+            callback_data: 'quotes_back'
+          }
+        ]
+      ]
+    };
+
+    await ctx.editMessageText(message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+  }
+
+  private async editWithBackButton(ctx: any, message: string): Promise<void> {
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '🔙 Voltar ao Menu',
+            callback_data: 'quotes_refresh'
+          }
+        ]
+      ]
+    };
+
+    await ctx.editMessageText(message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+  }
+
+  private async handleBackToStart(ctx: any): Promise<void> {
+    try {
+      await ctx.editMessageText(
+        '🔙 **Voltando ao Menu Principal**\n\n' +
+        'Use `/start` para ver o menu principal do bot.',
+        { parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      this.logger.error('Erro ao voltar ao menu:', error);
     }
   }
 }

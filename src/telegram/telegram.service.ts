@@ -389,12 +389,14 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     const data = ctx.callbackQuery?.data;
     if (!data) return false;
 
-    // Callbacks que NÃO precisam de validação (relacionados aos próprios termos)
+    // Callbacks que NÃO precisam de validação (relacionados aos próprios termos e funcionalidades básicas)
     const allowedCallbacks = [
       'accept_terms_',
       'reject_terms_',
       'resend_terms_',
-      'view_terms_detail_'
+      'view_terms_detail_',
+      'quotes_', // Cotações são informações públicas
+      'start_' // Callbacks do comando /start
     ];
 
     // Verificar se é um callback permitido
