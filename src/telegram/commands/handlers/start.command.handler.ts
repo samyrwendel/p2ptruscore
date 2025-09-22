@@ -315,8 +315,25 @@ export class StartCommandHandler implements ITextCommandHandler {
           
           // Verificar se já está no chat privado
           if (ctx.callbackQuery.message.chat.type === 'private') {
-            // Já está no privado, iniciar diretamente a criação
-            await this.startOperationCreation(ctx);
+            // Já está no privado, chamar diretamente o /criaroperacao
+            const fakeCtx = {
+              from: ctx.from,
+              message: { 
+                text: '/criaroperacao', 
+                chat: ctx.callbackQuery.message.chat,
+                message_id: ctx.callbackQuery.message.message_id,
+                date: Math.floor(Date.now() / 1000)
+              },
+              chat: ctx.callbackQuery.message.chat,
+              reply: async (text: string, extra?: any) => {
+                return await ctx.editMessageText(text, extra);
+              },
+              sendChatAction: async () => {},
+              editMessageText: ctx.editMessageText.bind(ctx)
+            } as TextCommandContext;
+            
+            // Chamar exatamente a mesma função que o comando /criaroperacao
+            await this.criarOperacaoHandler.handle(fakeCtx);
           } else {
             // Está em grupo, redirecionar para privado
             await ctx.editMessageText(
@@ -1192,39 +1209,4 @@ export class StartCommandHandler implements ITextCommandHandler {
     }
   }
 
-  private async startOperationCreation(ctx: any): Promise<void> {
-    try {
-      await ctx.editMessageText(
-        '🤝 **Criar Operação P2P**\n\n' +
-        '✅ Você está no chat privado correto!\n\n' +
-        '🎯 **Vamos criar sua operação:**\n' +
-        '1️⃣ Escolha o tipo (Vender/Comprar)\n' +
-        '2️⃣ Defina ativos e valor\n' +
-        '3️⃣ Configure preço e pagamento\n' +
-        '4️⃣ Publique no grupo\n\n' +
-        '**Clique no botão abaixo para começar:**',
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: '🚀 Começar Criação',
-                  callback_data: 'start_operation_flow'
-                }
-              ],
-              [
-                {
-                  text: '🔙 Voltar ao Menu',
-                  callback_data: 'back_to_start_menu'
-                }
-              ]
-            ]
-          }
-        }
-      );
-    } catch (error) {
-      this.logger.error('Erro ao iniciar criação de operação:', error);
-    }
-  }
 }
