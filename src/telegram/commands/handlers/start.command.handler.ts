@@ -422,10 +422,12 @@ export class StartCommandHandler implements ITextCommandHandler {
           await this.showStartMenu(ctx);
         } else if (data.startsWith('my_ops_next_')) {
           const page = parseInt(data.replace('my_ops_next_', '')) || 0;
+          this.logger.log(`🔄 Navegação: Próxima página ${page} -> ${page + 1}`);
           await ctx.answerCbQuery('➡️ Próxima página...');
           await this.showUserOperations(ctx, page + 1);
         } else if (data.startsWith('my_ops_prev_')) {
           const page = parseInt(data.replace('my_ops_prev_', '')) || 0;
+          this.logger.log(`🔄 Navegação: Página anterior ${page} -> ${Math.max(0, page - 1)}`);
           await ctx.answerCbQuery('⬅️ Página anterior...');
           await this.showUserOperations(ctx, Math.max(0, page - 1));
         } else if (data.startsWith('my_ops_page_info')) {
@@ -857,8 +859,10 @@ export class StartCommandHandler implements ITextCommandHandler {
     });
   }
 
-  private async showUserOperations(ctx: any): Promise<void> {
+  private async showUserOperations(ctx: any, page: number = 0): Promise<void> {
     try {
+      this.logger.log(`📋 Mostrando operações do usuário ${ctx.from.id}, página ${page}`);
+      
       // Buscar operações do usuário
       const user = await this.usersService.findOrCreate({
         id: ctx.from.id,
@@ -867,6 +871,7 @@ export class StartCommandHandler implements ITextCommandHandler {
       });
 
       const operations = await this.operationsService.getUserOperations(user._id);
+      this.logger.log(`📊 Encontradas ${operations.length} operações para o usuário`);
       
       if (operations.length === 0) {
         await ctx.editMessageText(
@@ -896,22 +901,29 @@ export class StartCommandHandler implements ITextCommandHandler {
         return;
       }
 
+      const itemsPerPage = 5;
+      const totalPages = Math.ceil(operations.length / itemsPerPage);
+      const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+      const startIndex = currentPage * itemsPerPage;
+      const endIndex = startIndex + itemsPerPage;
+      const pageOperations = operations.slice(startIndex, endIndex);
+
       let message = '📋 **Suas Operações Ativas**\n\n';
       
-      operations.slice(0, 5).forEach((op: any, index: number) => {
+      pageOperations.forEach((op: any, index: number) => {
         const statusEmoji = op.status === 'pending' ? '⏳' : 
                            op.status === 'accepted' ? '✅' : 
                            op.status === 'completed' ? '🎉' : 
                            op.status === 'cancelled' ? '❌' : '❓';
         
-        message += `${statusEmoji} **Operação ${index + 1}**\n`;
+        message += `${statusEmoji} **Operação ${startIndex + index + 1}**\n`;
         message += `**Tipo:** ${op.type === 'sell' ? 'Vender' : 'Comprar'}\n`;
         message += `**Valor:** R$ ${op.amount}\n`;
         message += `**Status:** ${op.status}\n\n`;
       });
 
-      if (operations.length > 5) {
-        message += `... e mais ${operations.length - 5} operações\n\n`;
+      if (operations.length > itemsPerPage) {
+        message += `... e mais ${operations.length - endIndex} operações\n\n`;
       }
 
       message += `**Total:** ${operations.length} operações`;
@@ -922,19 +934,22 @@ export class StartCommandHandler implements ITextCommandHandler {
       };
 
       // Se há mais de 5 operações, adicionar botões de navegação
-      if (operations.length > 5) {
+      if (totalPages > 1) {
+        const prevPage = Math.max(0, currentPage - 1);
+        const nextPage = Math.min(totalPages - 1, currentPage + 1);
+        
         keyboard.inline_keyboard.push([
           {
             text: '⬅️ Anterior',
-            callback_data: 'my_ops_prev_0'
+            callback_data: `my_ops_prev_${currentPage}`
           },
           {
-            text: `1 de ${Math.ceil(operations.length / 5)}`,
+            text: `${currentPage + 1} de ${totalPages}`,
             callback_data: 'my_ops_page_info'
           },
           {
             text: '➡️ Próxima',
-            callback_data: 'my_ops_next_0'
+            callback_data: `my_ops_next_${currentPage}`
           }
         ]);
       }
@@ -964,7 +979,7 @@ export class StartCommandHandler implements ITextCommandHandler {
     }
   }
 
-  private async showAvailableOperations(ctx: any): Promise<void> {
+  private async showAvailableOperations(ctx: any, page: number = 0): Promise<void> {
     try {
       // Buscar operações disponíveis
       const operations = await this.operationsService.getPendingOperations();
