@@ -35,15 +35,15 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
     await ctx.sendChatAction('typing');
     
     const message = (
-      '💱 **Central de Cotações TrustScore**\n\n' +
-      '📊 Escolha uma opção para ver as cotações atuais:\n\n' +
-      '💰 **Principais Stablecoins**\n' +
+      '**Central de Cotações TrustScore**\n\n' +
+      'Escolha uma opção para ver as cotações atuais:\n\n' +
+      '**Principais Stablecoins**\n' +
       '• USD, USDT, USDC, DAI\n\n' +
-      '₿ **Criptomoedas Principais**\n' +
+      '**Criptomoedas Principais**\n' +
       '• Bitcoin, Ethereum, Solana\n\n' +
-      '🌍 **Moedas Tradicionais**\n' +
+      '**Moedas Tradicionais**\n' +
       '• Euro, Real\n\n' +
-      '⚡ **Rápido:** Veja todas as cotações de uma vez'
+      '**Rápido:** Veja todas as cotações de uma vez'
     );
 
     const keyboard = {
@@ -152,6 +152,22 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
     }
   }
 
+  private formatCurrencyRateImproved(rate: any, pairName: string, symbol: string = 'R$'): string {
+    const price = parseFloat(rate.bid);
+    const change = parseFloat(rate.pctChange);
+    const changeIcon = change >= 0 ? '📈' : '📉';
+    const high = parseFloat(rate.high);
+    const low = parseFloat(rate.low);
+    
+    return (
+      `**${pairName}**\n` +
+      `**Preço:** ${symbol} ${price.toFixed(2)}\n` +
+      `**Variação:** ${changeIcon} ${change.toFixed(2)}%\n` +
+      `**Máxima:** ${symbol} ${high.toFixed(2)}\n` +
+      `**Mínima:** ${symbol} ${low.toFixed(2)}`
+    );
+  }
+
   private async showAllQuotes(ctx: any): Promise<void> {
     await ctx.sendChatAction('typing');
     const cotacoesMessage = await this.currencyApiService.getAllRatesFormatted();
@@ -176,14 +192,14 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
   private async showStablecoinQuotes(ctx: any): Promise<void> {
     const rates = await this.currencyApiService.getCurrentRates();
     
-    let message = '💰 **Cotações de Stablecoins**\n\n';
+    let message = '**Cotações de Stablecoins**\n\n';
     
     if (rates.USDBRL) {
-      message += this.currencyApiService.formatCurrencyRate(rates.USDBRL) + '\n\n';
-      message += '💡 **Aplicável para:** USDT, USDC, DAI, BUSD\n\n';
+      message += this.formatCurrencyRateImproved(rates.USDBRL, 'USD/BRL') + '\n\n';
+      message += '**Aplicável para:** USDT, USDC, DAI, BUSD\n\n';
     }
     
-    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+    message += `**Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
 
     await this.editWithBackButton(ctx, message);
   }
@@ -191,19 +207,17 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
   private async showBitcoinQuote(ctx: any): Promise<void> {
     const rates = await this.currencyApiService.getCurrentRates();
     
-    let message = '₿ **Cotação do Bitcoin**\n\n';
+    let message = '**Cotação do Bitcoin**\n\n';
     
     if (rates.BTCBRL) {
-      message += this.currencyApiService.formatCurrencyRate(rates.BTCBRL) + '\n\n';
+      message += this.formatCurrencyRateImproved(rates.BTCBRL, 'BTC/BRL') + '\n\n';
     }
     
     if (rates.BTCUSD) {
-      message += '🌍 **BTC/USD:**\n';
-      message += `💰 **Preço:** $${parseFloat(rates.BTCUSD.bid).toFixed(2)}\n`;
-      message += `📊 **Variação:** ${parseFloat(rates.BTCUSD.pctChange).toFixed(2)}%\n\n`;
+      message += this.formatCurrencyRateImproved(rates.BTCUSD, 'BTC/USD', '$') + '\n\n';
     }
     
-    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+    message += `**Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
 
     await this.editWithBackButton(ctx, message);
   }
@@ -211,19 +225,17 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
   private async showEthereumQuote(ctx: any): Promise<void> {
     const rates = await this.currencyApiService.getCurrentRates();
     
-    let message = '🔷 **Cotação do Ethereum**\n\n';
+    let message = '**Cotação do Ethereum**\n\n';
     
     if (rates.ETHBRL) {
-      message += this.currencyApiService.formatCurrencyRate(rates.ETHBRL) + '\n\n';
+      message += this.formatCurrencyRateImproved(rates.ETHBRL, 'ETH/BRL') + '\n\n';
     }
     
     if (rates.ETHUSD) {
-      message += '🌍 **ETH/USD:**\n';
-      message += `💰 **Preço:** $${parseFloat(rates.ETHUSD.bid).toFixed(2)}\n`;
-      message += `📊 **Variação:** ${parseFloat(rates.ETHUSD.pctChange).toFixed(2)}%\n\n`;
+      message += this.formatCurrencyRateImproved(rates.ETHUSD, 'ETH/USD', '$') + '\n\n';
     }
     
-    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+    message += `**Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
 
     await this.editWithBackButton(ctx, message);
   }
@@ -231,19 +243,17 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
   private async showSolanaQuote(ctx: any): Promise<void> {
     const rates = await this.currencyApiService.getCurrentRates();
     
-    let message = '🟣 **Cotação do Solana**\n\n';
+    let message = '**Cotação do Solana**\n\n';
     
     if (rates.SOLBRL) {
-      message += this.currencyApiService.formatCurrencyRate(rates.SOLBRL) + '\n\n';
+      message += this.formatCurrencyRateImproved(rates.SOLBRL, 'SOL/BRL') + '\n\n';
     }
     
     if (rates.SOLUSD) {
-      message += '🌍 **SOL/USD:**\n';
-      message += `💰 **Preço:** $${parseFloat(rates.SOLUSD.bid).toFixed(2)}\n`;
-      message += `📊 **Variação:** ${parseFloat(rates.SOLUSD.pctChange).toFixed(2)}%\n\n`;
+      message += this.formatCurrencyRateImproved(rates.SOLUSD, 'SOL/USD', '$') + '\n\n';
     }
     
-    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+    message += `**Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
 
     await this.editWithBackButton(ctx, message);
   }
@@ -251,13 +261,13 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
   private async showEuroQuote(ctx: any): Promise<void> {
     const rates = await this.currencyApiService.getCurrentRates();
     
-    let message = '🌍 **Cotação do Euro**\n\n';
+    let message = '**Cotação do Euro**\n\n';
     
     if (rates.EURBRL) {
-      message += this.currencyApiService.formatCurrencyRate(rates.EURBRL) + '\n\n';
+      message += this.formatCurrencyRateImproved(rates.EURBRL, 'EUR/BRL') + '\n\n';
     }
     
-    message += `🕐 **Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
+    message += `**Atualizado em:** ${new Date().toLocaleString('pt-BR')}`;
 
     await this.editWithBackButton(ctx, message);
   }
@@ -266,15 +276,15 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
     await ctx.sendChatAction('typing');
     
     const message = (
-      '💱 **Central de Cotações TrustScore** 🔄\n\n' +
-      '📊 Escolha uma opção para ver as cotações atuais:\n\n' +
-      '💰 **Principais Stablecoins**\n' +
+      '**Central de Cotações TrustScore**\n\n' +
+      'Escolha uma opção para ver as cotações atuais:\n\n' +
+      '**Principais Stablecoins**\n' +
       '• USD, USDT, USDC, DAI\n\n' +
-      '₿ **Criptomoedas Principais**\n' +
+      '**Criptomoedas Principais**\n' +
       '• Bitcoin, Ethereum, Solana\n\n' +
-      '🌍 **Moedas Tradicionais**\n' +
+      '**Moedas Tradicionais**\n' +
       '• Euro, Real\n\n' +
-      '⚡ **Rápido:** Veja todas as cotações de uma vez'
+      '**Rápido:** Veja todas as cotações de uma vez'
     );
 
     const keyboard = {
