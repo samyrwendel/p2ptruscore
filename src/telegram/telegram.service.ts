@@ -222,7 +222,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
           // Executar o handler
           await handler.handle(ctx);
           
-          // Apagar o comando após execução (manter chat limpo)
+          // Apagar o comando após execução (manter chat limpo) - SEMPRE apagar comandos em grupos
           await this.deleteCommandMessage(ctx);
           return;
         }
