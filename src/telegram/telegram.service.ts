@@ -248,22 +248,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         // Verificar se é um usuário existente (tem karma/histórico no sistema)
         const isLegacyUser = await this.isLegacyUser(ctx.from.id);
         
-        if (isLegacyUser) {
-          // Para usuários existentes, apresentar termos de forma amigável
-          await this.presentTermsToLegacyUser(ctx);
-        } else {
-          // Para usuários novos, mensagem mais restritiva
-          await ctx.reply(
-            `🚫 **Acesso Restrito**\n\n` +
-            `❌ Você precisa aceitar os termos de responsabilidade antes de usar comandos no grupo.\n\n` +
-            `📋 **Como aceitar:**\n` +
-            `1️⃣ Use o comando \`/termos\` para ler os termos\n` +
-            `2️⃣ Clique em "✅ ACEITO OS TERMOS"\n` +
-            `3️⃣ Após aceitar, você poderá usar todos os comandos\n\n` +
-            `⚠️ **Importante:** Esta validação garante que todos os membros conhecem as regras da comunidade.`,
-            { parse_mode: 'Markdown' }
-          );
-        }
+        // Apresentar termos diretamente para aceite (tanto legacy quanto novos)
+        await this.presentTermsForAcceptance(ctx, isLegacyUser);
         
         this.logger.log(`🚫 Comando bloqueado para usuário ${ctx.from.id} - termos não aceitos`);
         return false;
@@ -306,20 +292,48 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
-  private async presentTermsToLegacyUser(ctx: TextCommandContext): Promise<void> {
+  private async presentTermsForAcceptance(ctx: TextCommandContext, isLegacyUser: boolean): Promise<void> {
     const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+    const termsText = this.termsAcceptanceService.getTermsText();
     
-    await ctx.reply(
-      `👋 **Olá ${userName}!**\n\n` +
-      `🔄 **Atualização do Sistema:** Implementamos novos termos de responsabilidade para maior segurança da comunidade.\n\n` +
-      `📋 **Como membro existente, você precisa aceitar os novos termos para continuar usando o bot.**\n\n` +
-      `✅ **É rápido e simples:**\n` +
-      `1️⃣ Use \`/termos\` para ler os termos atualizados\n` +
-      `2️⃣ Clique em "✅ ACEITO OS TERMOS"\n` +
-      `3️⃣ Continue usando o bot normalmente\n\n` +
-      `💡 **Tranquilo:** Você não será removido do grupo, apenas precisa aceitar os termos para usar comandos.`,
-      { parse_mode: 'Markdown' }
+    const introMessage = isLegacyUser 
+      ? `👋 **Olá ${userName}!**\n\n🔄 **Atualização:** Novos termos implementados para maior segurança.\n\n`
+      : `🎉 **Bem-vindo(a) ${userName}!**\n\n`;
+    
+    const message = (
+      introMessage +
+      termsText + `\n\n` +
+      `👤 **Usuário:** ${userName}\n` +
+      `🆔 **ID:** \`${ctx.from.id}\`\n` +
+      `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
+      `⚠️ **IMPORTANTE:** Você precisa aceitar estes termos para usar comandos no grupo.`
     );
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '✅ ACEITO OS TERMOS',
+            callback_data: `accept_terms_${ctx.from.id}_${ctx.chat.id}`
+          },
+          {
+            text: '❌ NÃO ACEITO',
+            callback_data: `reject_terms_${ctx.from.id}_${ctx.chat.id}`
+          }
+        ],
+        [
+          {
+            text: '📋 Ver Termos Detalhados',
+            callback_data: `view_terms_detail_${ctx.from.id}_${ctx.chat.id}`
+          }
+        ]
+      ]
+    };
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
   }
 
   private async handleCallbackQuery(ctx: any) {
@@ -418,11 +432,20 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
       if (!hasAccepted) {
         await ctx.answerCbQuery(
-          `🚫 Você precisa aceitar os termos de responsabilidade antes de usar funcionalidades do grupo!`,
+          `🚫 Você precisa aceitar os termos de responsabilidade primeiro!`,
           { show_alert: true }
         );
         
-        this.logger.log(`🚫 Callback bloqueado para usuário ${ctx.from.id} - termos não aceitos`);
+        // Apresentar termos diretamente
+        const fakeTextCtx = {
+          ...ctx,
+          message: { text: '/termos', chat: ctx.callbackQuery.message.chat },
+          chat: ctx.callbackQuery.message.chat
+        } as TextCommandContext;
+        
+        await this.presentTermsForAcceptance(fakeTextCtx, await this.isLegacyUser(ctx.from.id));
+        
+        this.logger.log(`🚫 Callback bloqueado para usuário ${ctx.from.id} - apresentando termos`);
         return false;
       }
 
