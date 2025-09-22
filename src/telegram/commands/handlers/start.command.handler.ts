@@ -305,7 +305,7 @@ export class StartCommandHandler implements ITextCommandHandler {
     const data = ctx.callbackQuery.data;
     
     // Verificar se este callback pertence a este handler
-    if (!data.startsWith('reputation_') && !data.startsWith('start_')) {
+    if (!data.startsWith('reputation_') && !data.startsWith('start_') && !data.startsWith('my_ops_') && !data.startsWith('back_to_start_menu')) {
       return false;
     }
     
@@ -417,7 +417,19 @@ export class StartCommandHandler implements ITextCommandHandler {
           
           // Chamar exatamente a mesma função que o comando /criaroperacao
           await this.criarOperacaoHandler.handle(fakeCtx);
-        } else if (data === 'back_to_start_menu') {
+        }
+        return true;
+      } catch (error) {
+        this.logger.error('Erro ao processar callback do start:', error);
+        await ctx.answerCbQuery('❌ Erro ao processar ação', { show_alert: true });
+        return true;
+      }
+    }
+    
+    // Handlers para navegação de operações
+    if (data.startsWith('my_ops_') || data === 'back_to_start_menu') {
+      try {
+        if (data === 'back_to_start_menu') {
           await ctx.answerCbQuery('🏠 Voltando ao menu...');
           await this.showStartMenu(ctx);
         } else if (data.startsWith('my_ops_next_')) {
@@ -436,7 +448,7 @@ export class StartCommandHandler implements ITextCommandHandler {
         }
         return true;
       } catch (error) {
-        this.logger.error('Erro ao processar callback do start:', error);
+        this.logger.error('Erro ao processar callback de navegação:', error);
         await ctx.answerCbQuery('❌ Erro ao processar ação', { show_alert: true });
         return true;
       }
