@@ -165,7 +165,7 @@ export class NewMemberHandler {
     }
   }
 
-  async handleTermsCallback(ctx: any): Promise<boolean> {
+  async handleCallback(ctx: any): Promise<boolean> {
     try {
       const data = ctx.callbackQuery?.data;
       if (!data || (!data.startsWith('accept_terms_') && !data.startsWith('reject_terms_') && !data.startsWith('view_terms_detail_'))) {
