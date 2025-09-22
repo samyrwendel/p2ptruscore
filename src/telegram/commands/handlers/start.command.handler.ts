@@ -341,13 +341,8 @@ export class StartCommandHandler implements ITextCommandHandler {
             }
           );
         } else if (data === 'start_quotes') {
-          await ctx.answerCbQuery('💱 Buscando cotações...');
-          await ctx.editMessageText(
-            '💱 **Para ver cotações atuais:**\n\n' +
-            'Digite o comando: `/cotacoes`\n\n' +
-            'Você verá as cotações de BTC, ETH, SOL, USD e EUR!',
-            { parse_mode: 'Markdown' }
-          );
+          await ctx.answerCbQuery('💱 Carregando cotações...');
+          await this.showQuotesMenu(ctx);
         } else if (data === 'start_view_operations') {
           await ctx.answerCbQuery('📊 Carregando operações...');
           await ctx.editMessageText(
@@ -719,6 +714,72 @@ export class StartCommandHandler implements ITextCommandHandler {
     };
 
     await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+  }
+
+  private async showQuotesMenu(ctx: any): Promise<void> {
+    const message = (
+      '**Central de Cotações TrustScore**\n\n' +
+      'Escolha uma opção para ver as cotações atuais:\n\n' +
+      '**Principais Stablecoins**\n' +
+      '• USD, USDT, USDC, DAI\n\n' +
+      '**Criptomoedas Principais**\n' +
+      '• Bitcoin, Ethereum, Solana\n\n' +
+      '**Moedas Tradicionais**\n' +
+      '• Euro, Real\n\n' +
+      '**Rápido:** Veja todas as cotações de uma vez'
+    );
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '📊 Todas as Cotações',
+            callback_data: 'quotes_all'
+          }
+        ],
+        [
+          {
+            text: '💰 USD/Stablecoins',
+            callback_data: 'quotes_stablecoins'
+          },
+          {
+            text: '₿ Bitcoin',
+            callback_data: 'quotes_btc'
+          }
+        ],
+        [
+          {
+            text: '🔷 Ethereum',
+            callback_data: 'quotes_eth'
+          },
+          {
+            text: '🟣 Solana',
+            callback_data: 'quotes_sol'
+          }
+        ],
+        [
+          {
+            text: '🌍 Euro',
+            callback_data: 'quotes_eur'
+          },
+          {
+            text: '🔄 Atualizar',
+            callback_data: 'quotes_refresh'
+          }
+        ],
+        [
+          {
+            text: '🔙 Voltar ao Menu',
+            callback_data: 'quotes_back'
+          }
+        ]
+      ]
+    };
+
+    await ctx.editMessageText(message, {
       parse_mode: 'Markdown',
       reply_markup: keyboard
     });

@@ -155,7 +155,7 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
   private formatCurrencyRateImproved(rate: any, pairName: string, symbol: string = 'R$'): string {
     const price = parseFloat(rate.bid);
     const change = parseFloat(rate.pctChange);
-    const changeIcon = change >= 0 ? '📈' : '📉';
+    const changeIcon = change >= 0 ? '🟢' : '🔴';
     const high = parseFloat(rate.high);
     const low = parseFloat(rate.low);
     
@@ -345,8 +345,14 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
       inline_keyboard: [
         [
           {
-            text: '🔙 Voltar ao Menu',
+            text: '🔙 Voltar às Cotações',
             callback_data: 'quotes_refresh'
+          }
+        ],
+        [
+          {
+            text: '🏠 Menu Principal',
+            callback_data: 'quotes_back'
           }
         ]
       ]
@@ -360,11 +366,55 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
 
   private async handleBackToStart(ctx: any): Promise<void> {
     try {
-      await ctx.editMessageText(
-        '🔙 **Voltando ao Menu Principal**\n\n' +
-        'Use `/start` para ver o menu principal do bot.',
-        { parse_mode: 'Markdown' }
+      const message = (
+        '**Bem-vindo ao P2P Score Bot!**\n\n' +
+        '**Principais funcionalidades:**\n' +
+        '• Criar e gerenciar operações P2P\n' +
+        '• Ver reputação e histórico de usuários\n' +
+        '• Avaliar transações e parceiros\n' +
+        '• Consultar cotações atuais\n\n' +
+        '**Use os botões abaixo para navegar rapidamente:**'
       );
+
+      const keyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: '🤝 Criar Operação',
+              url: 'https://t.me/p2pscorebot?start=criar_operacao'
+            },
+            {
+              text: '📋 Minhas Operações',
+              callback_data: 'start_my_operations'
+            }
+          ],
+          [
+            {
+              text: '⭐ Minha Reputação',
+              callback_data: 'start_my_reputation'
+            },
+            {
+              text: '💱 Cotações',
+              callback_data: 'start_quotes'
+            }
+          ],
+          [
+            {
+              text: '📊 Ver Operações',
+              callback_data: 'start_view_operations'
+            },
+            {
+              text: '❓ Ajuda',
+              callback_data: 'start_help'
+            }
+          ]
+        ]
+      };
+
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
     } catch (error) {
       this.logger.error('Erro ao voltar ao menu:', error);
     }
