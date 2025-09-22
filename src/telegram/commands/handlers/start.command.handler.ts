@@ -1104,11 +1104,11 @@ export class StartCommandHandler implements ITextCommandHandler {
       
       // Usar exatamente a mesma formatação do ReputacaoCommandHandler
       const reputationInfo = getReputationInfo(karmaData.totalKarma);
-      const formattedHistory = formatKarmaHistory(karmaWithHistory?.history || [], 1, 10);
+      const formattedHistory = formatKarmaHistory(karmaWithHistory?.history || []);
       
-      let message = `🏆 **Reputação P2P do Criador da Operação**\n`;
+      let message = `🏆 **Sua Reputação TrustScore**\n`;
       message += `👤 **Usuário:** ${user.userName ? `@${user.userName}` : user.firstName}\n\n`;
-      message += `🥇 **Nível:** ${reputationInfo.title}\n`;
+      message += `🥇 **Nível:** ${reputationInfo.nivel}\n`;
       message += `⭐ **Score Total:** ${karmaData.totalKarma} pts\n\n`;
       
       if (karmaWithHistory && (karmaWithHistory.stars5 || karmaWithHistory.stars4 || karmaWithHistory.stars3 || karmaWithHistory.stars2 || karmaWithHistory.stars1)) {
