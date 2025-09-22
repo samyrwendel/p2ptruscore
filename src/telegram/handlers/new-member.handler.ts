@@ -55,16 +55,22 @@ export class NewMemberHandler {
       
       this.logger.log(`Novo membro detectado: ${userId} no grupo ${chatId}`);
 
-      // Verificar se o usuário já aceitou os termos atuais
-      const hasAccepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(
+      // SEMPRE apresentar termos para quem entra/volta ao grupo
+      // Isso garante que mesmo quem já aceitou antes precisa aceitar novamente
+      // se saiu e voltou (política de segurança)
+      
+      // Verificar se havia aceite anterior (indica retorno ao grupo)
+      const hadPreviousAcceptance = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(
         userId,
         chatId
       );
-
-      if (hasAccepted) {
-        this.logger.log(`Usuário ${userId} já aceitou os termos para o grupo ${chatId}`);
-        // Usuário já aceito, não precisa de mensagem adicional
-        return;
+      
+      if (hadPreviousAcceptance) {
+        this.logger.log(`🔄 RETORNO ao grupo detectado: ${userId} - forçando novo aceite de termos`);
+        // Remover aceite anterior (política de segurança para retornos)
+        await this.termsAcceptanceService.removeUserFromGroup(userId, chatId);
+      } else {
+        this.logger.log(`🆕 NOVO membro detectado: ${userId} - apresentando termos obrigatórios`);
       }
 
       // Apresentar termos de responsabilidade
@@ -81,11 +87,13 @@ export class NewMemberHandler {
       
       const message = (
         `🎉 **Bem-vindo(a) ao grupo, ${userName}!**\n\n` +
+        `🔒 **POLÍTICA DE SEGURANÇA:** Todos os membros (incluindo quem retorna) devem aceitar os termos atuais.\n\n` +
         termsText + `\n\n` +
         `👤 **Usuário:** ${userName}\n` +
         `🆔 **ID:** \`${userId}\`\n` +
         `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
-        `⏰ **Você tem 5 minutos para aceitar os termos, caso contrário será removido(a) automaticamente.**`
+        `⏰ **Você tem 5 minutos para aceitar os termos, caso contrário será removido(a) automaticamente.**\n\n` +
+        `💡 **Nota:** Se você já estava no grupo antes, precisa aceitar novamente por segurança.`
       );
 
       const keyboard = {

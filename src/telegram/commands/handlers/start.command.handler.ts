@@ -361,14 +361,24 @@ export class StartCommandHandler implements ITextCommandHandler {
           await this.showHelpMenu(ctx);
         } else if (data === 'start_operation_flow') {
           await ctx.answerCbQuery('🚀 Iniciando criação...');
-          // Simular comando /criaroperacao
+          // Simular comando /criaroperacao exatamente
           const fakeCtx = {
-            ...ctx,
-            message: { text: '/criaroperacao', chat: ctx.callbackQuery.message.chat },
-            chat: ctx.callbackQuery.message.chat
+            from: ctx.from,
+            message: { 
+              text: '/criaroperacao', 
+              chat: ctx.callbackQuery.message.chat,
+              message_id: ctx.callbackQuery.message.message_id,
+              date: Math.floor(Date.now() / 1000)
+            },
+            chat: ctx.callbackQuery.message.chat,
+            reply: ctx.reply ? ctx.reply.bind(ctx) : async (text: string, extra?: any) => {
+              return await ctx.editMessageText(text, extra);
+            },
+            sendChatAction: ctx.sendChatAction ? ctx.sendChatAction.bind(ctx) : async () => {},
+            editMessageText: ctx.editMessageText.bind(ctx)
           } as TextCommandContext;
           
-          // Chamar diretamente o handler de criar operação
+          // Chamar exatamente a mesma função que o comando /criaroperacao
           await this.criarOperacaoHandler.handle(fakeCtx);
         } else if (data === 'back_to_start_menu') {
           await ctx.answerCbQuery('🏠 Voltando ao menu...');
