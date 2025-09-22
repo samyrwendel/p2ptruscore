@@ -39,6 +39,7 @@ import { CotacoesCommandHandler } from './commands/handlers/cotacoes.command.han
 import { TermosCommandHandler } from './commands/handlers/termos.command.handler';
 import { KarmaMessageHandler } from './handlers/karma-message.handler';
 import { NewMemberHandler } from './handlers/new-member.handler';
+import { TermsAcceptanceService } from '../users/terms-acceptance.service';
 import { isTextCommandHandler, TextCommandContext } from './telegram.types';
 
 @Injectable()
@@ -82,6 +83,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     private readonly cotacoesHandler: CotacoesCommandHandler,
     private readonly termosHandler: TermosCommandHandler,
     private readonly newMemberHandler: NewMemberHandler,
+    private readonly termsAcceptanceService: TermsAcceptanceService,
   ) {
     // Registrar todos os command handlers
     this.registerCommand(meHandler);
@@ -160,7 +162,15 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     try {
       this.logger.log(`📝 Entrada de texto recebida: ${ctx.message.text}`);
 
-      // Procurar handler que tem sessão ativa e pode processar entrada de texto
+      const text = ctx.message.text;
+
+      // Primeiro, verificar se é um comando
+      if (text.startsWith('/')) {
+        await this.processCommand(ctx);
+        return;
+      }
+
+      // Se não é comando, procurar handler que tem sessão ativa e pode processar entrada de texto
       for (const handler of this.commandHandlers.values()) {
         if (handler && typeof handler.handleTextInput === 'function') {
           const sessionKey = `${ctx.from.id}_${ctx.chat.id}`;
@@ -180,8 +190,93 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
+  private async processCommand(ctx: TextCommandContext) {
+    try {
+      const text = ctx.message.text;
+      this.logger.log(`🎯 Processando comando: ${text}`);
+
+      // VALIDAÇÃO GLOBAL: Verificar se usuário aceitou termos (exceto comandos permitidos)
+      if (await this.shouldValidateTerms(ctx, text)) {
+        const hasAccepted = await this.validateUserTermsGlobally(ctx);
+        if (!hasAccepted) {
+          return; // Bloquear execução do comando
+        }
+      }
+
+      // Procurar handler que corresponde ao comando
+      for (const [commandPattern, handler] of this.commandHandlers.entries()) {
+        if (this.matchesCommand(text, commandPattern)) {
+          this.logger.log(`✅ Comando ${text} correspondeu ao padrão: ${commandPattern}`);
+          await handler.handle(ctx);
+          return;
+        }
+      }
+
+      this.logger.log(`❓ Nenhum handler encontrado para comando: ${text}`);
+    } catch (error) {
+      this.logger.error('❌ Erro ao processar comando:', error);
+    }
+  }
+
+  private async shouldValidateTerms(ctx: TextCommandContext, text: string): Promise<boolean> {
+    // Comandos que NÃO precisam de validação de termos (podem ser usados sem aceitar)
+    const allowedCommands = [
+      '/termos',
+      '/terms',
+      '/start', // Permitir /start para mostrar informações
+      '/help',
+      '/comandos'
+    ];
+
+    // Verificar se é um comando permitido
+    const isAllowedCommand = allowedCommands.some(cmd => 
+      text.toLowerCase().startsWith(cmd.toLowerCase())
+    );
+
+    // Só validar termos se não for comando permitido E se for em grupo
+    return !isAllowedCommand && ctx.chat.type !== 'private';
+  }
+
+  private async validateUserTermsGlobally(ctx: TextCommandContext): Promise<boolean> {
+    try {
+      const hasAccepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(
+        ctx.from.id,
+        ctx.chat.id
+      );
+
+      if (!hasAccepted) {
+        await ctx.reply(
+          `🚫 **Acesso Restrito**\n\n` +
+          `❌ Você precisa aceitar os termos de responsabilidade antes de usar comandos no grupo.\n\n` +
+          `📋 **Como aceitar:**\n` +
+          `1️⃣ Use o comando \`/termos\` para ler os termos\n` +
+          `2️⃣ Clique em "✅ ACEITO OS TERMOS"\n` +
+          `3️⃣ Após aceitar, você poderá usar todos os comandos\n\n` +
+          `⚠️ **Importante:** Esta validação garante que todos os membros conhecem as regras da comunidade.`,
+          { parse_mode: 'Markdown' }
+        );
+        
+        this.logger.log(`🚫 Comando bloqueado para usuário ${ctx.from.id} - termos não aceitos`);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      this.logger.error(`Erro na validação global de termos para usuário ${ctx.from.id}:`, error);
+      return false;
+    }
+  }
+
   private async handleCallbackQuery(ctx: any) {
     try {
+      // VALIDAÇÃO GLOBAL: Verificar se usuário aceitou termos para callbacks (exceto callbacks de termos)
+      if (await this.shouldValidateTermsForCallback(ctx)) {
+        const hasAccepted = await this.validateUserTermsForCallback(ctx);
+        if (!hasAccepted) {
+          return; // Bloquear execução do callback
+        }
+      }
+
       // Tentar processar com cada handler que suporta callbacks
       const handlers = [
         this.avaliarHandler,
@@ -225,6 +320,51 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     return typeof handler.command === 'string'
       ? `/${handler.command}`
       : handler.command;
+  }
+
+  private async shouldValidateTermsForCallback(ctx: any): Promise<boolean> {
+    const data = ctx.callbackQuery?.data;
+    if (!data) return false;
+
+    // Callbacks que NÃO precisam de validação (relacionados aos próprios termos)
+    const allowedCallbacks = [
+      'accept_terms_',
+      'reject_terms_',
+      'resend_terms_'
+    ];
+
+    // Verificar se é um callback permitido
+    const isAllowedCallback = allowedCallbacks.some(prefix => 
+      data.startsWith(prefix)
+    );
+
+    // Só validar termos se não for callback permitido E se for em grupo
+    return !isAllowedCallback && ctx.callbackQuery?.message?.chat?.type !== 'private';
+  }
+
+  private async validateUserTermsForCallback(ctx: any): Promise<boolean> {
+    try {
+      const hasAccepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(
+        ctx.from.id,
+        ctx.callbackQuery.message.chat.id
+      );
+
+      if (!hasAccepted) {
+        await ctx.answerCbQuery(
+          `🚫 Você precisa aceitar os termos de responsabilidade antes de usar funcionalidades do grupo!`,
+          { show_alert: true }
+        );
+        
+        this.logger.log(`🚫 Callback bloqueado para usuário ${ctx.from.id} - termos não aceitos`);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      this.logger.error(`Erro na validação de termos (callback) para usuário ${ctx.from.id}:`, error);
+      await ctx.answerCbQuery('❌ Erro na validação. Tente novamente.', { show_alert: true });
+      return false;
+    }
   }
 
   async onApplicationShutdown(signal: string) {

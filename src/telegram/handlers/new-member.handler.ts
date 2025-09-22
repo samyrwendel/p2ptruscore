@@ -266,19 +266,34 @@ export class NewMemberHandler {
       );
 
       if (hasAccepted) {
-        // Usuário aceitou, remover da lista de pendências
+        // Usuário aceitou, remover da lista de pendências e limpar mensagem
         this.pendingAcceptances.delete(pendingKey);
+        await this.cleanupTermsMessage(userId, pending.messageId);
         return;
       }
 
       // Usuário não respondeu no tempo limite, remover do grupo
       await this.removeUserFromGroup(userId, groupId, 'Tempo limite para aceitar os termos expirado');
       
+      // Limpar mensagem de termos do privado
+      await this.cleanupTermsMessage(userId, pending.messageId);
+      
       // Remover da lista de pendências
       this.pendingAcceptances.delete(pendingKey);
 
     } catch (error) {
       this.logger.error(`Erro ao verificar e remover usuário ${userId}:`, error);
+    }
+  }
+
+  private async cleanupTermsMessage(userId: number, messageId: number): Promise<void> {
+    try {
+      // Tentar apagar a mensagem de termos do privado
+      await this.bot.telegram.deleteMessage(userId, messageId);
+      this.logger.log(`Mensagem de termos removida do privado do usuário ${userId}`);
+    } catch (error) {
+      // Pode falhar se o usuário bloqueou o bot ou mensagem já foi deletada
+      this.logger.warn(`Não foi possível remover mensagem de termos do usuário ${userId}:`, error.description || error.message);
     }
   }
 
