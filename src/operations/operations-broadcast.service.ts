@@ -892,7 +892,7 @@ export class OperationsBroadcastService {
         ]
       };
 
-      await this.bot.telegram.sendMessage(
+      const sentMessage = await this.bot.telegram.sendMessage(
         acceptor.userId,
         message,
         {
@@ -900,6 +900,19 @@ export class OperationsBroadcastService {
           reply_markup: inlineKeyboard
         }
       );
+
+      // Salvar o ID da mensagem privada para poder removê-la depois
+      if (sentMessage && sentMessage.message_id) {
+        try {
+          await this.operationsRepository.findOneAndUpdate(
+            { _id: operation._id },
+            { privateEvaluationMessageId: sentMessage.message_id }
+          );
+          this.logger.log(`Private evaluation message ID ${sentMessage.message_id} saved for operation ${operation._id}`);
+        } catch (error) {
+          this.logger.warn(`Failed to save private evaluation message ID for operation ${operation._id}: ${error.message}`);
+        }
+      }
 
        this.logger.log(`Private evaluation message sent to acceptor ${acceptor.userId} for operation ${operation._id}`);
        // Nota: Avaliações pendentes serão criadas apenas quando a operação for concluída
@@ -1062,6 +1075,16 @@ export class OperationsBroadcastService {
         const acceptor = await this.usersService.findById(operation.acceptor.toString());
         if (acceptor) {
           try {
+            // Remover a mensagem de avaliação privada se existir
+            if (operation.privateEvaluationMessageId) {
+              try {
+                await this.bot.telegram.deleteMessage(acceptor.userId, operation.privateEvaluationMessageId);
+                this.logger.log(`Private evaluation message ${operation.privateEvaluationMessageId} deleted for operation ${operation._id}`);
+              } catch (deleteError) {
+                this.logger.warn(`Could not delete private evaluation message ${operation.privateEvaluationMessageId}: ${deleteError.message}`);
+              }
+            }
+            
             // Enviar mensagem informando que a operação foi revertida
             await this.bot.telegram.sendMessage(
               acceptor.userId,

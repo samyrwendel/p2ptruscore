@@ -101,6 +101,9 @@ export class Operation extends AbstractDocument {
   @Prop()
   messageId?: number;
 
+  @Prop()
+  privateEvaluationMessageId?: number;
+
   @Prop({ default: Date.now })
   expiresAt: Date;
 }
