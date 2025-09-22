@@ -1,6 +1,6 @@
 {
   "name": "p2p_score_bot",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Bot de Score P2P escalável para Telegram, desenvolvido com NestJS e TypeScript. Rastreia reputação da comunidade com rankings, histórico e API REST.",
   "author": "WilliamsMata",
   "license": "ISC",
