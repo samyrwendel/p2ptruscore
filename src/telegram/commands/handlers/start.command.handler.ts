@@ -420,6 +420,17 @@ export class StartCommandHandler implements ITextCommandHandler {
         } else if (data === 'back_to_start_menu') {
           await ctx.answerCbQuery('🏠 Voltando ao menu...');
           await this.showStartMenu(ctx);
+        } else if (data.startsWith('my_ops_next_')) {
+          const page = parseInt(data.replace('my_ops_next_', '')) || 0;
+          await ctx.answerCbQuery('➡️ Próxima página...');
+          await this.showUserOperations(ctx, page + 1);
+        } else if (data.startsWith('my_ops_prev_')) {
+          const page = parseInt(data.replace('my_ops_prev_', '')) || 0;
+          await ctx.answerCbQuery('⬅️ Página anterior...');
+          await this.showUserOperations(ctx, Math.max(0, page - 1));
+        } else if (data.startsWith('my_ops_page_info')) {
+          // Callback de informação de página - não faz nada, apenas responde
+          await ctx.answerCbQuery('ℹ️ Informação de página');
         }
         return true;
       } catch (error) {
