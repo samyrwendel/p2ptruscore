@@ -6,7 +6,7 @@ version: '3.8'
 services:
   trustp2p-bot:
     # Clone direto do repositório público com correções
-    image: node:22-alpine
+    image: node:18-alpine
     working_dir: /app
     command: >
       sh -c "
@@ -54,10 +54,10 @@ EOF
     container_name: trustp2p-bot
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3031:3031"
     environment:
       - NODE_ENV=production
-      - PORT=3001
+      - PORT=3031
       # Configurações do Bot Telegram
       - TELEGRAM_BOT_TOKEN=8183266791:AAGslEapkhiTbT_Fyw0KynXqtZc7qdhm4pw
       - TELEGRAM_BOT_USERNAME=p2pscorebot
@@ -66,7 +66,7 @@ EOF
     networks:
       - trust-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/karma/total"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3031/config/status"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -102,7 +102,7 @@ networks:
 # 4. Deploy
 #
 # Monitoramento:
-# - Bot: http://seu-servidor:3001/api/karma/total
+# - Bot: http://seu-servidor:3031/config/status
 # - Logs: docker logs trustp2p-bot
 # - Status: Portainer Dashboard
 #

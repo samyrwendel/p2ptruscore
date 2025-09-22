@@ -6,7 +6,7 @@ services:
     build: .
     container_name: trustscore-bot
     ports:
-      - "3000:3000"
+      - "3031:3031"
     environment:
       - NODE_ENV=production
       - MONGODB_CNN=mongodb://admin:password123@mongodb:27017/trustscore_bot?authSource=admin
@@ -19,7 +19,7 @@ services:
     networks:
       - trustscore-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/config/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:3031/config/status"]
       interval: 30s
       timeout: 10s
       retries: 3

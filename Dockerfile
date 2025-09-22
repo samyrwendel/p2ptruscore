@@ -1,11 +1,11 @@
-FROM node:22-alpine AS builder
+FROM node:18-alpine AS builder
 
 WORKDIR /usr/src/app
 
 # Copiar arquivos de dependências
 COPY package*.json ./
 
-# Instalar dependências
+# Instalar dependências (incluindo cross-env compatível)
 RUN npm ci
 
 # Copiar código fonte
@@ -15,7 +15,7 @@ COPY . .
 RUN npm run build
 
 # Estágio de produção
-FROM node:22-alpine
+FROM node:18-alpine
 
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
@@ -49,11 +49,11 @@ RUN chown -R nestjs:nodejs /usr/src/app
 USER nestjs
 
 # Expor porta
-EXPOSE 3000
+EXPOSE 3031
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/config/status || exit 1
+  CMD curl -f http://localhost:3031/config/status || exit 1
 
 # Comando de inicialização
 CMD ["node", "dist/main.js"]
