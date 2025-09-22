@@ -7,6 +7,7 @@ import { TermsAcceptanceService } from '../../../users/terms-acceptance.service'
 import { OperationsService } from '../../../operations/operations.service';
 import { getReputationInfo } from '../../../shared/reputation.utils';
 import { formatKarmaHistory } from '../command.helpers';
+import { CriarOperacaoCommandHandler } from './criar-operacao.command.handler';
 
 @Injectable()
 export class StartCommandHandler implements ITextCommandHandler {
@@ -19,6 +20,7 @@ export class StartCommandHandler implements ITextCommandHandler {
     private readonly usersService: UsersService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly operationsService: OperationsService,
+    private readonly criarOperacaoHandler: CriarOperacaoCommandHandler,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
@@ -309,31 +311,39 @@ export class StartCommandHandler implements ITextCommandHandler {
     if (data.startsWith('start_')) {
       try {
         if (data === 'start_create_operation') {
-          await ctx.answerCbQuery('🤝 Redirecionando para criação...');
-          await ctx.editMessageText(
-            '🤝 **Criar Operação P2P**\n\n' +
-            '💡 Para criar uma operação, você precisa usar o chat privado com o bot.\n\n' +
-            '**Clique no botão abaixo para iniciar:**',
-            { 
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    {
-                      text: '🤝 Abrir Chat Privado',
-                      url: 'https://t.me/p2pscorebot?start=criar_operacao'
-                    }
-                  ],
-                  [
-                    {
-                      text: '🔙 Voltar ao Menu',
-                      callback_data: 'back_to_start_menu'
-                    }
+          await ctx.answerCbQuery('🤝 Iniciando criação de operação...');
+          
+          // Verificar se já está no chat privado
+          if (ctx.callbackQuery.message.chat.type === 'private') {
+            // Já está no privado, iniciar diretamente a criação
+            await this.startOperationCreation(ctx);
+          } else {
+            // Está em grupo, redirecionar para privado
+            await ctx.editMessageText(
+              '🤝 **Criar Operação P2P**\n\n' +
+              '💡 Para criar uma operação, você precisa usar o chat privado com o bot.\n\n' +
+              '**Clique no botão abaixo para iniciar:**',
+              { 
+                parse_mode: 'Markdown',
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text: '🤝 Abrir Chat Privado',
+                        url: 'https://t.me/p2pscorebot?start=criar_operacao'
+                      }
+                    ],
+                    [
+                      {
+                        text: '🔙 Voltar ao Menu',
+                        callback_data: 'back_to_start_menu'
+                      }
+                    ]
                   ]
-                ]
+                }
               }
-            }
-          );
+            );
+          }
         } else if (data === 'start_my_operations') {
           await ctx.answerCbQuery('📋 Carregando suas operações...');
           await this.showUserOperations(ctx);
@@ -349,6 +359,17 @@ export class StartCommandHandler implements ITextCommandHandler {
         } else if (data === 'start_help') {
           await ctx.answerCbQuery('❓ Carregando ajuda...');
           await this.showHelpMenu(ctx);
+        } else if (data === 'start_operation_flow') {
+          await ctx.answerCbQuery('🚀 Iniciando criação...');
+          // Simular comando /criaroperacao
+          const fakeCtx = {
+            ...ctx,
+            message: { text: '/criaroperacao', chat: ctx.callbackQuery.message.chat },
+            chat: ctx.callbackQuery.message.chat
+          } as TextCommandContext;
+          
+          // Chamar diretamente o handler de criar operação
+          await this.criarOperacaoHandler.handle(fakeCtx);
         } else if (data === 'back_to_start_menu') {
           await ctx.answerCbQuery('🏠 Voltando ao menu...');
           await this.showStartMenu(ctx);
@@ -1158,6 +1179,42 @@ export class StartCommandHandler implements ITextCommandHandler {
           }
         }
       );
+    }
+  }
+
+  private async startOperationCreation(ctx: any): Promise<void> {
+    try {
+      await ctx.editMessageText(
+        '🤝 **Criar Operação P2P**\n\n' +
+        '✅ Você está no chat privado correto!\n\n' +
+        '🎯 **Vamos criar sua operação:**\n' +
+        '1️⃣ Escolha o tipo (Vender/Comprar)\n' +
+        '2️⃣ Defina ativos e valor\n' +
+        '3️⃣ Configure preço e pagamento\n' +
+        '4️⃣ Publique no grupo\n\n' +
+        '**Clique no botão abaixo para começar:**',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: '🚀 Começar Criação',
+                  callback_data: 'start_operation_flow'
+                }
+              ],
+              [
+                {
+                  text: '🔙 Voltar ao Menu',
+                  callback_data: 'back_to_start_menu'
+                }
+              ]
+            ]
+          }
+        }
+      );
+    } catch (error) {
+      this.logger.error('Erro ao iniciar criação de operação:', error);
     }
   }
 }
