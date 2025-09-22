@@ -6,6 +6,7 @@ import { UsersService } from '../../../users/users.service';
 import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { OperationsService } from '../../../operations/operations.service';
 import { getReputationInfo } from '../../../shared/reputation.utils';
+import { formatKarmaHistory } from '../command.helpers';
 
 @Injectable()
 export class StartCommandHandler implements ITextCommandHandler {
@@ -837,7 +838,7 @@ export class StartCommandHandler implements ITextCommandHandler {
       message += `**Total:** ${operations.length} operações`;
 
       // Criar botões de navegação se houver muitas operações
-      const keyboard = {
+      const keyboard: { inline_keyboard: any[][] } = {
         inline_keyboard: []
       };
 
@@ -1102,12 +1103,26 @@ export class StartCommandHandler implements ITextCommandHandler {
       const karmaWithHistory = await this.getKarmaForUserWithFallback(user, ctx.callbackQuery.message.chat.id);
       
       // Usar exatamente a mesma formatação do ReputacaoCommandHandler
-      const message = await this.keyboardService.formatReputationMessage(
-        karmaData,
-        karmaWithHistory,
-        user,
-        ctx.callbackQuery.message.chat.id
-      );
+      const reputationInfo = getReputationInfo(karmaData.totalKarma);
+      const formattedHistory = formatKarmaHistory(karmaWithHistory?.history || [], 1, 10);
+      
+      let message = `🏆 **Reputação P2P do Criador da Operação**\n`;
+      message += `👤 **Usuário:** ${user.userName ? `@${user.userName}` : user.firstName}\n\n`;
+      message += `🥇 **Nível:** ${reputationInfo.title}\n`;
+      message += `⭐ **Score Total:** ${karmaData.totalKarma} pts\n\n`;
+      
+      if (karmaWithHistory && (karmaWithHistory.stars5 || karmaWithHistory.stars4 || karmaWithHistory.stars3 || karmaWithHistory.stars2 || karmaWithHistory.stars1)) {
+        message += `📊 **Distribuição de Avaliações:**\n`;
+        message += `5⭐: ${karmaWithHistory.stars5 || 0}  `;
+        message += `4⭐: ${karmaWithHistory.stars4 || 0}  `;
+        message += `3⭐: ${karmaWithHistory.stars3 || 0}\n`;
+        message += `2⭐: ${karmaWithHistory.stars2 || 0}  `;
+        message += `1⭐: ${karmaWithHistory.stars1 || 0}\n\n`;
+      }
+      
+      if (formattedHistory.trim()) {
+        message += `📋 **Últimas 10 Avaliações Recebidas:**\n${formattedHistory}`;
+      }
 
       const keyboard = {
         inline_keyboard: [
