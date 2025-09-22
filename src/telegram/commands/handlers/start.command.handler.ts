@@ -821,7 +821,8 @@ export class StartCommandHandler implements ITextCommandHandler {
       operations.slice(0, 5).forEach((op: any, index: number) => {
         const statusEmoji = op.status === 'pending' ? '⏳' : 
                            op.status === 'accepted' ? '✅' : 
-                           op.status === 'completed' ? '🎉' : '❓';
+                           op.status === 'completed' ? '🎉' : 
+                           op.status === 'cancelled' ? '❌' : '❓';
         
         message += `${statusEmoji} **Operação ${index + 1}**\n`;
         message += `**Tipo:** ${op.type === 'sell' ? 'Vender' : 'Comprar'}\n`;
@@ -835,18 +836,43 @@ export class StartCommandHandler implements ITextCommandHandler {
 
       message += `**Total:** ${operations.length} operações`;
 
+      // Criar botões de navegação se houver muitas operações
+      const keyboard = {
+        inline_keyboard: []
+      };
+
+      // Se há mais de 5 operações, adicionar botões de navegação
+      if (operations.length > 5) {
+        keyboard.inline_keyboard.push([
+          {
+            text: '⬅️ Anterior',
+            callback_data: 'my_ops_prev_0'
+          },
+          {
+            text: `1 de ${Math.ceil(operations.length / 5)}`,
+            callback_data: 'my_ops_page_info'
+          },
+          {
+            text: '➡️ Próxima',
+            callback_data: 'my_ops_next_0'
+          }
+        ]);
+      }
+
+      keyboard.inline_keyboard.push([
+        {
+          text: '🔄 Atualizar',
+          callback_data: 'start_my_operations'
+        },
+        {
+          text: '🔙 Voltar ao Menu',
+          callback_data: 'back_to_start_menu'
+        }
+      ]);
+
       await ctx.editMessageText(message, {
         parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: '🔙 Voltar ao Menu',
-                callback_data: 'back_to_start_menu'
-              }
-            ]
-          ]
-        }
+        reply_markup: keyboard
       });
     } catch (error) {
       this.logger.error('Erro ao mostrar operações do usuário:', error);
@@ -1019,17 +1045,12 @@ export class StartCommandHandler implements ITextCommandHandler {
 
   private async showUserReputation(ctx: any): Promise<void> {
     try {
-      // Buscar usuário
-      const user = await this.usersService.findOrCreate({
-        id: ctx.from.id,
-        first_name: ctx.from.first_name,
-        username: ctx.from.username,
-      });
-
-      // Buscar karma do usuário
-      const karmaData = await this.getKarmaForUserWithFallback(user, ctx.callbackQuery.message.chat.id);
+      // Usar exatamente a mesma lógica do ReputacaoCommandHandler
+      const userId = ctx.from.id.toString();
       
-      if (!karmaData) {
+      // Buscar usuário pelo ID
+      const user = await this.usersService.findOneByUserId(parseInt(userId));
+      if (!user) {
         await ctx.editMessageText(
           '⭐ **Sua Reputação**\n\n' +
           '❌ Você ainda não possui reputação no sistema.\n\n' +
@@ -1038,12 +1059,6 @@ export class StartCommandHandler implements ITextCommandHandler {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
-                [
-                  {
-                    text: '🤝 Criar Operação',
-                    url: 'https://t.me/p2pscorebot?start=criar_operacao'
-                  }
-                ],
                 [
                   {
                     text: '🔙 Voltar ao Menu',
@@ -1057,45 +1072,57 @@ export class StartCommandHandler implements ITextCommandHandler {
         return;
       }
 
-      const reputationInfo = getReputationInfo(karmaData.karma);
+      // Usar o nome de usuário para buscar karma
+      const userIdentifier = user.userName || user.firstName || userId;
+      const karmaData = await this.karmaService.getTotalKarmaForUser(userIdentifier);
       
-      let message = '⭐ **Sua Reputação TrustScore**\n\n';
-      message += `**Pontuação:** ${karmaData.karma} pontos\n`;
-      message += `**Nível:** ${reputationInfo.level}\n`;
-      message += `**Status:** ${reputationInfo.emoji} ${reputationInfo.description}\n\n`;
-      
-      if (karmaData.history && karmaData.history.length > 0) {
-        message += `**Avaliações Recebidas:** ${karmaData.history.length}\n\n`;
-        
-        // Mostrar distribuição de estrelas
-        const stars5 = karmaData.stars5 || 0;
-        const stars4 = karmaData.stars4 || 0;
-        const stars3 = karmaData.stars3 || 0;
-        const stars2 = karmaData.stars2 || 0;
-        const stars1 = karmaData.stars1 || 0;
-        
-        if (stars5 + stars4 + stars3 + stars2 + stars1 > 0) {
-          message += '**Distribuição de Estrelas:**\n';
-          message += `⭐⭐⭐⭐⭐ ${stars5}\n`;
-          message += `⭐⭐⭐⭐ ${stars4}\n`;
-          message += `⭐⭐⭐ ${stars3}\n`;
-          message += `⭐⭐ ${stars2}\n`;
-          message += `⭐ ${stars1}\n\n`;
-        }
+      if (!karmaData) {
+        await ctx.editMessageText(
+          '⭐ **Sua Reputação**\n\n' +
+          '❌ Você ainda não possui reputação no sistema.\n\n' +
+          '💡 **Dica:** Participe de operações para construir sua reputação!',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: '🔙 Voltar ao Menu',
+                    callback_data: 'back_to_start_menu'
+                  }
+                ]
+              ]
+            }
+          }
+        );
+        return;
       }
+
+      // Buscar histórico detalhado
+      const karmaWithHistory = await this.getKarmaForUserWithFallback(user, ctx.callbackQuery.message.chat.id);
+      
+      // Usar exatamente a mesma formatação do ReputacaoCommandHandler
+      const message = await this.keyboardService.formatReputationMessage(
+        karmaData,
+        karmaWithHistory,
+        user,
+        ctx.callbackQuery.message.chat.id
+      );
+
+      const keyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: '🔙 Voltar ao Menu',
+              callback_data: 'back_to_start_menu'
+            }
+          ]
+        ]
+      };
 
       await ctx.editMessageText(message, {
         parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: '🔙 Voltar ao Menu',
-                callback_data: 'back_to_start_menu'
-              }
-            ]
-          ]
-        }
+        reply_markup: keyboard
       });
     } catch (error) {
       this.logger.error('Erro ao mostrar reputação do usuário:', error);
