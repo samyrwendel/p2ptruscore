@@ -207,7 +207,12 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       for (const [commandPattern, handler] of this.commandHandlers.entries()) {
         if (this.matchesCommand(text, commandPattern)) {
           this.logger.log(`✅ Comando ${text} correspondeu ao padrão: ${commandPattern}`);
+          
+          // Executar o handler
           await handler.handle(ctx);
+          
+          // Apagar o comando após execução (manter chat limpo)
+          await this.deleteCommandMessage(ctx);
           return;
         }
       }
@@ -454,6 +459,19 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       this.logger.error(`Erro na validação de termos (callback) para usuário ${ctx.from.id}:`, error);
       await ctx.answerCbQuery('❌ Erro na validação. Tente novamente.', { show_alert: true });
       return false;
+    }
+  }
+
+  private async deleteCommandMessage(ctx: TextCommandContext): Promise<void> {
+    try {
+      // Só apagar comandos em grupos (não em chats privados)
+      if (ctx.chat.type !== 'private') {
+        await ctx.deleteMessage();
+        this.logger.log(`🗑️ Comando apagado: ${ctx.message.text} (manter chat limpo)`);
+      }
+    } catch (error) {
+      // Falha silenciosa - pode não ter permissão para apagar mensagens
+      this.logger.warn(`⚠️ Não foi possível apagar comando: ${error.description || error.message}`);
     }
   }
 
