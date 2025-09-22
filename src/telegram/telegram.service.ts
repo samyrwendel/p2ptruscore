@@ -393,7 +393,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     const allowedCallbacks = [
       'accept_terms_',
       'reject_terms_',
-      'resend_terms_'
+      'resend_terms_',
+      'view_terms_detail_'
     ];
 
     // Verificar se é um callback permitido

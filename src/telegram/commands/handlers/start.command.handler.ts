@@ -3,6 +3,7 @@ import { ITextCommandHandler, TextCommandContext } from '../../telegram.types';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { KarmaService } from '../../../karma/karma.service';
 import { UsersService } from '../../../users/users.service';
+import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { getReputationInfo } from '../../../shared/reputation.utils';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class StartCommandHandler implements ITextCommandHandler {
     private readonly keyboardService: TelegramKeyboardService,
     private readonly karmaService: KarmaService,
     private readonly usersService: UsersService,
+    private readonly termsAcceptanceService: TermsAcceptanceService,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
@@ -71,6 +73,19 @@ export class StartCommandHandler implements ITextCommandHandler {
   }
 
   async handle(ctx: TextCommandContext): Promise<void> {
+    // VERIFICAÇÃO PRIORITÁRIA: Se usuário não aceitou termos em grupos, apresentar termos primeiro
+    if (ctx.chat.type !== 'private') {
+      const hasAccepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(
+        ctx.from.id,
+        ctx.chat.id
+      );
+
+      if (!hasAccepted) {
+        await this.presentTermsInStart(ctx);
+        return;
+      }
+    }
+
     const match = ctx.message.text.match(this.command);
     const startParam = match?.[1];
 
@@ -667,5 +682,45 @@ export class StartCommandHandler implements ITextCommandHandler {
         }
       }
     }
+  }
+
+  private async presentTermsInStart(ctx: TextCommandContext): Promise<void> {
+    const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+    const termsText = this.termsAcceptanceService.getTermsText();
+    
+    const message = (
+      `🎉 **Bem-vindo(a) ao TrustScore P2P, ${userName}!**\n\n` +
+      termsText + `\n\n` +
+      `👤 **Usuário:** ${userName}\n` +
+      `🆔 **ID:** \`${ctx.from.id}\`\n` +
+      `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
+      `⚠️ **IMPORTANTE:** Você precisa aceitar estes termos para usar o bot no grupo.`
+    );
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '✅ ACEITO OS TERMOS',
+            callback_data: `accept_terms_${ctx.from.id}_${ctx.chat.id}`
+          },
+          {
+            text: '❌ NÃO ACEITO',
+            callback_data: `reject_terms_${ctx.from.id}_${ctx.chat.id}`
+          }
+        ],
+        [
+          {
+            text: '📋 Ver Termos Detalhados',
+            callback_data: `view_terms_detail_${ctx.from.id}_${ctx.chat.id}`
+          }
+        ]
+      ]
+    };
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
   }
 }

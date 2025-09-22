@@ -160,8 +160,23 @@ export class NewMemberHandler {
   async handleTermsCallback(ctx: any): Promise<boolean> {
     try {
       const data = ctx.callbackQuery?.data;
-      if (!data || (!data.startsWith('accept_terms_') && !data.startsWith('reject_terms_'))) {
+      if (!data || (!data.startsWith('accept_terms_') && !data.startsWith('reject_terms_') && !data.startsWith('view_terms_detail_'))) {
         return false;
+      }
+
+      // Verificar se é callback de visualização detalhada
+      if (data.startsWith('view_terms_detail_')) {
+        const parts = data.replace('view_terms_detail_', '').split('_');
+        const userId = parseInt(parts[0]);
+        const groupId = parseInt(parts[1]);
+        
+        if (ctx.from.id !== userId) {
+          await ctx.answerCbQuery('❌ Você não pode ver termos de outro usuário', { show_alert: true });
+          return true;
+        }
+        
+        await this.showDetailedTerms(ctx);
+        return true;
       }
 
       const isAccept = data.startsWith('accept_terms_');
@@ -350,6 +365,25 @@ export class NewMemberHandler {
     } catch (error) {
       this.logger.warn(`Erro ao enviar mensagem de boas-vindas privada para ${userId}:`, error);
     }
+  }
+
+  private async showDetailedTerms(ctx: any): Promise<void> {
+    const termsText = this.termsAcceptanceService.getTermsText();
+    const version = this.termsAcceptanceService.getCurrentTermsVersion();
+
+    const detailedMessage = (
+      `📋 **TERMOS DETALHADOS - TRUSTSCORE P2P**\n\n` +
+      termsText + `\n\n` +
+      `📊 **Informações Técnicas:**\n` +
+      `🆔 **Versão dos Termos:** ${version}\n` +
+      `📅 **Visualizado em:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n` +
+      `👤 **Usuário:** ${ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name}\n\n` +
+      `💡 **Após ler, volte à mensagem anterior para aceitar ou rejeitar os termos.**`
+    );
+
+    // Enviar em mensagem separada para não perder os botões originais
+    await ctx.reply(detailedMessage, { parse_mode: 'Markdown' });
+    await ctx.answerCbQuery('📋 Termos detalhados enviados acima');
   }
 
   private cleanupExpiredPendencies(): void {
