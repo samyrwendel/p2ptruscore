@@ -351,23 +351,59 @@ export class NewMemberHandler {
     try {
       const userName = member.username ? `@${member.username}` : member.first_name;
       
-      const welcomeMessage = (
-        `🎉 **Bem-vindo(a) ao TrustScore, ${userName}!**\n\n` +
-        `Você está agora participando de uma comunidade P2P segura e confiável.\n\n` +
-        `📋 **Comandos úteis:**\n` +
-        `• \`/help\` - Ver todos os comandos\n` +
-        `• \`/me\` - Ver sua reputação\n` +
-        `• \`/criaroperacao\` - Criar nova operação\n` +
-        `• \`/operacoes\` - Ver operações disponíveis\n\n` +
-        `🛡️ **Lembre-se:** Sempre verifique a reputação dos usuários antes de negociar!\n\n` +
-        `💡 **Dica:** Use o comando \`/reputacao @usuario\` para verificar a reputação de alguém.`
-      );
+      // Usar a mesma mensagem de boas-vindas do comando /start com botões
+      const welcomeMessage = 
+        '🎉 **Bem-vindo ao P2P Score Bot!**\n\n' +
+        '🚀 **Principais funcionalidades:**\n' +
+        '• 💰 Criar e gerenciar operações P2P\n' +
+        '• ⭐ Ver reputação e histórico de usuários\n' +
+        '• 📊 Avaliar transações e parceiros\n' +
+        '• 💱 Consultar cotações atuais\n\n' +
+        '👇 **Use os botões abaixo para navegar rapidamente:**';
 
-      // Enviar no privado do usuário
+      const mainCommandsKeyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: '💰 Criar Operação',
+              callback_data: 'start_create_operation'
+            },
+            {
+              text: '📋 Minhas Operações',
+              callback_data: 'start_my_operations'
+            }
+          ],
+          [
+            {
+              text: '⭐ Minha Reputação',
+              callback_data: 'start_my_reputation'
+            },
+            {
+              text: '💱 Cotações',
+              callback_data: 'start_quotes'
+            }
+          ],
+          [
+            {
+              text: '📊 Ver Operações',
+              callback_data: 'start_view_operations'
+            },
+            {
+              text: '❓ Ajuda',
+              callback_data: 'start_help'
+            }
+          ]
+        ]
+      };
+
+      // Enviar no privado do usuário com botões
       await this.bot.telegram.sendMessage(
         userId,
         welcomeMessage,
-        { parse_mode: 'Markdown' }
+        { 
+          parse_mode: 'Markdown',
+          reply_markup: mainCommandsKeyboard
+        }
       );
 
     } catch (error) {
