@@ -8,6 +8,7 @@ import { OperationsService } from '../../../operations/operations.service';
 import { getReputationInfo } from '../../../shared/reputation.utils';
 import { formatKarmaHistory } from '../command.helpers';
 import { CriarOperacaoCommandHandler } from './criar-operacao.command.handler';
+import { ReputacaoCommandHandler } from './reputacao.command.handler';
 
 @Injectable()
 export class StartCommandHandler implements ITextCommandHandler {
@@ -21,6 +22,7 @@ export class StartCommandHandler implements ITextCommandHandler {
     private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly operationsService: OperationsService,
     private readonly criarOperacaoHandler: CriarOperacaoCommandHandler,
+    private readonly reputacaoHandler: ReputacaoCommandHandler,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
@@ -366,7 +368,25 @@ export class StartCommandHandler implements ITextCommandHandler {
           await this.showUserOperations(ctx);
         } else if (data === 'start_my_reputation') {
           await ctx.answerCbQuery('⭐ Carregando sua reputação...');
-          await this.showUserReputation(ctx);
+          // Simular comando /reputacao exatamente
+          const fakeCtx = {
+            from: ctx.from,
+            message: { 
+              text: '/reputacao', 
+              chat: ctx.callbackQuery.message.chat,
+              message_id: ctx.callbackQuery.message.message_id,
+              date: Math.floor(Date.now() / 1000)
+            },
+            chat: ctx.callbackQuery.message.chat,
+            reply: async (text: string, extra?: any) => {
+              return await ctx.editMessageText(text, extra);
+            },
+            sendChatAction: async () => {},
+            editMessageText: ctx.editMessageText.bind(ctx)
+          } as TextCommandContext;
+          
+          // Chamar exatamente a mesma função que o comando /reputacao
+          await this.reputacaoHandler.handle(fakeCtx);
         } else if (data === 'start_quotes') {
           await ctx.answerCbQuery('💱 Carregando cotações...');
           await this.showQuotesMenu(ctx);
@@ -1092,121 +1112,5 @@ export class StartCommandHandler implements ITextCommandHandler {
     });
   }
 
-  private async showUserReputation(ctx: any): Promise<void> {
-    try {
-      // Usar exatamente a mesma lógica do ReputacaoCommandHandler
-      const userId = ctx.from.id.toString();
-      
-      // Buscar usuário pelo ID
-      const user = await this.usersService.findOneByUserId(parseInt(userId));
-      if (!user) {
-        await ctx.editMessageText(
-          '⭐ **Sua Reputação**\n\n' +
-          '❌ Você ainda não possui reputação no sistema.\n\n' +
-          '💡 **Dica:** Participe de operações para construir sua reputação!',
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: '🔙 Voltar ao Menu',
-                    callback_data: 'back_to_start_menu'
-                  }
-                ]
-              ]
-            }
-          }
-        );
-        return;
-      }
-
-      // Usar o nome de usuário para buscar karma
-      const userIdentifier = user.userName || user.firstName || userId;
-      const karmaData = await this.karmaService.getTotalKarmaForUser(userIdentifier);
-      
-      if (!karmaData) {
-        await ctx.editMessageText(
-          '⭐ **Sua Reputação**\n\n' +
-          '❌ Você ainda não possui reputação no sistema.\n\n' +
-          '💡 **Dica:** Participe de operações para construir sua reputação!',
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: '🔙 Voltar ao Menu',
-                    callback_data: 'back_to_start_menu'
-                  }
-                ]
-              ]
-            }
-          }
-        );
-        return;
-      }
-
-      // Buscar histórico detalhado
-      const karmaWithHistory = await this.getKarmaForUserWithFallback(user, ctx.callbackQuery.message.chat.id);
-      
-      // Usar exatamente a mesma formatação do ReputacaoCommandHandler
-      const reputationInfo = getReputationInfo(karmaData.totalKarma);
-      const formattedHistory = formatKarmaHistory(karmaWithHistory?.history || []);
-      
-      let message = `🏆 **Sua Reputação TrustScore**\n`;
-      message += `👤 **Usuário:** ${user.userName ? `@${user.userName}` : user.firstName}\n\n`;
-      message += `🥇 **Nível:** ${reputationInfo.nivel}\n`;
-      message += `⭐ **Score Total:** ${karmaData.totalKarma} pts\n\n`;
-      
-      if (karmaWithHistory && (karmaWithHistory.stars5 || karmaWithHistory.stars4 || karmaWithHistory.stars3 || karmaWithHistory.stars2 || karmaWithHistory.stars1)) {
-        message += `📊 **Distribuição de Avaliações:**\n`;
-        message += `5⭐: ${karmaWithHistory.stars5 || 0}  `;
-        message += `4⭐: ${karmaWithHistory.stars4 || 0}  `;
-        message += `3⭐: ${karmaWithHistory.stars3 || 0}\n`;
-        message += `2⭐: ${karmaWithHistory.stars2 || 0}  `;
-        message += `1⭐: ${karmaWithHistory.stars1 || 0}\n\n`;
-      }
-      
-      if (formattedHistory.trim()) {
-        message += `📋 **Últimas 10 Avaliações Recebidas:**\n${formattedHistory}`;
-      }
-
-      const keyboard = {
-        inline_keyboard: [
-          [
-            {
-              text: '🔙 Voltar ao Menu',
-              callback_data: 'back_to_start_menu'
-            }
-          ]
-        ]
-      };
-
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-      });
-    } catch (error) {
-      this.logger.error('Erro ao mostrar reputação do usuário:', error);
-      await ctx.editMessageText(
-        '❌ **Erro ao carregar reputação**\n\n' +
-        'Não foi possível carregar sua reputação. Tente novamente.',
-        { 
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: '🔙 Voltar ao Menu',
-                  callback_data: 'back_to_start_menu'
-                }
-              ]
-            ]
-          }
-        }
-      );
-    }
-  }
 
 }
