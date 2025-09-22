@@ -3,8 +3,10 @@ import { Types } from 'mongoose';
 import { OperationsService } from '../../../operations/operations.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { UsersService } from '../../../users/users.service';
+import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { KarmaService } from '../../../karma/karma.service';
 import { getReputationInfo } from '../../../shared/reputation.utils';
+import { validateUserTermsForOperation } from '../../../shared/terms-validation.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -19,6 +21,7 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
     private readonly operationsService: OperationsService,
     private readonly keyboardService: TelegramKeyboardService,
     private readonly usersService: UsersService,
+    private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly karmaService: KarmaService,
   ) {}
 
@@ -57,6 +60,12 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
       await ctx.reply(
         '▼ Este comando só pode ser usado em grupos onde o bot está ativo.',
       );
+      return;
+    }
+
+    // VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos
+    const isValid = await validateUserTermsForOperation(ctx, this.termsAcceptanceService, 'aceitar');
+    if (!isValid) {
       return;
     }
 
@@ -231,6 +240,13 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
     }
     
     try {
+      // VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos
+      const { validateUserTermsForCallback } = await import('../../../shared/terms-validation.utils');
+      const isValid = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'aceitar');
+      if (!isValid) {
+        return true;
+      }
+
       // Extrair o ID da operação do callback
       const operationId = data.replace('accept_operation_', '');
       

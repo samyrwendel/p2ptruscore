@@ -17,7 +17,7 @@ export interface TermsAcceptanceData {
 @Injectable()
 export class TermsAcceptanceService {
   private readonly logger = new Logger(TermsAcceptanceService.name);
-  private readonly CURRENT_TERMS_VERSION = '1.0.0';
+  private readonly CURRENT_TERMS_VERSION = '1.1.0';
 
   constructor(
     private readonly termsAcceptanceRepository: TermsAcceptanceRepository,
@@ -128,16 +128,20 @@ export class TermsAcceptanceService {
 
   getTermsText(): string {
     return (
-      `📋 **TERMO DE RESPONSABILIDADE - TRUSTSCORE**\n\n` +
-      `Ao utilizar a plataforma TrustScore, você declara que:\n\n` +
-      `1️⃣ **Responsabilidade:** Todas as transações são de sua total responsabilidade.\n\n` +
-      `2️⃣ **Veracidade:** Fornecerá informações verdadeiras e precisas.\n\n` +
-      `3️⃣ **Conformidade:** Cumprirá com todos os acordos estabelecidos.\n\n` +
-      `4️⃣ **Riscos:** Compreende os riscos envolvidos em transações P2P.\n\n` +
-      `5️⃣ **Isenção:** A plataforma trust score é apenas um ponto de encontro, onde membros negociam livremente com seus próprios termos. Não temos responsabilidade pelas transações entre membros. Não nos responsabilizamos por perdas.\n\n` +
-      `6️⃣ **Privacidade:** Seus dados serão tratados conforme nossa política de privacidade.\n\n` +
-      `7️⃣ **Proibições:** Não utilizará a plataforma para atividades ilícitas.\n\n` +
-      `⚠️ **IMPORTANTE:** Ao clicar em 'ACEITO OS TERMOS', você concorda integralmente com estas condições.`
+      `📋 **TERMO DE RESPONSABILIDADE - TRUSTSCORE P2P**\n\n` +
+      `🎯 **OBJETIVO:** Este grupo facilita transações P2P de criptomoedas sem KYC, priorizando privacidade e segurança entre membros verificados.\n\n` +
+      `📜 **REGRAS E RESPONSABILIDADES:**\n\n` +
+      `1️⃣ **Responsabilidade Total:** Todas as negociações são de sua exclusiva responsabilidade. O TrustScore é apenas uma ferramenta de reputação.\n\n` +
+      `2️⃣ **Limite Inicial:** Para começar, operações limitadas a R$ 600,00. Construa reputação gradualmente.\n\n` +
+      `3️⃣ **Prioridade de Envio:** Quem tem MENOR reputação no TrustScore deve enviar primeiro (critério de segurança).\n\n` +
+      `4️⃣ **Contas Próprias:** Pagamentos devem ser feitos exclusivamente de contas próprias (CPF ou CNPJ próprio).\n\n` +
+      `5️⃣ **Execução Imediata:** Boletos devem ser pagos no mesmo dia. Evite agendamentos.\n\n` +
+      `6️⃣ **Verificação de Membros:** Sempre confirme se a pessoa está no mesmo grupo antes de negociar.\n\n` +
+      `7️⃣ **Cautela com Feriados:** Seja cauteloso com valores altos em vésperas de feriados e finais de semana.\n\n` +
+      `8️⃣ **Conduta Ética:** Tentativas de fraude resultam em banimento permanente da comunidade.\n\n` +
+      `9️⃣ **Negociações Privadas:** Todas as tratativas devem ser feitas no privado entre os interessados.\n\n` +
+      `🔟 **Isenção de Responsabilidade:** A comunidade e o bot não se responsabilizam por perdas ou problemas nas negociações.\n\n` +
+      `⚠️ **ACEITAR OS TERMOS significa concordar com todas essas condições e assumir total responsabilidade por suas ações.**`
     );
   }
 }

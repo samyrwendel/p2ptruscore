@@ -6,7 +6,9 @@ import { OperationsBroadcastService } from '../../../operations/operations-broad
 import { CurrencyApiService } from '../../../operations/currency-api.service';
 import { UsersService } from '../../../users/users.service';
 import { GroupsService } from '../../../groups/groups.service';
+import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
+import { validateUserTermsForOperation } from '../../../shared/terms-validation.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -46,6 +48,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     private readonly currencyApiService: CurrencyApiService,
     private readonly usersService: UsersService,
     private readonly groupsService: GroupsService,
+    private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly keyboardService: TelegramKeyboardService,
   ) {}
 
@@ -55,6 +58,12 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         '🔒 Este comando só pode ser usado em chat privado com o bot.\n\n' +
         '💡 Clique em @p2pscorebot para iniciar um chat privado e criar sua operação.',
       );
+      return;
+    }
+
+    // VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos
+    const isValid = await validateUserTermsForOperation(ctx, this.termsAcceptanceService, 'criar');
+    if (!isValid) {
       return;
     }
 
