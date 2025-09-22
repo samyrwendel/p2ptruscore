@@ -977,10 +977,20 @@ export class StartCommandHandler implements ITextCommandHandler {
         }
       ]);
 
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-      });
+      try {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          reply_markup: keyboard
+        });
+      } catch (editError: any) {
+        // Se a mensagem não foi modificada (conteúdo idêntico), apenas log e continue
+        if (editError.description && editError.description.includes('message is not modified')) {
+          this.logger.log(`ℹ️ Mensagem não modificada (página ${currentPage}) - conteúdo idêntico`);
+          return;
+        }
+        // Para outros erros, relançar
+        throw editError;
+      }
     } catch (error) {
       this.logger.error('Erro ao mostrar operações do usuário:', error);
       await ctx.editMessageText(
@@ -1041,19 +1051,29 @@ export class StartCommandHandler implements ITextCommandHandler {
 
       message += `**Total:** ${operations.length} operações ativas`;
 
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: '🔙 Voltar ao Menu',
-                callback_data: 'back_to_start_menu'
-              }
+      try {
+        await ctx.editMessageText(message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: '🔙 Voltar ao Menu',
+                  callback_data: 'back_to_start_menu'
+                }
+              ]
             ]
-          ]
+          }
+        });
+      } catch (editError: any) {
+        // Se a mensagem não foi modificada (conteúdo idêntico), apenas log e continue
+        if (editError.description && editError.description.includes('message is not modified')) {
+          this.logger.log(`ℹ️ Mensagem não modificada - conteúdo idêntico`);
+          return;
         }
-      });
+        // Para outros erros, relançar
+        throw editError;
+      }
     } catch (error) {
       this.logger.error('Erro ao mostrar operações disponíveis:', error);
       await ctx.editMessageText(
