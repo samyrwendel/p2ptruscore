@@ -1,12 +1,12 @@
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
 
 # Copiar arquivos de dependências
 COPY package*.json ./
 
-# Instalar dependências (incluindo cross-env compatível)
-RUN npm ci
+# Instalar dependências com versões compatíveis
+RUN npm ci --legacy-peer-deps
 
 # Copiar código fonte
 COPY . .
@@ -15,7 +15,7 @@ COPY . .
 RUN npm run build
 
 # Estágio de produção
-FROM node:18-alpine
+FROM node:20-alpine
 
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
@@ -31,7 +31,7 @@ RUN adduser -S nestjs -u 1001
 COPY --from=builder /usr/src/app/package*.json ./
 
 # Instalar apenas dependências de produção
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --legacy-peer-deps && npm cache clean --force
 
 # Copiar aplicação compilada
 COPY --from=builder /usr/src/app/dist ./dist

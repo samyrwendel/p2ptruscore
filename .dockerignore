@@ -1,13 +1,77 @@
+# Dependencies
 node_modules
-npm-debug.log
-dist
+npm-debug.log*
 
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# Logs
+logs
+*.log
+
+# Environment files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
 .DS_Store
-.env
+Thumbs.db
+
+# Git
 .git
 .gitignore
-.dockerignore
-Dockerfile
 
-.vscode/
-.idea/
+# Build artifacts
+dist
+build
+
+# Testing
+test
+*.test.js
+*.spec.js
+
+# Documentation
+*.md
+docs
+
+# Temporary files
+tmp
+temp
+
+# Scripts de desenvolvimento
+*.sh
+debug-*.js
+test-*.ts
+fix-*.ts
+add-*.js
+clean-*.js
+generate-*.js
+investigate-*.js
+populate-*.js
+setup-*.js
+sync-*.js
+verify-*.ts
+check-*.ts
+delete-*.ts
+
+# Arquivos de configuração local
+MCP-CONFIG.md
+TASKMANAGER.md
+task.md
+tasks.json
+CHANGELOG-*.md

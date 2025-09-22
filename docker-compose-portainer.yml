@@ -6,7 +6,7 @@ version: '3.8'
 services:
   trustp2p-bot:
     # Clone direto do repositório público com correções
-    image: node:18-alpine
+    image: node:20-alpine
     working_dir: /app
     command: >
       sh -c "
@@ -14,7 +14,7 @@ services:
         rm -rf /app/* /app/.* 2>/dev/null || true &&
         git clone https://github.com/samyrwendel/p2ptruscore.git . &&
         npm install -g @nestjs/cli &&
-        npm ci &&
+        npm ci --legacy-peer-deps &&
         npm install --save-dev @types/node@20 @types/jest @nestjs/testing supertest @types/supertest typescript@~5.6 ts-node@10.9.2 tsconfig-paths@^4 &&
         npm audit fix --force &&
         rm -f tsconfig.json tsconfig.build.json &&
