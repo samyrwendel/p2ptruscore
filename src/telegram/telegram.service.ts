@@ -416,7 +416,11 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       'resend_terms_',
       'view_terms_detail_',
       'quotes_', // Cotações são informações públicas
-      'start_' // Callbacks do comando /start
+      'start_', // Callbacks do comando /start
+      'back_to_start_menu', // Navegação
+      'my_ops_', // Navegação de operações
+      'reputation_close_', // Fechar reputação
+      'start_operation_flow' // Fluxo de operação
     ];
 
     // Verificar se é um callback permitido
