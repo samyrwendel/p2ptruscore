@@ -7,7 +7,7 @@ const logger = new Logger('TermsValidationUtils');
 export async function validateUserTermsForOperation(
   ctx: TextCommandContext,
   termsAcceptanceService: TermsAcceptanceService,
-  operationType: 'criar' | 'aceitar' | 'concluir' | 'cancelar' = 'participar'
+  operationType: 'criar' | 'aceitar' | 'concluir' | 'cancelar' | 'participar' = 'participar'
 ): Promise<boolean> {
   try {
     // Para comandos em grupos, verificar no próprio grupo

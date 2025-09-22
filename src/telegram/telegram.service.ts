@@ -245,16 +245,25 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       );
 
       if (!hasAccepted) {
-        await ctx.reply(
-          `🚫 **Acesso Restrito**\n\n` +
-          `❌ Você precisa aceitar os termos de responsabilidade antes de usar comandos no grupo.\n\n` +
-          `📋 **Como aceitar:**\n` +
-          `1️⃣ Use o comando \`/termos\` para ler os termos\n` +
-          `2️⃣ Clique em "✅ ACEITO OS TERMOS"\n` +
-          `3️⃣ Após aceitar, você poderá usar todos os comandos\n\n` +
-          `⚠️ **Importante:** Esta validação garante que todos os membros conhecem as regras da comunidade.`,
-          { parse_mode: 'Markdown' }
-        );
+        // Verificar se é um usuário existente (tem karma/histórico no sistema)
+        const isLegacyUser = await this.isLegacyUser(ctx.from.id);
+        
+        if (isLegacyUser) {
+          // Para usuários existentes, apresentar termos de forma amigável
+          await this.presentTermsToLegacyUser(ctx);
+        } else {
+          // Para usuários novos, mensagem mais restritiva
+          await ctx.reply(
+            `🚫 **Acesso Restrito**\n\n` +
+            `❌ Você precisa aceitar os termos de responsabilidade antes de usar comandos no grupo.\n\n` +
+            `📋 **Como aceitar:**\n` +
+            `1️⃣ Use o comando \`/termos\` para ler os termos\n` +
+            `2️⃣ Clique em "✅ ACEITO OS TERMOS"\n` +
+            `3️⃣ Após aceitar, você poderá usar todos os comandos\n\n` +
+            `⚠️ **Importante:** Esta validação garante que todos os membros conhecem as regras da comunidade.`,
+            { parse_mode: 'Markdown' }
+          );
+        }
         
         this.logger.log(`🚫 Comando bloqueado para usuário ${ctx.from.id} - termos não aceitos`);
         return false;
@@ -265,6 +274,52 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       this.logger.error(`Erro na validação global de termos para usuário ${ctx.from.id}:`, error);
       return false;
     }
+  }
+
+  private async isLegacyUser(userId: number): Promise<boolean> {
+    try {
+      // Verificar se usuário tem histórico no sistema
+      // Se tem karma, operações ou avaliações, é considerado usuário existente
+      
+      // Por enquanto, implementação simples: se o sistema de termos foi implementado recentemente,
+      // considerar todos os usuários atuais como legacy
+      // Em produção real, isso checaria: karma > 0, operações criadas, etc.
+      
+      // Data de implementação do sistema de termos (22/09/2025)
+      const termsImplementationDate = new Date('2025-09-22T00:00:00Z');
+      const now = new Date();
+      
+      // Se o sistema está rodando há menos de 24 horas, considerar usuários como legacy
+      // Isso dá tempo para todos os membros existentes aceitarem os termos
+      const hoursSinceImplementation = (now.getTime() - termsImplementationDate.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursSinceImplementation < 24) {
+        return true; // Período de graça para usuários existentes
+      }
+      
+      // Após 24h, apenas novos usuários precisarão aceitar automaticamente
+      return false;
+      
+    } catch (error) {
+      this.logger.error('Erro ao verificar se usuário é legacy:', error);
+      return false;
+    }
+  }
+
+  private async presentTermsToLegacyUser(ctx: TextCommandContext): Promise<void> {
+    const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+    
+    await ctx.reply(
+      `👋 **Olá ${userName}!**\n\n` +
+      `🔄 **Atualização do Sistema:** Implementamos novos termos de responsabilidade para maior segurança da comunidade.\n\n` +
+      `📋 **Como membro existente, você precisa aceitar os novos termos para continuar usando o bot.**\n\n` +
+      `✅ **É rápido e simples:**\n` +
+      `1️⃣ Use \`/termos\` para ler os termos atualizados\n` +
+      `2️⃣ Clique em "✅ ACEITO OS TERMOS"\n` +
+      `3️⃣ Continue usando o bot normalmente\n\n` +
+      `💡 **Tranquilo:** Você não será removido do grupo, apenas precisa aceitar os termos para usar comandos.`,
+      { parse_mode: 'Markdown' }
+    );
   }
 
   private async handleCallbackQuery(ctx: any) {
@@ -314,6 +369,14 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   private registerCommand(handler: ICommandHandler<any>) {
     this.commandHandlers.set(handler.command, handler);
     this.logger.log(`Command registered: ${handler.command}`);
+  }
+
+  private matchesCommand(text: string, pattern: string | RegExp): boolean {
+    if (typeof pattern === 'string') {
+      return text.toLowerCase().includes(pattern.toLowerCase());
+    } else {
+      return pattern.test(text);
+    }
   }
 
   private getCommandHandler(handler: ICommandHandler<any>) {
