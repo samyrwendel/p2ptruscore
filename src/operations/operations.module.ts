@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ScheduleModule } from '@nestjs/schedule';
+// import { ScheduleModule } from '@nestjs/schedule';
 import { HttpModule } from '@nestjs/axios';
 import { OperationsService } from './operations.service';
 import { OperationsRepository } from './operations.repository';
@@ -21,7 +21,7 @@ import { KarmaModule } from '../karma/karma.module';
       { name: Operation.name, schema: OperationSchema },
       { name: PendingEvaluation.name, schema: PendingEvaluationSchema },
     ]),
-    ScheduleModule.forRoot(),
+    // ScheduleModule.forRoot(),
     HttpModule,
     UsersModule,
     GroupsModule,
