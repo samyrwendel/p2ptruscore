@@ -138,13 +138,24 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     });
 
     // Listener para novos membros
-    this.bot.on('new_chat_members', async (ctx) => {
-      try {
-        await this.newMemberHandler.handleNewChatMembers(ctx);
-      } catch (error) {
-        this.logger.error('Error handling new chat members:', error);
-      }
-    });
+        this.bot.on('new_chat_members', async (ctx) => {
+          try {
+            await this.newMemberHandler.handleNewChatMembers(ctx);
+            // Apagar mensagem de entrada do usuário
+            await this.deleteSystemMessage(ctx);
+          } catch (error) {
+            this.logger.error('Error handling new chat members:', error);
+          }
+        });
+
+        this.bot.on('left_chat_member', async (ctx) => {
+          try {
+            // Apagar mensagem de saída do usuário
+            await this.deleteSystemMessage(ctx);
+          } catch (error) {
+            this.logger.error('Error handling left chat member:', error);
+          }
+        });
   }
 
   private async handleCommand(ctx: TextCommandContext) {
@@ -423,7 +434,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       'my_ops_prev_', // Página anterior de operações
       'my_ops_page_info', // Informação de página
       'reputation_close_', // Fechar reputação
-      'start_operation_flow' // Fluxo de operação
+      'start_operation_flow', // Fluxo de operação
+      'op_cancel' // Cancelar operação
     ];
 
     // Verificar se é um callback permitido
@@ -479,6 +491,17 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     } catch (error) {
       // Falha silenciosa - pode não ter permissão para apagar mensagens
       this.logger.warn(`⚠️ Não foi possível apagar comando: ${error.description || error.message}`);
+    }
+  }
+
+  private async deleteSystemMessage(ctx: any): Promise<void> {
+    try {
+      if (ctx.chat.type !== 'private') {
+        await ctx.deleteMessage();
+        this.logger.log(`🗑️ Mensagem de sistema apagada (entrada/saída de usuário)`);
+      }
+    } catch (error) {
+      this.logger.warn(`⚠️ Não foi possível apagar mensagem de sistema: ${error.description || error.message}`);
     }
   }
 
