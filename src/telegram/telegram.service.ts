@@ -346,6 +346,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         this.apagarOperacoesPendentesHandler,
         this.fecharOperacaoHandler,
         this.startHandler,
+        this.cotacoesHandler,
         this.termosHandler,
         this.newMemberHandler,
       ];

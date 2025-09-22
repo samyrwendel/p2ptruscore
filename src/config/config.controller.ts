@@ -666,6 +666,14 @@ export class ConfigController {
             
             // Última atualização
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('pt-BR');
+            
+            // Forçar atualização visual
+            setTimeout(() => {
+                if (status.status.mongodb.status === 'connected' && status.status.mongodb.readyState === 1) {
+                    const mongoIcon = document.getElementById('mongoStatusIcon');
+                    if (mongoIcon) mongoIcon.textContent = '✅';
+                }
+            }, 100);
         }
         
         function showStatusError(message) {
