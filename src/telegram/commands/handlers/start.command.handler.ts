@@ -308,35 +308,37 @@ export class StartCommandHandler implements ITextCommandHandler {
     if (data.startsWith('start_')) {
       try {
         if (data === 'start_create_operation') {
-          await ctx.answerCbQuery('💰 Criando operação...');
+          await ctx.answerCbQuery('🤝 Redirecionando para criação...');
           await ctx.editMessageText(
-            '💰 **Para criar uma operação P2P:**\n\n' +
-            'Digite o comando: `/criaroperacao`\n\n' +
-            'Ou use o comando diretamente no chat!',
-            { parse_mode: 'Markdown' }
+            '🤝 **Criar Operação P2P**\n\n' +
+            '💡 Para criar uma operação, você precisa usar o chat privado com o bot.\n\n' +
+            '**Clique no botão abaixo para iniciar:**',
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    {
+                      text: '🤝 Abrir Chat Privado',
+                      url: 'https://t.me/p2pscorebot?start=criar_operacao'
+                    }
+                  ],
+                  [
+                    {
+                      text: '🔙 Voltar ao Menu',
+                      callback_data: 'back_to_start_menu'
+                    }
+                  ]
+                ]
+              }
+            }
           );
         } else if (data === 'start_my_operations') {
           await ctx.answerCbQuery('📋 Carregando suas operações...');
           await this.showUserOperations(ctx);
         } else if (data === 'start_my_reputation') {
           await ctx.answerCbQuery('⭐ Carregando sua reputação...');
-          const userId = ctx.from.id;
-          await ctx.editMessageText(
-            '⭐ **Para ver sua reputação:**\n\n' +
-            'Digite o comando: `/reputacao`\n\n' +
-            'Ou clique no botão abaixo para ver agora:',
-            { 
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [[
-                  {
-                    text: '⭐ Ver Minha Reputação Agora',
-                    callback_data: `reputation_main_${userId}`
-                  }
-                ]]
-              }
-            }
-          );
+          await this.showUserReputation(ctx);
         } else if (data === 'start_quotes') {
           await ctx.answerCbQuery('💱 Carregando cotações...');
           await this.showQuotesMenu(ctx);
@@ -784,7 +786,7 @@ export class StartCommandHandler implements ITextCommandHandler {
         username: ctx.from.username,
       });
 
-      const operations = await this.operationsService.findUserOperations(user._id);
+      const operations = await this.operationsService.getUserOperations(user._id);
       
       if (operations.length === 0) {
         await ctx.editMessageText(
@@ -859,7 +861,7 @@ export class StartCommandHandler implements ITextCommandHandler {
   private async showAvailableOperations(ctx: any): Promise<void> {
     try {
       // Buscar operações disponíveis
-      const operations = await this.operationsService.findAvailableOperations();
+      const operations = await this.operationsService.getPendingOperations();
       
       if (operations.length === 0) {
         await ctx.editMessageText(
@@ -1013,5 +1015,107 @@ export class StartCommandHandler implements ITextCommandHandler {
       parse_mode: 'Markdown',
       reply_markup: keyboard
     });
+  }
+
+  private async showUserReputation(ctx: any): Promise<void> {
+    try {
+      // Buscar usuário
+      const user = await this.usersService.findOrCreate({
+        id: ctx.from.id,
+        first_name: ctx.from.first_name,
+        username: ctx.from.username,
+      });
+
+      // Buscar karma do usuário
+      const karmaData = await this.getKarmaForUserWithFallback(user, ctx.callbackQuery.message.chat.id);
+      
+      if (!karmaData) {
+        await ctx.editMessageText(
+          '⭐ **Sua Reputação**\n\n' +
+          '❌ Você ainda não possui reputação no sistema.\n\n' +
+          '💡 **Dica:** Participe de operações para construir sua reputação!',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: '🤝 Criar Operação',
+                    url: 'https://t.me/p2pscorebot?start=criar_operacao'
+                  }
+                ],
+                [
+                  {
+                    text: '🔙 Voltar ao Menu',
+                    callback_data: 'back_to_start_menu'
+                  }
+                ]
+              ]
+            }
+          }
+        );
+        return;
+      }
+
+      const reputationInfo = getReputationInfo(karmaData.karma);
+      
+      let message = '⭐ **Sua Reputação TrustScore**\n\n';
+      message += `**Pontuação:** ${karmaData.karma} pontos\n`;
+      message += `**Nível:** ${reputationInfo.level}\n`;
+      message += `**Status:** ${reputationInfo.emoji} ${reputationInfo.description}\n\n`;
+      
+      if (karmaData.history && karmaData.history.length > 0) {
+        message += `**Avaliações Recebidas:** ${karmaData.history.length}\n\n`;
+        
+        // Mostrar distribuição de estrelas
+        const stars5 = karmaData.stars5 || 0;
+        const stars4 = karmaData.stars4 || 0;
+        const stars3 = karmaData.stars3 || 0;
+        const stars2 = karmaData.stars2 || 0;
+        const stars1 = karmaData.stars1 || 0;
+        
+        if (stars5 + stars4 + stars3 + stars2 + stars1 > 0) {
+          message += '**Distribuição de Estrelas:**\n';
+          message += `⭐⭐⭐⭐⭐ ${stars5}\n`;
+          message += `⭐⭐⭐⭐ ${stars4}\n`;
+          message += `⭐⭐⭐ ${stars3}\n`;
+          message += `⭐⭐ ${stars2}\n`;
+          message += `⭐ ${stars1}\n\n`;
+        }
+      }
+
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: '🔙 Voltar ao Menu',
+                callback_data: 'back_to_start_menu'
+              }
+            ]
+          ]
+        }
+      });
+    } catch (error) {
+      this.logger.error('Erro ao mostrar reputação do usuário:', error);
+      await ctx.editMessageText(
+        '❌ **Erro ao carregar reputação**\n\n' +
+        'Não foi possível carregar sua reputação. Tente novamente.',
+        { 
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: '🔙 Voltar ao Menu',
+                  callback_data: 'back_to_start_menu'
+                }
+              ]
+            ]
+          }
+        }
+      );
+    }
   }
 }
