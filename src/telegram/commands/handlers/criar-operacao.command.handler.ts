@@ -61,11 +61,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       return;
     }
 
-    // VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos
-    const isValid = await validateUserTermsForOperation(ctx, this.termsAcceptanceService, 'criar');
-    if (!isValid) {
-      return;
-    }
+    // A validação de termos é feita globalmente no TelegramService
+    // Não precisa validar aqui novamente
 
     const sessionKey = `${ctx.from.id}_${ctx.chat.id}`;
     

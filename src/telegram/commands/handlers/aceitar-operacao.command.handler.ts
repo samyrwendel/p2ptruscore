@@ -63,11 +63,8 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
       return;
     }
 
-    // VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos
-    const isValid = await validateUserTermsForOperation(ctx, this.termsAcceptanceService, 'aceitar');
-    if (!isValid) {
-      return;
-    }
+    // A validação de termos é feita globalmente no TelegramService
+    // Não precisa validar aqui novamente
 
     const match = ctx.message.text.match(this.command);
     if (!match) {
@@ -240,12 +237,8 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
     }
     
     try {
-      // VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos
-      const { validateUserTermsForCallback } = await import('../../../shared/terms-validation.utils');
-      const isValid = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'aceitar');
-      if (!isValid) {
-        return true;
-      }
+      // A validação de termos é feita globalmente no TelegramService
+      // Não precisa validar aqui novamente
 
       // Extrair o ID da operação do callback
       const operationId = data.replace('accept_operation_', '');
