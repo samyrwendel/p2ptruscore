@@ -4,6 +4,7 @@ import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service'
 import { KarmaService } from '../../../karma/karma.service';
 import { UsersService } from '../../../users/users.service';
 import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
+import { OperationsService } from '../../../operations/operations.service';
 import { getReputationInfo } from '../../../shared/reputation.utils';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class StartCommandHandler implements ITextCommandHandler {
     private readonly karmaService: KarmaService,
     private readonly usersService: UsersService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
+    private readonly operationsService: OperationsService,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
@@ -314,13 +316,8 @@ export class StartCommandHandler implements ITextCommandHandler {
             { parse_mode: 'Markdown' }
           );
         } else if (data === 'start_my_operations') {
-          await ctx.answerCbQuery('📋 Buscando suas operações...');
-          await ctx.editMessageText(
-            '📋 **Para ver suas operações:**\n\n' +
-            'Digite o comando: `/minhasoperacoes`\n\n' +
-            'Você verá todas as suas operações ativas!',
-            { parse_mode: 'Markdown' }
-          );
+          await ctx.answerCbQuery('📋 Carregando suas operações...');
+          await this.showUserOperations(ctx);
         } else if (data === 'start_my_reputation') {
           await ctx.answerCbQuery('⭐ Carregando sua reputação...');
           const userId = ctx.from.id;
@@ -345,20 +342,13 @@ export class StartCommandHandler implements ITextCommandHandler {
           await this.showQuotesMenu(ctx);
         } else if (data === 'start_view_operations') {
           await ctx.answerCbQuery('📊 Carregando operações...');
-          await ctx.editMessageText(
-            '📊 **Para ver operações disponíveis:**\n\n' +
-            'Digite o comando: `/operacoes`\n\n' +
-            'Você verá todas as operações ativas do grupo!',
-            { parse_mode: 'Markdown' }
-          );
+          await this.showAvailableOperations(ctx);
         } else if (data === 'start_help') {
           await ctx.answerCbQuery('❓ Carregando ajuda...');
-          await ctx.editMessageText(
-            '❓ **Para ver todos os comandos:**\n\n' +
-            'Digite o comando: `/help` ou `/comandos`\n\n' +
-            'Você verá a lista completa de comandos disponíveis!',
-            { parse_mode: 'Markdown' }
-          );
+          await this.showHelpMenu(ctx);
+        } else if (data === 'back_to_start_menu') {
+          await ctx.answerCbQuery('🏠 Voltando ao menu...');
+          await this.showStartMenu(ctx);
         }
         return true;
       } catch (error) {
@@ -774,6 +764,246 @@ export class StartCommandHandler implements ITextCommandHandler {
           {
             text: '🔙 Voltar ao Menu',
             callback_data: 'quotes_back'
+          }
+        ]
+      ]
+    };
+
+    await ctx.editMessageText(message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+  }
+
+  private async showUserOperations(ctx: any): Promise<void> {
+    try {
+      // Buscar operações do usuário
+      const user = await this.usersService.findOrCreate({
+        id: ctx.from.id,
+        first_name: ctx.from.first_name,
+        username: ctx.from.username,
+      });
+
+      const operations = await this.operationsService.findUserOperations(user._id);
+      
+      if (operations.length === 0) {
+        await ctx.editMessageText(
+          '📋 **Suas Operações**\n\n' +
+          '❌ Você ainda não possui operações ativas.\n\n' +
+          '💡 **Dica:** Use o botão "Criar Operação" para criar sua primeira operação P2P!',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: '🤝 Criar Operação',
+                    url: 'https://t.me/p2pscorebot?start=criar_operacao'
+                  }
+                ],
+                [
+                  {
+                    text: '🔙 Voltar ao Menu',
+                    callback_data: 'back_to_start_menu'
+                  }
+                ]
+              ]
+            }
+          }
+        );
+        return;
+      }
+
+      let message = '📋 **Suas Operações Ativas**\n\n';
+      
+      operations.slice(0, 5).forEach((op: any, index: number) => {
+        const statusEmoji = op.status === 'pending' ? '⏳' : 
+                           op.status === 'accepted' ? '✅' : 
+                           op.status === 'completed' ? '🎉' : '❓';
+        
+        message += `${statusEmoji} **Operação ${index + 1}**\n`;
+        message += `**Tipo:** ${op.type === 'sell' ? 'Vender' : 'Comprar'}\n`;
+        message += `**Valor:** R$ ${op.amount}\n`;
+        message += `**Status:** ${op.status}\n\n`;
+      });
+
+      if (operations.length > 5) {
+        message += `... e mais ${operations.length - 5} operações\n\n`;
+      }
+
+      message += `**Total:** ${operations.length} operações`;
+
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: '🔙 Voltar ao Menu',
+                callback_data: 'back_to_start_menu'
+              }
+            ]
+          ]
+        }
+      });
+    } catch (error) {
+      this.logger.error('Erro ao mostrar operações do usuário:', error);
+      await ctx.editMessageText(
+        '❌ **Erro ao carregar operações**\n\n' +
+        'Não foi possível carregar suas operações. Tente novamente.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  private async showAvailableOperations(ctx: any): Promise<void> {
+    try {
+      // Buscar operações disponíveis
+      const operations = await this.operationsService.findAvailableOperations();
+      
+      if (operations.length === 0) {
+        await ctx.editMessageText(
+          '📊 **Operações Disponíveis**\n\n' +
+          '❌ Não há operações disponíveis no momento.\n\n' +
+          '💡 **Dica:** Seja o primeiro a criar uma operação!',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: '🤝 Criar Operação',
+                    url: 'https://t.me/p2pscorebot?start=criar_operacao'
+                  }
+                ],
+                [
+                  {
+                    text: '🔙 Voltar ao Menu',
+                    callback_data: 'back_to_start_menu'
+                  }
+                ]
+              ]
+            }
+          }
+        );
+        return;
+      }
+
+      let message = '📊 **Operações Disponíveis**\n\n';
+      
+      operations.slice(0, 3).forEach((op: any, index: number) => {
+        const typeEmoji = op.type === 'sell' ? '💰' : '🛒';
+        
+        message += `${typeEmoji} **Operação ${index + 1}**\n`;
+        message += `**Tipo:** ${op.type === 'sell' ? 'Vender' : 'Comprar'}\n`;
+        message += `**Valor:** R$ ${op.amount}\n`;
+        message += `**Criador:** ${op.creator?.userName || op.creator?.firstName || 'Usuário'}\n\n`;
+      });
+
+      if (operations.length > 3) {
+        message += `... e mais ${operations.length - 3} operações disponíveis\n\n`;
+      }
+
+      message += `**Total:** ${operations.length} operações ativas`;
+
+      await ctx.editMessageText(message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: '🔙 Voltar ao Menu',
+                callback_data: 'back_to_start_menu'
+              }
+            ]
+          ]
+        }
+      });
+    } catch (error) {
+      this.logger.error('Erro ao mostrar operações disponíveis:', error);
+      await ctx.editMessageText(
+        '❌ **Erro ao carregar operações**\n\n' +
+        'Não foi possível carregar as operações. Tente novamente.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  private async showHelpMenu(ctx: any): Promise<void> {
+    const message = (
+      '❓ **Ajuda - TrustScore P2P Bot**\n\n' +
+      '**Comandos Principais:**\n\n' +
+      '🤝 **Operações:**\n' +
+      '• `/criaroperacao` - Criar nova operação\n' +
+      '• `/operacoes` - Ver operações disponíveis\n' +
+      '• `/minhasoperacoes` - Suas operações\n\n' +
+      '⭐ **Reputação:**\n' +
+      '• `/reputacao` - Ver sua reputação\n' +
+      '• `/reputacao @usuario` - Ver reputação de alguém\n\n' +
+      '💱 **Cotações:**\n' +
+      '• `/cotacoes` - Ver cotações atuais\n\n' +
+      '📋 **Outros:**\n' +
+      '• `/termos` - Ver termos de responsabilidade\n' +
+      '• `/help` - Esta ajuda\n\n' +
+      '💡 **Dica:** Use os botões do menu para navegação rápida!'
+    );
+
+    await ctx.editMessageText(message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: '🔙 Voltar ao Menu',
+              callback_data: 'back_to_start_menu'
+            }
+          ]
+        ]
+      }
+    });
+  }
+
+  private async showStartMenu(ctx: any): Promise<void> {
+    const message = (
+      '**Bem-vindo ao P2P Score Bot!**\n\n' +
+      '**Principais funcionalidades:**\n' +
+      '• Criar e gerenciar operações P2P\n' +
+      '• Ver reputação e histórico de usuários\n' +
+      '• Avaliar transações e parceiros\n' +
+      '• Consultar cotações atuais\n\n' +
+      '**Use os botões abaixo para navegar rapidamente:**'
+    );
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '🤝 Criar Operação',
+            url: 'https://t.me/p2pscorebot?start=criar_operacao'
+          },
+          {
+            text: '📋 Minhas Operações',
+            callback_data: 'start_my_operations'
+          }
+        ],
+        [
+          {
+            text: '⭐ Minha Reputação',
+            callback_data: 'start_my_reputation'
+          },
+          {
+            text: '💱 Cotações',
+            callback_data: 'start_quotes'
+          }
+        ],
+        [
+          {
+            text: '📊 Ver Operações',
+            callback_data: 'start_view_operations'
+          },
+          {
+            text: '❓ Ajuda',
+            callback_data: 'start_help'
           }
         ]
       ]
