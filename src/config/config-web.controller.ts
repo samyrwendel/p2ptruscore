@@ -14,10 +14,12 @@ export class ConfigWebController {
     const envPath = path.join(process.cwd(), '.env');
     const envExists = fs.existsSync(envPath);
     
-    let currentConfig = {
+   let currentConfig = {
       TELEGRAM_BOT_TOKEN: '',
       TELEGRAM_BOT_USERNAME: '',
-      TELEGRAM_GROUPS: '',
+      TELEGRAM_GROUP_ID: '',
+      TELEGRAM_THREAD_ID: '',
+      CURRENCY_API_KEY: '',
       MONGODB_CNN: 'mongodb://admin:password123@mongodb:27017/trustscore_bot?authSource=admin',
       PORT: '3000',
       NODE_ENV: 'production'
@@ -66,8 +68,14 @@ TELEGRAM_BOT_TOKEN=${config.TELEGRAM_BOT_TOKEN || ''}
 # Username do bot (sem @)
 TELEGRAM_BOT_USERNAME=${config.TELEGRAM_BOT_USERNAME || ''}
 
-# IDs dos grupos Telegram (separados por vírgula)
-TELEGRAM_GROUPS=${config.TELEGRAM_GROUPS || ''}
+# ID do grupo Telegram principal
+TELEGRAM_GROUP_ID=${config.TELEGRAM_GROUP_ID || ''}
+
+# ID do tópico P2P dentro do grupo (opcional)
+TELEGRAM_THREAD_ID=${config.TELEGRAM_THREAD_ID || ''}
+
+# Chave da API de cotações (AwesomeAPI)
+CURRENCY_API_KEY=${config.CURRENCY_API_KEY || '3d7237cbd0d3ee56ce8eeaac087135beddf5d8fc3292dc5ae44acfee97d86918'}
 
 # MongoDB Connection String
 MONGODB_CNN=${config.MONGODB_CNN || 'mongodb://admin:password123@mongodb:27017/trustscore_bot?authSource=admin'}
@@ -152,6 +160,16 @@ RATE_LIMIT_LIMIT=100
             'Adicione o bot como administrador nos grupos',
             'Use /start no grupo para obter o ID',
             'Copie os IDs dos grupos (números negativos)'
+          ]
+        },
+        {
+          title: 'Configurar API de Cotações',
+          description: 'Configure a chave da API para cotações de moedas',
+          details: [
+            'Acesse: https://docs.awesomeapi.com.br/api-de-moedas',
+            'Registre-se para obter uma chave gratuita',
+            'Cole a chave no campo correspondente',
+            'A chave padrão funciona mas tem limites de uso'
           ]
         },
         {

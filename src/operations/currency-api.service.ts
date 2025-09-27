@@ -30,7 +30,7 @@ export interface CurrencyApiResponse {
 @Injectable()
 export class CurrencyApiService {
   private readonly logger = new Logger(CurrencyApiService.name);
-  private readonly apiKey = '3d7237cbd0d3ee56ce8eeaac087135beddf5d8fc3292dc5ae44acfee97d86918';
+  private readonly apiKey = process.env.CURRENCY_API_KEY || '3d7237cbd0d3ee56ce8eeaac087135beddf5d8fc3292dc5ae44acfee97d86918';
   private readonly baseUrl = 'https://economia.awesomeapi.com.br/json/last';
 
   constructor(private readonly httpService: HttpService) {}
