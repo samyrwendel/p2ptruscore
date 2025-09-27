@@ -1,12 +1,15 @@
 # 🐳 Instalação Docker - TrustScore Bot
 
+> ⚠️ **ATENÇÃO**: Esta documentação é para instalação com MongoDB local via Docker. 
+> Se você já possui MongoDB em outra VPS, use o arquivo `DOCKER-SETUP-EXTERNAL-MONGO.md`
+
 ## 📋 Pré-requisitos
 
 - Docker e Docker Compose instalados
 - Porta 3000 e 8081 disponíveis
 - Token do bot Telegram (obtenha em @BotFather)
 
-## 🚀 Instalação Rápida
+## 🚀 Instalação Rápida (MongoDB Local)
 
 ### 1. Clone o repositório
 ```bash
@@ -14,12 +17,20 @@ git clone https://github.com/samyrwendel/p2ptruscore.git
 cd p2ptruscore
 ```
 
-### 2. Inicie os containers
+### 2. Para usar MongoDB local via Docker:
 ```bash
+# Use o docker-compose com MongoDB incluído
+cp docker-compose-with-mongo.yml docker-compose.yml
 docker-compose up -d
 ```
 
-### 3. Configure via interface web
+### 3. Para usar MongoDB externo:
+```bash
+# Use o docker-compose padrão (sem MongoDB)
+docker-compose up -d
+```
+
+### 4. Configure via interface web
 Acesse: **http://localhost:3000/setup**
 
 ## 🔧 Configuração
