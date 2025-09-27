@@ -206,10 +206,22 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       const text = ctx.message.text;
       this.logger.log(`🎯 Processando comando: ${text}`);
 
-      // VALIDAÇÃO GLOBAL: Verificar se usuário aceitou termos (exceto comandos permitidos)
+      // VALIDAÇÃO GLOBAL 1: Verificar se usuário é membro ativo do grupo (exceto comandos permitidos)
+      if (await this.shouldValidateActiveMembership(ctx, text)) {
+        const isActiveMember = await this.validateActiveMembershipGlobally(ctx);
+        this.logger.log(`🔍 Resultado validação de membro ativo para ${ctx.from.id}: ${isActiveMember ? 'APROVADO' : 'NEGADO'}`);
+        if (!isActiveMember) {
+          this.logger.warn(`❌ COMANDO BLOQUEADO - Usuário ${ctx.from.id} (@${ctx.from.username || 'sem_username'}) não é membro ativo - Comando: ${text}`);
+          return; // Bloquear execução do comando
+        }
+      }
+
+      // VALIDAÇÃO GLOBAL 2: Verificar se usuário aceitou termos (exceto comandos permitidos)
       if (await this.shouldValidateTerms(ctx, text)) {
         const hasAccepted = await this.validateUserTermsGlobally(ctx);
+        this.logger.log(`🔍 Resultado validação de termos para ${ctx.from.id}: ${hasAccepted ? 'APROVADO' : 'NEGADO'}`);
         if (!hasAccepted) {
+          this.logger.warn(`❌ COMANDO BLOQUEADO - Usuário ${ctx.from.id} (@${ctx.from.username || 'sem_username'}) não aceitou termos - Comando: ${text}`);
           return; // Bloquear execução do comando
         }
       }
@@ -234,6 +246,119 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
+  private async shouldValidateActiveMembership(ctx: TextCommandContext, text: string): Promise<boolean> {
+    // Comandos que NÃO precisam de validação de membro ativo (podem ser usados por qualquer um)
+    const allowedCommands = [
+      '/termos',
+      '/terms',
+      '/start', // Permitir /start para mostrar informações
+      '/help',
+      '/comandos',
+      '/cotacoes' // Cotações são informações públicas
+    ];
+
+    // Verificar se é um comando permitido
+    const isAllowedCommand = allowedCommands.some(cmd => 
+      text.toLowerCase().startsWith(cmd.toLowerCase())
+    );
+
+    // Log detalhado para debug
+    this.logger.log(`🔍 Validação de membro ativo - Usuário: ${ctx.from.id} (@${ctx.from.username || 'sem_username'}), Comando: ${text}, Permitido: ${isAllowedCommand}`);
+
+    // Só validar membro ativo se não for comando permitido E se for em grupo OU chat privado
+    return !isAllowedCommand;
+  }
+
+  private async validateActiveMembershipGlobally(ctx: TextCommandContext): Promise<boolean> {
+    try {
+      this.logger.log(`🔐 Iniciando validação global de membro ativo - Usuário: ${ctx.from.id} (@${ctx.from.username || 'sem_username'}), Chat: ${ctx.chat.type}`);
+      
+      // Para comandos em grupos, verificar se usuário está ativo no próprio grupo
+      if (ctx.chat.type !== 'private') {
+        const isActiveMember = await this.checkMembershipInGroup(ctx.from.id, ctx.chat.id, ctx);
+        this.logger.log(`📊 Resultado validação em grupo ${ctx.chat.id}: ${isActiveMember ? 'APROVADO' : 'NEGADO'}`);
+        return isActiveMember;
+      } else {
+        // Para comandos privados, verificar em grupos configurados
+        const configuredGroups = process.env.TELEGRAM_GROUPS?.split(',').map(id => parseInt(id.trim())) || [];
+        this.logger.log(`🔍 Verificando membro em ${configuredGroups.length} grupos configurados: ${configuredGroups.join(', ')}`);
+        
+        for (const groupId of configuredGroups) {
+          const isActiveMember = await this.checkMembershipInGroup(ctx.from.id, groupId, ctx);
+          this.logger.log(`📊 Grupo ${groupId}: ${isActiveMember ? 'MEMBRO ATIVO' : 'NÃO MEMBRO/INATIVO'}`);
+          if (isActiveMember) {
+            this.logger.log(`✅ Usuário ${ctx.from.id} aprovado - é membro ativo do grupo ${groupId}`);
+            return true; // Se é membro ativo em pelo menos um grupo configurado
+          }
+        }
+
+        // Se não é membro ativo em nenhum grupo configurado - ENVIAR MENSAGEM DE AVISO
+        this.logger.warn(`❌ ACESSO NEGADO - Usuário ${ctx.from.id} (@${ctx.from.username || 'sem_username'}) não é membro ativo de nenhum grupo configurado`);
+        
+        try {
+          // Enviar notificação visual para usuários não-membros
+          await this.sendNonMemberNotification(ctx);
+        } catch (error) {
+          this.logger.error('Erro ao enviar notificação de acesso negado:', error);
+          // Falha silenciosa - não poluir o chat
+        }
+        
+        return false;
+      }
+    } catch (error) {
+      this.logger.error(`Erro na validação global de membro ativo para usuário ${ctx.from.id}:`, error);
+      return false;
+    }
+  }
+
+  private async checkMembershipInGroup(userId: number, groupId: number, ctx: TextCommandContext): Promise<boolean> {
+    try {
+      const memberInfo = await this.bot.telegram.getChatMember(groupId, userId);
+      const activeMemberStatuses = ['member', 'administrator', 'creator'];
+      
+      const isActiveMember = activeMemberStatuses.includes(memberInfo.status);
+      
+      if (!isActiveMember) {
+        this.logger.warn(`Usuário ${userId} não é membro ativo do grupo ${groupId}. Status: ${memberInfo.status}`);
+        
+        // Enviar notificação visual para usuário não-membro
+        try {
+          await this.sendNonMemberNotification(ctx);
+        } catch (error) {
+          this.logger.error('Erro ao enviar notificação de não-membro:', error);
+        }
+        
+        return false;
+      }
+
+      this.logger.log(`✅ Usuário ${userId} é membro ativo do grupo ${groupId} (Status: ${memberInfo.status})`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Erro ao verificar membro ${userId} no grupo ${groupId}:`, error);
+      
+      // Se o erro for "member not found", "user not found" ou similar, considerar como não-membro
+      if (error.message?.includes('member not found') || 
+          error.message?.includes('user not found') || 
+          error.message?.includes('chat not found') ||
+          error.response?.description?.includes('member not found')) {
+        this.logger.log(`❌ Usuário ${userId} não é membro do grupo ${groupId}`);
+        
+        // Enviar notificação visual para usuário não-membro
+        try {
+          await this.sendNonMemberNotification(ctx);
+        } catch (error) {
+          this.logger.error('Erro ao enviar notificação de não-membro:', error);
+        }
+        
+        return false;
+      }
+      
+      // Para outros erros, assumir que é membro (fallback seguro)
+      this.logger.warn(`Assumindo que usuário ${userId} é membro devido a erro na verificação`);
+      return true;
+    }
+  }
+
   private async shouldValidateTerms(ctx: TextCommandContext, text: string): Promise<boolean> {
     // Comandos que NÃO precisam de validação de termos (podem ser usados sem aceitar)
     const allowedCommands = [
@@ -249,8 +374,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       text.toLowerCase().startsWith(cmd.toLowerCase())
     );
 
-    // Só validar termos se não for comando permitido E se for em grupo
-    return !isAllowedCommand && ctx.chat.type !== 'private';
+    // Só validar termos se não for comando permitido (tanto em grupos quanto em chat privado)
+    return !isAllowedCommand;
   }
 
   private async validateUserTermsGlobally(ctx: TextCommandContext): Promise<boolean> {
@@ -264,8 +389,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         // Verificar se é um usuário existente (tem karma/histórico no sistema)
         const isLegacyUser = await this.isLegacyUser(ctx.from.id);
         
-        // Apresentar termos diretamente para aceite (tanto legacy quanto novos)
-        await this.presentTermsForAcceptance(ctx, isLegacyUser);
+        // Apresentar notificação visual de termos para aceite
+        await this.sendTermsNotification(ctx, isLegacyUser);
         
         this.logger.log(`🚫 Comando bloqueado para usuário ${ctx.from.id} - termos não aceitos`);
         return false;
@@ -308,7 +433,148 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
-  private async presentTermsForAcceptance(ctx: TextCommandContext, isLegacyUser: boolean): Promise<void> {
+  private async sendNonMemberNotification(ctx: TextCommandContext): Promise<void> {
+    // APENAS POPUP - Não enviar mensagens no chat
+    // Verificar se é um contexto de callback (tem callbackQuery) e se answerCbQuery está disponível
+    if (ctx.callbackQuery && typeof ctx.answerCbQuery === 'function') {
+      try {
+        await ctx.answerCbQuery(
+          `🚫 ACESSO NEGADO\n\n` +
+          `❌ Você precisa ser MEMBRO ATIVO do grupo para usar o P2P!\n\n` +
+          `📋 COMO RESOLVER:\n` +
+          `1️⃣ Entre no grupo TrustScore P2P\n` +
+          `2️⃣ Certifique-se de não ter sido removido\n` +
+          `3️⃣ Aceite os termos de responsabilidade\n` +
+          `4️⃣ Volte aqui e tente novamente\n\n` +
+          `💡 Apenas membros ativos podem usar o P2P!`,
+          { show_alert: true }
+        );
+        return;
+      } catch (error) {
+        this.logger.error('Erro ao enviar popup de não-membro:', error);
+        // REMOVIDO: Não enviar mensagem no chat em caso de erro
+        // Apenas logar o erro
+      }
+    }
+
+    // REMOVIDO: Não enviar mensagem no chat para comandos de texto
+    // Apenas retornar silenciosamente
+    this.logger.warn(`Usuário ${ctx.from.id} não é membro ativo - comando bloqueado silenciosamente`);
+  }
+
+  private async sendTermsNotification(ctx: TextCommandContext, isLegacyUser: boolean): Promise<void> {
+    const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+    
+    const introMessage = isLegacyUser 
+      ? `👋 **Olá ${userName}!**\n\n🔄 **Atualização:** Novos termos implementados para maior segurança.\n\n`
+      : `🎉 **Bem-vindo(a) ${userName}!**\n\n`;
+    
+    const message = (
+      introMessage +
+      `⚠️ **IMPORTANTE:** Você precisa aceitar os termos de responsabilidade antes de poder interagir ou abrir operações no P2P.\n\n` +
+      `📋 **Para continuar:**\n` +
+      `1️⃣ Leia os termos de responsabilidade\n` +
+      `2️⃣ Aceite os termos clicando no botão abaixo\n` +
+      `3️⃣ Após aceitar, você poderá usar todos os comandos\n\n` +
+      `👤 **Usuário:** ${userName}\n` +
+      `🆔 **ID:** \`${ctx.from.id}\`\n` +
+      `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`
+    );
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '📋 Ver e Aceitar Termos',
+            callback_data: `view_accept_terms_${ctx.from.id}_${ctx.chat.id}`
+          }
+        ],
+        [
+          {
+            text: '✅ OK, Entendi',
+            callback_data: `acknowledge_terms_needed_${ctx.from.id}`
+          }
+        ]
+      ]
+    };
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+   }
+
+   private async handleNotificationCallbacks(ctx: any): Promise<boolean> {
+     const callbackData = ctx.callbackQuery?.data;
+     
+     if (!callbackData) {
+       return false;
+     }
+
+     // Callbacks de notificação de não-membro
+     if (callbackData.startsWith('acknowledge_non_member_')) {
+       await ctx.answerCbQuery('✅ Mensagem confirmada!');
+       await ctx.editMessageText(
+         '✅ **Confirmado**\n\n' +
+         'Você confirmou que entendeu os requisitos para usar o bot.\n\n' +
+         '📋 **Lembre-se:**\n' +
+         '• Entre no grupo do TrustScore P2P\n' +
+         '• Aceite os termos de responsabilidade\n' +
+         '• Volte aqui para usar o bot\n\n' +
+         '💡 Use `/start` para ver os comandos disponíveis.',
+         { parse_mode: 'Markdown' }
+       );
+       return true;
+     }
+
+     // Callbacks de notificação de termos necessários
+     if (callbackData.startsWith('acknowledge_terms_needed_')) {
+       await ctx.answerCbQuery('✅ Mensagem confirmada!');
+       await ctx.editMessageText(
+         '✅ **Confirmado**\n\n' +
+         'Você confirmou que entendeu a necessidade de aceitar os termos.\n\n' +
+         '📋 **Para aceitar os termos:**\n' +
+         '• Use o comando `/termos`\n' +
+         '• Leia os termos completos\n' +
+         '• Clique em "ACEITO OS TERMOS"\n\n' +
+         '💡 Após aceitar, você poderá usar todos os comandos do bot.',
+         { parse_mode: 'Markdown' }
+       );
+       return true;
+     }
+
+     // Callback para ver e aceitar termos
+     if (callbackData.startsWith('view_accept_terms_')) {
+       const parts = callbackData.split('_');
+       const userId = parseInt(parts[3]);
+       const chatId = parseInt(parts[4]);
+       
+       if (userId === ctx.from.id) {
+         await ctx.answerCbQuery('📋 Redirecionando para os termos...');
+         
+         // Verificar se é usuário legacy
+         const isLegacyUser = await this.isLegacyUser(ctx.from.id);
+         
+         // Apresentar os termos completos para aceite
+         await this.presentTermsForAcceptance(ctx, isLegacyUser);
+         
+         // Editar a mensagem original
+         await ctx.editMessageText(
+           '📋 **Termos Apresentados**\n\n' +
+           'Os termos de responsabilidade foram apresentados acima.\n' +
+           'Por favor, leia-os cuidadosamente e clique em "ACEITO OS TERMOS" se concordar.',
+           { parse_mode: 'Markdown' }
+         );
+       } else {
+         await ctx.answerCbQuery('❌ Este botão não é para você!', { show_alert: true });
+       }
+       return true;
+     }
+
+     return false;
+   }
+
+   private async presentTermsForAcceptance(ctx: TextCommandContext, isLegacyUser: boolean): Promise<void> {
     const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
     const termsText = this.termsAcceptanceService.getTermsText();
     
@@ -354,7 +620,14 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
   private async handleCallbackQuery(ctx: any) {
     try {
-      // VALIDAÇÃO GLOBAL: Verificar se usuário aceitou termos para callbacks (exceto callbacks de termos)
+      this.logger.log(`📞 Callback recebido: ${ctx.callbackQuery?.data} de usuário ${ctx.from?.id}`);
+
+      // Verificar se é um callback de notificação (não precisa de validação)
+      if (await this.handleNotificationCallbacks(ctx)) {
+        return;
+      }
+
+      // Validar termos apenas para callbacks que não são de notificação
       if (await this.shouldValidateTermsForCallback(ctx)) {
         const hasAccepted = await this.validateUserTermsForCallback(ctx);
         if (!hasAccepted) {
@@ -375,8 +648,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         this.operacoesDisponiveisHandler,
         this.apagarOperacoesPendentesHandler,
         this.fecharOperacaoHandler,
+        this.cotacoesHandler, // MOVIDO ANTES do startHandler para processar quotes_back corretamente
         this.startHandler,
-        this.cotacoesHandler,
         this.termosHandler,
         this.newMemberHandler,
       ];

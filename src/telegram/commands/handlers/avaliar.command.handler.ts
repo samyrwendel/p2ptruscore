@@ -568,8 +568,12 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
       } catch (error) {
         this.logger.error('Erro ao mostrar sugestões de comentário:', error);
         // Fallback: finalizar sem comentário
-        const userId = new Types.ObjectId(ctx.from.id.toString());
-        const pendingEvaluations = await this.pendingEvaluationService.getPendingEvaluations(userId);
+        const user = await this.usersService.findOneByUserId(ctx.from.id);
+        if (!user) {
+          this.logger.error('Usuário não encontrado para fallback');
+          return;
+        }
+        const pendingEvaluations = await this.pendingEvaluationService.getPendingEvaluations(user._id);
         const pendingEvaluation = pendingEvaluations.find(evaluation => evaluation.operation.toString() === operationId);
         
         if (pendingEvaluation) {
@@ -999,5 +1003,46 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
       this.logger.error('❌ Erro ao finalizar avaliação:', error);
       await ctx.reply('❌ Erro ao processar avaliação. Tente novamente.');
     }
+  }
+
+  // Método para processar entrada de texto (comentários personalizados)
+  async handleTextInput(ctx: TextCommandContext): Promise<void> {
+    try {
+      const userId = ctx.from.id.toString();
+      const pendingData = this.pendingCustomComments.get(userId);
+      
+      if (!pendingData) {
+        // Não há comentário personalizado pendente para este usuário
+        return;
+      }
+      
+      const customComment = ctx.message.text.trim();
+      
+      // Validar comentário
+      if (customComment.length === 0) {
+        await ctx.reply('❌ Comentário não pode estar vazio. Digite um comentário válido:');
+        return;
+      }
+      
+      if (customComment.length > 500) {
+        await ctx.reply('❌ Comentário muito longo. Máximo 500 caracteres. Digite um comentário mais curto:');
+        return;
+      }
+      
+      this.logger.log(`💬 [DEBUG] Processando comentário personalizado: "${customComment}"`);
+      
+      // Processar o comentário personalizado
+      await this.processCustomComment(ctx, pendingData, customComment);
+      
+    } catch (error) {
+      this.logger.error('❌ Erro ao processar entrada de texto (comentário personalizado):', error);
+      await ctx.reply('❌ Erro ao processar comentário. Tente novamente.');
+    }
+  }
+
+  // Método para verificar se há sessão ativa (comentário personalizado pendente)
+  hasActiveSession(sessionKey: string): boolean {
+    const userId = sessionKey.split('_')[0];
+    return this.pendingCustomComments.has(userId);
   }
 }

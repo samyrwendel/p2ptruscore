@@ -219,6 +219,9 @@ export class OperationsService {
     
     this.logger.log(`Operation ${operationId} reverted to pending by user ${userId}`);
     
+    // Buscar a operação novamente para garantir que temos todos os campos, incluindo privateEvaluationMessageId
+    const fullOperation = await this.getOperationById(operationId);
+    
     // Excluir avaliações pendentes relacionadas a esta operação
     try {
       const deletedCount = await this.pendingEvaluationRepository.deletePendingEvaluationsByOperation(operationId);
@@ -227,8 +230,8 @@ export class OperationsService {
       this.logger.warn(`Could not remove pending evaluations for operation ${operationId}:`, error);
     }
     
-    // Notificar o grupo sobre a reversão
-    await this.broadcastService.notifyOperationReverted(updatedOperation, userId);
+    // Notificar o grupo sobre a reversão usando a operação completa
+    await this.broadcastService.notifyOperationReverted(fullOperation, userId);
 
     return updatedOperation;
   }
@@ -239,10 +242,16 @@ export class OperationsService {
   ): Promise<Operation> {
     const operation = await this.getOperationById(operationId);
 
+    // Log para debug
+    this.logger.log(`Tentativa de conclusão - OperationId: ${operationId}, UserId: ${userId}`);
+    this.logger.log(`Operation Creator: ${operation.creator}, Acceptor: ${operation.acceptor}`);
+    this.logger.log(`UserId type: ${typeof userId}, Creator type: ${typeof operation.creator}`);
+
     if (
       operation.creator.toString() !== userId.toString() &&
       operation.acceptor?.toString() !== userId.toString()
     ) {
+      this.logger.error(`Validação falhou - Creator: ${operation.creator.toString()}, Acceptor: ${operation.acceptor?.toString()}, UserId: ${userId.toString()}`);
       throw new Error(
         'Apenas os participantes da operação podem marcá-la como concluída',
       );
@@ -252,22 +261,46 @@ export class OperationsService {
       throw new Error('Esta operação já foi concluída anteriormente');
     }
     
-    if (operation.status !== OperationStatus.ACCEPTED) {
+    if (operation.status !== OperationStatus.ACCEPTED && operation.status !== OperationStatus.PENDING_COMPLETION) {
       throw new Error('Esta operação não pode ser concluída. Status atual: ' + operation.status);
     }
 
-    const updatedOperation = await this.operationsRepository.completeOperation(
+    // Se já há uma solicitação de conclusão pendente
+    if (operation.status === OperationStatus.PENDING_COMPLETION) {
+      // Verificar se é a outra parte confirmando
+      if (operation.completionRequestedBy?.toString() === userId.toString()) {
+        throw new Error('Você já solicitou a conclusão. Aguarde a confirmação da outra parte.');
+      }
+      
+      // A outra parte está confirmando - concluir definitivamente
+      const updatedOperation = await this.operationsRepository.completeOperation(operationId);
+      
+      if (!updatedOperation) {
+        throw new Error('Erro ao concluir operação');
+      }
+
+      this.logger.log(`Operation ${operationId} completed by confirmation from user ${userId}`);
+      
+      // Notify the group about the completion
+      await this.broadcastService.notifyOperationCompleted(updatedOperation);
+      
+      return updatedOperation;
+    }
+
+    // Primeira solicitação de conclusão - marcar como pendente
+    const updatedOperation = await this.operationsRepository.requestCompletion(
       operationId,
+      userId
     );
 
     if (!updatedOperation) {
-      throw new Error('Erro ao concluir operação');
+      throw new Error('Erro ao solicitar conclusão da operação');
     }
 
-    this.logger.log(`Operation ${operationId} completed by user ${userId}`);
+    this.logger.log(`Operation ${operationId} completion requested by user ${userId}`);
     
-    // Notify the group about the completion
-    await this.broadcastService.notifyOperationCompleted(updatedOperation);
+    // Notify the other party about the completion request
+    await this.broadcastService.notifyCompletionRequested(updatedOperation, userId);
     
     return updatedOperation;
   }

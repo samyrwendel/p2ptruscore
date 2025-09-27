@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Markup } from 'telegraf';
 import { Types } from 'mongoose';
+import { InjectBot } from 'nestjs-telegraf';
+import { Telegraf, Context } from 'telegraf';
+import { Update } from 'telegraf/types';
 import { OperationsService } from '../../../operations/operations.service';
 import { OperationsBroadcastService } from '../../../operations/operations-broadcast.service';
 import { CurrencyApiService } from '../../../operations/currency-api.service';
@@ -9,6 +12,7 @@ import { GroupsService } from '../../../groups/groups.service';
 import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { validateUserTermsForOperation } from '../../../shared/terms-validation.utils';
+import { validateActiveMembership } from '../../../shared/group-membership.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -50,6 +54,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     private readonly groupsService: GroupsService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly keyboardService: TelegramKeyboardService,
+    @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
   async handle(ctx: TextCommandContext): Promise<void> {
@@ -59,6 +64,12 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         '💡 Clique em @p2pscorebot para iniciar um chat privado e criar sua operação.',
       );
       return;
+    }
+
+    // VALIDAÇÃO CRÍTICA: Verificar se usuário é membro ativo do grupo
+    const isActiveMember = await validateActiveMembership(ctx, this.bot, 'criar');
+    if (!isActiveMember) {
+      return; // Mensagem de erro já foi enviada pela função de validação
     }
 
     // A validação de termos é feita globalmente no TelegramService
@@ -680,6 +691,48 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     } else if (data === 'op_confirm_send') {
       const session = this.sessions.get(sessionKey);
       if (session) {
+        // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário ainda é membro ativo antes de enviar ordem
+        this.logger.log(`🔍 Validando membro ativo antes de enviar ordem - Usuário: ${ctx.from.id}`);
+        
+        const isActiveMember = await validateActiveMembership(ctx, this.bot, 'criar');
+        if (!isActiveMember) {
+          this.logger.warn(`❌ ORDEM BLOQUEADA - Usuário ${ctx.from.id} não é mais membro ativo durante envio`);
+          
+          // Limpar sessão pois usuário não pode mais continuar
+          this.sessions.delete(sessionKey);
+          
+          // Popup específico para membros removidos durante operação
+           try {
+             await ctx.answerCbQuery(
+               `🚫 ACESSO NEGADO\n\n` +
+               `❌ Você foi removido do grupo!\n\n` +
+               `📋 PARA CONTINUAR:\n` +
+               `1️⃣ Volte ao grupo TrustScore P2P\n` +
+               `2️⃣ Aceite os termos novamente\n` +
+               `3️⃣ Inicie nova operação`,
+               { show_alert: true }
+             );
+          } catch (error) {
+            this.logger.error('Erro ao enviar popup de membro removido:', error);
+          }
+          
+          return true;
+        }
+        
+        // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário ainda tem termos aceitos
+        this.logger.log(`🔍 Validando termos aceitos antes de enviar ordem - Usuário: ${ctx.from.id}`);
+        
+        const hasValidTerms = await validateUserTermsForOperation(ctx, this.termsAcceptanceService, 'criar');
+        if (!hasValidTerms) {
+          this.logger.warn(`❌ ORDEM BLOQUEADA - Usuário ${ctx.from.id} não tem termos aceitos durante envio`);
+          
+          // Limpar sessão pois usuário não pode mais continuar
+          this.sessions.delete(sessionKey);
+          
+          return true; // validateUserTermsForOperation já envia o popup
+        }
+        
+        this.logger.log(`✅ Validações aprovadas - Criando operação para usuário ${ctx.from.id}`);
         await this.createOperation(ctx, session);
       }
     } else if (data === 'op_back_description') {
@@ -1523,7 +1576,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
 
     const keyboard = Markup.inlineKeyboard([
       [
-        Markup.button.callback('Enviar Ordem', 'op_confirm_send'),
+        Markup.button.callback('🚀 Enviar Ordem', 'op_confirm_send'),
       ],
       [
         Markup.button.callback('⬅️ Voltar', 'op_back_description'),
@@ -1876,8 +1929,11 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       // Para cotação Google, usar preço 0 pois será calculado na transação
       const price = session.data.quotationType === QuotationType.GOOGLE ? 0 : (session.data.price || 0);
       
-      // Definir grupo específico para operações criadas no privado
-      const specificGroupId = -1002907400287; // ID do grupo P2P
+      // Definir grupo específico para operações criadas no privado usando variável de ambiente
+      const specificGroupId = parseInt(process.env.TELEGRAM_GROUP_ID || '-1002907400287');
+      if (!process.env.TELEGRAM_GROUP_ID) {
+        this.logger.warn('⚠️ TELEGRAM_GROUP_ID não configurado, usando fallback');
+      }
       let groupObjectId: Types.ObjectId | null = null;
       
       try {
@@ -1955,21 +2011,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         `Use os botões abaixo para gerenciar sua operação:`
       );
       
-      // Criar teclado inline com botões de controle
-      const controlKeyboard = {
-        inline_keyboard: [
-          [
-            {
-              text: '❌ Cancelar Operação',
-              callback_data: `cancel_operation_${operation._id}`
-            },
-            {
-              text: '✅ Concluir Operação',
-              callback_data: `complete_operation_${operation._id}`
-            }
-          ]
-        ]
-      };
+      // Criar teclado inline com botões de controle baseado no status
+      const controlKeyboard = this.createOperationControlKeyboard(operation);
       
       await ctx.reply(confirmationMessage, {
         parse_mode: 'Markdown',
@@ -2028,5 +2071,36 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     return mockPrices[asset] || 1.00;
+  }
+
+  private createOperationControlKeyboard(operation: any): any {
+    const buttons: any[] = [];
+
+    // Botão de cancelar sempre disponível para operações não concluídas
+    if (operation.status !== OperationStatus.COMPLETED) {
+      buttons.push({
+        text: '❌ Cancelar Operação',
+        callback_data: `cancel_operation_${operation._id}`
+      });
+    }
+
+    // Botão de concluir baseado no status
+    if (operation.status === OperationStatus.ACCEPTED) {
+      // Operação aceita - primeira solicitação de conclusão
+      buttons.push({
+        text: '✅ Concluir Operação',
+        callback_data: `complete_operation_${operation._id}`
+      });
+    } else if (operation.status === OperationStatus.PENDING_COMPLETION) {
+      // Aguardando confirmação da outra parte
+      buttons.push({
+        text: '⏳ Aguardando Confirmação',
+        callback_data: `pending_completion_${operation._id}`
+      });
+    }
+
+    return {
+      inline_keyboard: [buttons]
+    };
   }
 }

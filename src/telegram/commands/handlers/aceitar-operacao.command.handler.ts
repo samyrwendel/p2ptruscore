@@ -1,4 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectBot } from 'nestjs-telegraf';
+import { Telegraf, Context } from 'telegraf';
+import { Update } from 'telegraf/types';
 import { Types } from 'mongoose';
 import { OperationsService } from '../../../operations/operations.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
@@ -7,6 +10,7 @@ import { TermsAcceptanceService } from '../../../users/terms-acceptance.service'
 import { KarmaService } from '../../../karma/karma.service';
 import { getReputationInfo } from '../../../shared/reputation.utils';
 import { validateUserTermsForOperation } from '../../../shared/terms-validation.utils';
+import { validateActiveMembership } from '../../../shared/group-membership.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -23,6 +27,7 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
     private readonly usersService: UsersService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly karmaService: KarmaService,
+    @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
@@ -61,6 +66,12 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
         '▼ Este comando só pode ser usado em grupos onde o bot está ativo.',
       );
       return;
+    }
+
+    // VALIDAÇÃO CRÍTICA: Verificar se usuário é membro ativo do grupo
+    const isActiveMember = await validateActiveMembership(ctx, this.bot, 'aceitar');
+    if (!isActiveMember) {
+      return; // Mensagem de erro já foi enviada pela função de validação
     }
 
     // A validação de termos é feita globalmente no TelegramService

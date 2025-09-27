@@ -87,7 +87,28 @@ export class OperationsRepository extends AbstractRepository<Operation> {
     return this.model
       .findByIdAndUpdate(
         operationId,
-        { status: OperationStatus.COMPLETED },
+        { 
+          status: OperationStatus.COMPLETED,
+          completionRequestedBy: null,
+          completionRequestedAt: null
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
+  async requestCompletion(
+    operationId: Types.ObjectId,
+    userId: Types.ObjectId,
+  ): Promise<Operation | null> {
+    return this.model
+      .findByIdAndUpdate(
+        operationId,
+        { 
+          status: OperationStatus.PENDING_COMPLETION,
+          completionRequestedBy: userId,
+          completionRequestedAt: new Date()
+        },
         { new: true },
       )
       .exec();

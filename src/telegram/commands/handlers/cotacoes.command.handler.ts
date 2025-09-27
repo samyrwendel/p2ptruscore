@@ -366,22 +366,22 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
 
   private async handleBackToStart(ctx: any): Promise<void> {
     try {
-      const message = (
-        '**Bem-vindo ao P2P Score Bot!**\n\n' +
-        '**Principais funcionalidades:**\n' +
-        '• Criar e gerenciar operações P2P\n' +
-        '• Ver reputação e histórico de usuários\n' +
-        '• Avaliar transações e parceiros\n' +
-        '• Consultar cotações atuais\n\n' +
-        '**Use os botões abaixo para navegar rapidamente:**'
-      );
+      // EXATAMENTE a mesma lógica do comando /start (linha 253-300 do start.command.handler.ts)
+      const welcomeMessage = 
+        '🎉 **Bem-vindo ao P2P Score Bot!**\n\n' +
+        '🚀 **Principais funcionalidades:**\n' +
+        '• 💰 Criar e gerenciar operações P2P\n' +
+        '• ⭐ Ver reputação e histórico de usuários\n' +
+        '• 📊 Avaliar transações e parceiros\n' +
+        '• 💱 Consultar cotações atuais\n\n' +
+        '👇 **Use os botões abaixo para navegar rapidamente:**';
 
-      const keyboard = {
+      const mainCommandsKeyboard = {
         inline_keyboard: [
           [
             {
-              text: '🤝 Criar Operação',
-              url: 'https://t.me/p2pscorebot?start=criar_operacao'
+              text: '💰 Criar Operação',
+              callback_data: 'start_create_operation'
             },
             {
               text: '📋 Minhas Operações',
@@ -411,9 +411,10 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
         ]
       };
 
-      await ctx.editMessageText(message, {
+      // Usar editMessageText em vez de reply (diferença entre callback e comando)
+      await ctx.editMessageText(welcomeMessage, {
         parse_mode: 'Markdown',
-        reply_markup: keyboard
+        reply_markup: mainCommandsKeyboard
       });
     } catch (error) {
       this.logger.error('Erro ao voltar ao menu:', error);

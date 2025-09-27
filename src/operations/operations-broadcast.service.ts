@@ -276,13 +276,17 @@ export class OperationsBroadcastService {
         ]
       };
 
-      // Configurar envio para tópico específico se for o grupo mencionado
+      // Configurar envio para tópico específico se for o grupo configurado
       const sendOptions: any = { 
         parse_mode: 'Markdown',
         reply_markup: inlineKeyboard
       };
-      if (groupId === -1002907400287) {
-        sendOptions.message_thread_id = 6; // Tópico específico do grupo
+      
+      const configuredGroupId = parseInt(process.env.TELEGRAM_GROUP_ID || '0');
+      const threadId = parseInt(process.env.TELEGRAM_THREAD_ID || '0');
+      
+      if (groupId === configuredGroupId && threadId > 0) {
+        sendOptions.message_thread_id = threadId;
       }
 
       const sentMessage = await this.bot.telegram.sendMessage(
@@ -438,35 +442,70 @@ export class OperationsBroadcastService {
         `⚠️ **Importante:** Sempre verifiquem a reputação antes de prosseguir!`
       );
 
-      // Adicionar botões de ação
-      const inlineKeyboard = {
-        inline_keyboard: [
-          [
-            {
-              text: '💬 Criador',
-              url: `https://t.me/${creator.userName || creator.firstName}`
-            },
-            {
-              text: '💬 Negociador',
-              url: `https://t.me/${acceptor.userName || acceptor.firstName}`
-            }
-          ],
-          [
-            {
-              text: '🔙 Desistir da Operação',
-              callback_data: `revert_operation_${operation._id}`
-            }
+      // Adicionar botões de ação baseados no status da operação
+      let inlineKeyboard;
+      
+      if (operation.status === 'pending_completion') {
+        // Operação aguardando confirmação - apenas botão de desistir
+        inlineKeyboard = {
+          inline_keyboard: [
+            [
+              {
+                text: '💬 Criador',
+                url: `https://t.me/${creator.userName || creator.firstName}`
+              },
+              {
+                text: '💬 Negociador',
+                url: `https://t.me/${acceptor.userName || acceptor.firstName}`
+              }
+            ],
+            [
+              {
+                text: '🔙 Desistir da Operação',
+                callback_data: `revert_operation_${operation._id}`
+              }
+            ]
           ]
-        ]
-      };
+        };
+      } else {
+        // Operação aceita - botões de desistir e concluir
+        inlineKeyboard = {
+          inline_keyboard: [
+            [
+              {
+                text: '💬 Criador',
+                url: `https://t.me/${creator.userName || creator.firstName}`
+              },
+              {
+                text: '💬 Negociador',
+                url: `https://t.me/${acceptor.userName || acceptor.firstName}`
+              }
+            ],
+            [
+              {
+                text: '🔙 Desistir da Operação',
+                callback_data: `revert_operation_${operation._id}`
+              },
+              {
+                text: '✅ Concluir Operação',
+                callback_data: `complete_operation_${operation._id}`
+              }
+            ]
+          ]
+        };
+      }
 
-      // Configurar envio para tópico específico se for o grupo mencionado
+      // Configurar envio para tópico específico se for o grupo P2P configurado
       const sendOptions: any = { 
         parse_mode: 'Markdown',
         reply_markup: inlineKeyboard
       };
-      if (group.groupId === -1002907400287) {
-        sendOptions.message_thread_id = 6; // Tópico específico do grupo
+      
+      const p2pGroupId = parseInt(process.env.TELEGRAM_P2P_GROUP_ID || '0');
+      const p2pThreadId = parseInt(process.env.TELEGRAM_P2P_THREAD_ID || '0');
+      
+      if (group.groupId === p2pGroupId && p2pThreadId > 0) {
+        sendOptions.message_thread_id = p2pThreadId;
       }
 
       // Editar a mensagem original em vez de deletar e criar nova
@@ -1067,6 +1106,10 @@ export class OperationsBroadcastService {
 
   private async removePendingEvaluationMessages(operation: Operation): Promise<void> {
     try {
+      this.logger.log(`🔍 [DEBUG] removePendingEvaluationMessages called for operation ${operation._id}`);
+      this.logger.log(`🔍 [DEBUG] Operation acceptor: ${operation.acceptor}`);
+      this.logger.log(`🔍 [DEBUG] Operation privateEvaluationMessageId: ${operation.privateEvaluationMessageId}`);
+      
       // Remover avaliações pendentes do banco de dados
       await this.pendingEvaluationRepository.deletePendingEvaluationsByOperation(operation._id);
       
@@ -1074,15 +1117,19 @@ export class OperationsBroadcastService {
       if (operation.acceptor) {
         const acceptor = await this.usersService.findById(operation.acceptor.toString());
         if (acceptor) {
+          this.logger.log(`🔍 [DEBUG] Found acceptor: ${acceptor.userId}`);
           try {
             // Remover a mensagem de avaliação privada se existir
             if (operation.privateEvaluationMessageId) {
+              this.logger.log(`🔍 [DEBUG] Attempting to delete private message ${operation.privateEvaluationMessageId} for user ${acceptor.userId}`);
               try {
                 await this.bot.telegram.deleteMessage(acceptor.userId, operation.privateEvaluationMessageId);
-                this.logger.log(`Private evaluation message ${operation.privateEvaluationMessageId} deleted for operation ${operation._id}`);
+                this.logger.log(`✅ Private evaluation message ${operation.privateEvaluationMessageId} deleted for operation ${operation._id}`);
               } catch (deleteError) {
-                this.logger.warn(`Could not delete private evaluation message ${operation.privateEvaluationMessageId}: ${deleteError.message}`);
+                this.logger.warn(`❌ Could not delete private evaluation message ${operation.privateEvaluationMessageId}: ${deleteError.message}`);
               }
+            } else {
+              this.logger.warn(`⚠️ No privateEvaluationMessageId found for operation ${operation._id}`);
             }
             
             // Enviar mensagem informando que a operação foi revertida
@@ -1096,7 +1143,11 @@ export class OperationsBroadcastService {
           } catch (error) {
             this.logger.warn(`Could not notify acceptor about operation revert: ${error.message}`);
           }
+        } else {
+          this.logger.warn(`⚠️ Acceptor not found for operation ${operation._id}`);
         }
+      } else {
+        this.logger.warn(`⚠️ No acceptor found for operation ${operation._id}`);
       }
       
       this.logger.log(`Pending evaluation messages removed for operation ${operation._id}`);
@@ -1120,6 +1171,59 @@ export class OperationsBroadcastService {
       return `${hours}h ${minutes}m`;
     } else {
       return `${minutes}m`;
+    }
+  }
+
+  async notifyCompletionRequested(operation: Operation, requesterId: Types.ObjectId): Promise<void> {
+    try {
+      if (!operation.group) {
+        this.logger.warn('Operation has no associated group for completion request notification');
+        return;
+      }
+      
+      const creator = await this.usersService.findById(operation.creator.toString());
+      const acceptor = operation.acceptor ? await this.usersService.findById(operation.acceptor.toString()) : null;
+      const requester = await this.usersService.findById(requesterId.toString());
+      
+      if (!creator || !acceptor || !requester) {
+        this.logger.warn('Missing user data for completion request notification');
+        return;
+      }
+
+      // Determinar quem deve receber a notificação (a outra parte)
+      const otherParty = requesterId.toString() === creator._id.toString() ? acceptor : creator;
+      const requesterName = requester.userName ? `@${requester.userName}` : requester.firstName || 'Usuário';
+      
+      const typeEmoji = operation.type === 'buy' ? '🟢' : '🔴';
+      const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+      const assetsText = operation.assets.join(', ');
+
+      const message = (
+        `⏳ **Solicitação de Conclusão**\n\n` +
+        `${typeEmoji} **${typeText} ${assetsText}**\n\n` +
+        `👤 **${requesterName}** solicitou a conclusão desta operação.\n\n` +
+        `🤝 **Você precisa confirmar** para finalizar a transação.\n\n` +
+        `💡 Clique em "Aceitar Conclusão" se a operação foi realizada com sucesso.`
+      );
+
+      // Enviar notificação privada para a outra parte
+      await this.bot.telegram.sendMessage(
+        otherParty.userId,
+        message,
+        { 
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '✅ Aceitar Conclusão', callback_data: `complete_operation_${operation._id}` }
+            ]]
+          }
+        }
+      );
+
+      this.logger.log(`Completion request notification sent to user ${otherParty.userId} for operation ${operation._id}`);
+      
+    } catch (error) {
+      this.logger.error('Error sending completion request notification:', error);
     }
   }
 }

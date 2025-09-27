@@ -1,9 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectBot } from 'nestjs-telegraf';
+import { Telegraf, Context } from 'telegraf';
+import { Update } from 'telegraf/types';
 import { Types } from 'mongoose';
 import { createHash } from 'crypto';
 import { OperationsService } from '../../../operations/operations.service';
 import { UsersService } from '../../../users/users.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
+import { validateActiveMembershipForCallback } from '../../../shared/group-membership.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -18,6 +22,7 @@ export class ReverterOperacaoCommandHandler implements ITextCommandHandler {
     private readonly operationsService: OperationsService,
     private readonly usersService: UsersService,
     private readonly keyboardService: TelegramKeyboardService,
+    @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
   async handle(ctx: TextCommandContext): Promise<void> {
@@ -109,6 +114,12 @@ export class ReverterOperacaoCommandHandler implements ITextCommandHandler {
     }
 
     try {
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário é membro ativo
+      const isActiveMember = await validateActiveMembershipForCallback(ctx, this.bot, 'reverter');
+      if (!isActiveMember) {
+        return true; // validateActiveMembershipForCallback já envia o popup
+      }
+
       // Tentar responder ao callback, mas ignorar se expirado
       try {
         await ctx.answerCbQuery();
@@ -116,7 +127,7 @@ export class ReverterOperacaoCommandHandler implements ITextCommandHandler {
         if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
           this.logger.warn('Callback query expirado no reverter operação:', cbError.description);
         } else {
-          throw cbError;
+          this.logger.error('Erro ao responder callback query:', cbError);
         }
       }
 
@@ -148,9 +159,25 @@ export class ReverterOperacaoCommandHandler implements ITextCommandHandler {
           userId,
         );
 
-        // Não editar a mensagem aqui - o notifyOperationReverted já cuida disso
-        // A mensagem será automaticamente atualizada pelo broadcast service
-        // para mostrar a operação disponível novamente
+        // Se estamos no chat privado, remover a mensagem e mostrar popup de confirmação
+        if (ctx.callbackQuery.message.chat.type === 'private') {
+          try {
+            await ctx.editMessageText(
+              '✅ **Operação Cancelada**\n\n' +
+              'Você desistiu da operação com sucesso.\n\n' +
+              '📋 A operação voltou ao status **PENDENTE** e está novamente disponível para outros usuários.'
+            );
+            
+            // Mostrar popup de confirmação
+            await ctx.answerCbQuery('✅ Você desistiu da operação!', { show_alert: true });
+          } catch (editError) {
+            // Se falhar ao editar, apenas mostrar popup
+            await ctx.answerCbQuery('✅ Você desistiu da operação!', { show_alert: true });
+          }
+        } else {
+          // Se estamos no grupo, apenas mostrar popup (a mensagem será atualizada pelo broadcast service)
+          await ctx.answerCbQuery('✅ Operação revertida com sucesso!');
+        }
 
         this.logger.log(
           `Operation ${operationId} reverted via callback by user ${userId}`,

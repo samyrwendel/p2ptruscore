@@ -1,9 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectBot } from 'nestjs-telegraf';
+import { Telegraf, Context } from 'telegraf';
+import { Update } from 'telegraf/types';
 import { Types } from 'mongoose';
 import { OperationsService } from '../../../operations/operations.service';
 import { UsersService } from '../../../users/users.service';
 import { PendingEvaluationService } from '../../../operations/pending-evaluation.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
+import { validateActiveMembershipForCallback } from '../../../shared/group-membership.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -19,6 +23,7 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
     private readonly usersService: UsersService,
     private readonly pendingEvaluationService: PendingEvaluationService,
     private readonly keyboardService: TelegramKeyboardService,
+    @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
   async handle(ctx: TextCommandContext): Promise<void> {
@@ -86,6 +91,12 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
     }
 
     try {
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário é membro ativo
+      const isActiveMember = await validateActiveMembershipForCallback(ctx, this.bot, 'concluir');
+      if (!isActiveMember) {
+        return true; // validateActiveMembershipForCallback já envia o popup
+      }
+
       const operationId = data.replace('complete_operation_', '');
       
       // Buscar o usuário no banco de dados
@@ -117,84 +128,66 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
         const typeText = completedOperation.type === 'buy' ? 'COMPRA' : 'VENDA';
         const total = completedOperation.amount * completedOperation.price;
         
-        // Atualizar mensagem com confirmação
-        await ctx.editMessageText(
-          `✅ **Operação Concluída com Sucesso!**\n\n` +
-          `${typeText}\n` +
-          `💰 **Ativos:** ${completedOperation.assets.join(', ')}\n` +
-          `📊 **Quantidade:** ${completedOperation.amount}\n` +
-          `💵 **Total:** R$ ${total.toFixed(2)}\n` +
-          `🌐 **Redes:** ${completedOperation.networks.map(n => n.toUpperCase()).join(', ')}\n\n` +
-          `🎉 **Parabéns pela transação bem-sucedida!**\n\n` +
-          `⏳ **Redirecionando para avaliação...**`,
-          { parse_mode: 'Markdown' }
-        );
+        // Verificar se foi uma solicitação de conclusão ou confirmação final
+        if (completedOperation.status === 'pending_completion') {
+          // Primeira solicitação - aguardando confirmação da outra parte
+          await ctx.editMessageText(
+            `⏳ **Solicitação de Conclusão Enviada**\n\n` +
+            `${typeText}\n` +
+            `💰 **Ativos:** ${completedOperation.assets.join(', ')}\n` +
+            `📊 **Quantidade:** ${completedOperation.amount}\n` +
+            `💵 **Total:** R$ ${total.toFixed(2)}\n\n` +
+            `🤝 **Aguardando confirmação** da outra parte.\n\n` +
+            `💡 A operação será concluída quando ambas as partes confirmarem.`,
+            { parse_mode: 'Markdown' }
+          );
+        } else {
+          // Confirmação final - operação concluída
+          await ctx.editMessageText(
+            `✅ **Operação Concluída com Sucesso!**\n\n` +
+            `${typeText}\n` +
+            `💰 **Ativos:** ${completedOperation.assets.join(', ')}\n` +
+            `📊 **Quantidade:** ${completedOperation.amount}\n` +
+            `💵 **Total:** R$ ${total.toFixed(2)}\n` +
+            `🌐 **Redes:** ${completedOperation.networks.map(n => n.toUpperCase()).join(', ')}\n\n` +
+            `🎉 **Parabéns pela transação bem-sucedida!**\n\n` +
+            `⏳ **Redirecionando para avaliação...**`,
+            { parse_mode: 'Markdown' }
+          );
 
-        // Aguardar um momento para o usuário ler
-        setTimeout(async () => {
-          try {
-            // As avaliações pendentes bidirecionais são criadas automaticamente
-            // pelo operations-broadcast.service.ts quando as mensagens são enviadas
-            if (completedOperation.acceptor) {
-
-              // Mostrar interface de avaliação obrigatória
-              const evaluationMessage = 
-                `⭐ **Avaliação Obrigatória**\n\n` +
-                `Você concluiu uma operação com sucesso!\n` +
-                `Para finalizar, é obrigatório avaliar seu parceiro de negociação.\n\n` +
-                `**Como foi a experiência?**\n` +
-                `Escolha quantas estrelas você daria:`;
-
-              const evaluationKeyboard = {
-                inline_keyboard: [
-                  [
-                    {
-                      text: '⭐',
-                      callback_data: `eval_star_1_${operationId}`
-                    },
-                    {
-                      text: '⭐⭐',
-                      callback_data: `eval_star_2_${operationId}`
-                    },
-                    {
-                      text: '⭐⭐⭐',
-                      callback_data: `eval_star_3_${operationId}`
-                    }
-                  ],
-                  [
-                    {
-                      text: '⭐⭐⭐⭐',
-                      callback_data: `eval_star_4_${operationId}`
-                    },
-                    {
-                      text: '⭐⭐⭐⭐⭐',
-                      callback_data: `eval_star_5_${operationId}`
-                    }
-                  ]
-                ]
-              };
-
-              await ctx.editMessageText(evaluationMessage, {
-                parse_mode: 'Markdown',
-                reply_markup: evaluationKeyboard
-              });
-            } else {
-              // Se não há aceitador, apenas mostrar conclusão
-              await ctx.editMessageText(
-                `✅ **Operação Concluída!**\n\n` +
-                `A operação foi marcada como concluída com sucesso.`,
-                { parse_mode: 'Markdown' }
-              );
-            }
-          } catch (evalError) {
-            this.logger.error('Erro ao criar avaliação pendente:', evalError);
-            await ctx.editMessageText(
-              `✅ **Operação Concluída!**\n\n` +
-              `A operação foi concluída, mas houve um problema ao configurar a avaliação.\n` +
-              `Você pode avaliar manualmente usando o comando /avaliar.`
-            );
-          }
-        }, 2000); // 2 segundos de delay
+          // Aguardar um momento para o usuário ler
+           setTimeout(async () => {
+             try {
+               // As mensagens de avaliação bidirecional são enviadas automaticamente
+               // pelo operations-broadcast.service.ts quando a operação é concluída
+               // Não precisamos enviar mensagens aqui para evitar duplicação
+               
+               if (completedOperation.acceptor) {
+                 // Apenas mostrar conclusão - as mensagens de avaliação serão enviadas pelo broadcast service
+                 await ctx.editMessageText(
+                   `✅ **Operação Concluída!**\n\n` +
+                   `A operação foi marcada como concluída com sucesso.\n\n` +
+                   `📨 **Avaliações:** Mensagens de avaliação foram enviadas para ambos os participantes.`,
+                   { parse_mode: 'Markdown' }
+                 );
+               } else {
+                 // Se não há aceitador, apenas mostrar conclusão
+                 await ctx.editMessageText(
+                   `✅ **Operação Concluída!**\n\n` +
+                   `A operação foi marcada como concluída com sucesso.`,
+                   { parse_mode: 'Markdown' }
+                 );
+               }
+             } catch (evalError) {
+               this.logger.error('Erro ao criar avaliação pendente:', evalError);
+               await ctx.editMessageText(
+                 `✅ **Operação Concluída!**\n\n` +
+                 `A operação foi concluída, mas houve um problema ao configurar a avaliação.\n` +
+                 `Você pode avaliar manualmente usando o comando /avaliar.`
+               );
+             }
+           }, 2000); // 2 segundos de delay
+         }
 
         this.logger.log(
           `Operation ${operationId} completed via callback by user ${userId}`,

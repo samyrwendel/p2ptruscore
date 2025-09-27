@@ -9,6 +9,12 @@ import { getReputationInfo } from '../../../shared/reputation.utils';
 import { formatKarmaHistory } from '../command.helpers';
 import { CriarOperacaoCommandHandler } from './criar-operacao.command.handler';
 import { ReputacaoCommandHandler } from './reputacao.command.handler';
+import { CotacoesCommandHandler } from './cotacoes.command.handler';
+import { validateActiveMembershipForCallback } from '../../../shared/group-membership.utils';
+import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
+import { InjectBot } from 'nestjs-telegraf';
+import { Telegraf, Context } from 'telegraf';
+import { Update } from 'telegraf/types';
 
 @Injectable()
 export class StartCommandHandler implements ITextCommandHandler {
@@ -16,6 +22,7 @@ export class StartCommandHandler implements ITextCommandHandler {
   command = /^\/start(?:@\w+)?(?:\s+(.+))?$/;
 
   constructor(
+    @InjectBot() private readonly bot: Telegraf<Context<Update>>,
     private readonly keyboardService: TelegramKeyboardService,
     private readonly karmaService: KarmaService,
     private readonly usersService: UsersService,
@@ -23,6 +30,7 @@ export class StartCommandHandler implements ITextCommandHandler {
     private readonly operationsService: OperationsService,
     private readonly criarOperacaoHandler: CriarOperacaoCommandHandler,
     private readonly reputacaoHandler: ReputacaoCommandHandler,
+    private readonly cotacoesHandler: CotacoesCommandHandler,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
@@ -313,10 +321,36 @@ export class StartCommandHandler implements ITextCommandHandler {
     if (data.startsWith('start_')) {
       try {
         if (data === 'start_create_operation') {
+          // ✅ VALIDAÇÃO CRÍTICA: Verificar membro ativo ANTES de mostrar "Iniciando criação"
+          this.logger.log(`🔍 Validando membro ativo antes de iniciar criação - Usuário: ${ctx.from.id}`);
+          
+          const isActiveMember = await validateActiveMembershipForCallback(ctx, this.bot, 'criar');
+          if (!isActiveMember) {
+            this.logger.warn(`❌ CRIAÇÃO BLOQUEADA - Usuário ${ctx.from.id} não é membro ativo`);
+            return true; // validateActiveMembershipForCallback já envia o popup
+          }
+          
+          // ✅ VALIDAÇÃO CRÍTICA: Verificar termos aceitos ANTES de mostrar "Iniciando criação"
+          this.logger.log(`🔍 Validando termos aceitos antes de iniciar criação - Usuário: ${ctx.from.id}`);
+          
+          const hasValidTerms = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'criar');
+          if (!hasValidTerms) {
+            this.logger.warn(`❌ CRIAÇÃO BLOQUEADA - Usuário ${ctx.from.id} não tem termos aceitos`);
+            return true; // validateUserTermsForCallback já envia o popup
+          }
+          
+          // ✅ Apenas após validações aprovadas, mostrar mensagem de início
+          this.logger.log(`✅ Validações aprovadas - Iniciando criação para usuário ${ctx.from.id}`);
           await ctx.answerCbQuery('🤝 Iniciando criação de operação...');
+          
+          // Debug: Log do tipo de chat
+          this.logger.log(`🔍 [DEBUG] Chat type: ${ctx.callbackQuery.message.chat.type}`);
+          this.logger.log(`🔍 [DEBUG] Chat ID: ${ctx.callbackQuery.message.chat.id}`);
           
           // Verificar se já está no chat privado
           if (ctx.callbackQuery.message.chat.type === 'private') {
+            this.logger.log(`✅ [DEBUG] Usuário está no chat privado, iniciando criação de operação diretamente`);
+            
             // Já está no privado, chamar diretamente o /criaroperacao
             const fakeCtx = {
               from: ctx.from,
@@ -328,15 +362,19 @@ export class StartCommandHandler implements ITextCommandHandler {
               },
               chat: ctx.callbackQuery.message.chat,
               reply: async (text: string, extra?: any) => {
-                return await ctx.editMessageText(text, extra);
+                return await ctx.reply(text, extra);
               },
               sendChatAction: async () => {},
-              editMessageText: ctx.editMessageText.bind(ctx)
-            } as TextCommandContext;
+              editMessageText: ctx.editMessageText?.bind(ctx) || (async () => {})
+            } as unknown as TextCommandContext;
+            
+            this.logger.log(`🔧 [DEBUG] Chamando CriarOperacaoCommandHandler.handle() diretamente`);
             
             // Chamar exatamente a mesma função que o comando /criaroperacao
             await this.criarOperacaoHandler.handle(fakeCtx);
           } else {
+            this.logger.log(`⚠️ [DEBUG] Usuário está em grupo (${ctx.callbackQuery.message.chat.type}), redirecionando para privado`);
+            
             // Está em grupo, redirecionar para privado
             await ctx.editMessageText(
               '🤝 **Criar Operação P2P**\n\n' +
@@ -383,13 +421,27 @@ export class StartCommandHandler implements ITextCommandHandler {
             },
             sendChatAction: async () => {},
             editMessageText: ctx.editMessageText.bind(ctx)
-          } as TextCommandContext;
+          } as unknown as TextCommandContext;
           
           // Chamar exatamente a mesma função que o comando /reputacao
           await this.reputacaoHandler.handle(fakeCtx);
         } else if (data === 'start_quotes') {
           await ctx.answerCbQuery('💱 Carregando cotações...');
-          await this.showQuotesMenu(ctx);
+          // Chamar diretamente o handler de cotações correto
+          const fakeCtx = {
+            from: ctx.from,
+            message: {
+              text: '/cotacoes',
+              chat: ctx.callbackQuery.message.chat,
+              message_id: ctx.callbackQuery.message.message_id,
+              date: Math.floor(Date.now() / 1000)
+            },
+            chat: ctx.callbackQuery.message.chat,
+            reply: async (text: string, extra?: any) => await ctx.editMessageText(text, extra),
+            sendChatAction: async () => {},
+            editMessageText: ctx.editMessageText.bind(ctx)
+          } as unknown as TextCommandContext;
+          await this.cotacoesHandler.handle(fakeCtx);
         } else if (data === 'start_view_operations') {
           await ctx.answerCbQuery('📊 Carregando operações...');
           await this.showAvailableOperations(ctx);
@@ -431,7 +483,55 @@ export class StartCommandHandler implements ITextCommandHandler {
       try {
         if (data === 'back_to_start_menu') {
           await ctx.answerCbQuery('🏠 Voltando ao menu...');
-          await this.showStartMenu(ctx);
+          // Usar a mesma lógica do comando /start com ícones
+          const welcomeMessage = 
+            '🎉 **Bem-vindo ao P2P Score Bot!**\n\n' +
+            '🚀 **Principais funcionalidades:**\n' +
+            '• 💰 Criar e gerenciar operações P2P\n' +
+            '• ⭐ Ver reputação e histórico de usuários\n' +
+            '• 📊 Avaliar transações e parceiros\n' +
+            '• 💱 Consultar cotações atuais\n\n' +
+            '👇 **Use os botões abaixo para navegar rapidamente:**';
+
+          const mainCommandsKeyboard = {
+            inline_keyboard: [
+              [
+                {
+                  text: '💰 Criar Operação',
+                  callback_data: 'start_create_operation'
+                },
+                {
+                  text: '📋 Minhas Operações',
+                  callback_data: 'start_my_operations'
+                }
+              ],
+              [
+                {
+                  text: '⭐ Minha Reputação',
+                  callback_data: 'start_my_reputation'
+                },
+                {
+                  text: '💱 Cotações',
+                  callback_data: 'start_quotes'
+                }
+              ],
+              [
+                {
+                  text: '📊 Ver Operações',
+                  callback_data: 'start_view_operations'
+                },
+                {
+                  text: '❓ Ajuda',
+                  callback_data: 'start_help'
+                }
+              ]
+            ]
+          };
+
+          await ctx.editMessageText(welcomeMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: mainCommandsKeyboard
+          });
         } else if (data.startsWith('my_ops_next_')) {
           const page = parseInt(data.replace('my_ops_next_', '')) || 0;
           this.logger.log(`🔄 Navegação: Próxima página ${page} -> ${page + 1}`);
@@ -805,71 +905,6 @@ export class StartCommandHandler implements ITextCommandHandler {
     });
   }
 
-  private async showQuotesMenu(ctx: any): Promise<void> {
-    const message = (
-      '**Central de Cotações TrustScore**\n\n' +
-      'Escolha uma opção para ver as cotações atuais:\n\n' +
-      '**Principais Stablecoins**\n' +
-      '• USD, USDT, USDC, DAI\n\n' +
-      '**Criptomoedas Principais**\n' +
-      '• Bitcoin, Ethereum, Solana\n\n' +
-      '**Moedas Tradicionais**\n' +
-      '• Euro, Real\n\n' +
-      '**Rápido:** Veja todas as cotações de uma vez'
-    );
-
-    const keyboard = {
-      inline_keyboard: [
-        [
-          {
-            text: '📊 Todas as Cotações',
-            callback_data: 'quotes_all'
-          }
-        ],
-        [
-          {
-            text: '💰 USD/Stablecoins',
-            callback_data: 'quotes_stablecoins'
-          },
-          {
-            text: '₿ Bitcoin',
-            callback_data: 'quotes_btc'
-          }
-        ],
-        [
-          {
-            text: '🔷 Ethereum',
-            callback_data: 'quotes_eth'
-          },
-          {
-            text: '🟣 Solana',
-            callback_data: 'quotes_sol'
-          }
-        ],
-        [
-          {
-            text: '🌍 Euro',
-            callback_data: 'quotes_eur'
-          },
-          {
-            text: '🔄 Atualizar',
-            callback_data: 'quotes_refresh'
-          }
-        ],
-        [
-          {
-            text: '🔙 Voltar ao Menu',
-            callback_data: 'quotes_back'
-          }
-        ]
-      ]
-    };
-
-    await ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
-      reply_markup: keyboard
-    });
-  }
 
   private async showUserOperations(ctx: any, page: number = 0): Promise<void> {
     try {
@@ -1118,57 +1153,6 @@ export class StartCommandHandler implements ITextCommandHandler {
     });
   }
 
-  private async showStartMenu(ctx: any): Promise<void> {
-    const message = (
-      '**Bem-vindo ao P2P Score Bot!**\n\n' +
-      '**Principais funcionalidades:**\n' +
-      '• Criar e gerenciar operações P2P\n' +
-      '• Ver reputação e histórico de usuários\n' +
-      '• Avaliar transações e parceiros\n' +
-      '• Consultar cotações atuais\n\n' +
-      '**Use os botões abaixo para navegar rapidamente:**'
-    );
-
-    const keyboard = {
-      inline_keyboard: [
-        [
-          {
-            text: '🤝 Criar Operação',
-            url: 'https://t.me/p2pscorebot?start=criar_operacao'
-          },
-          {
-            text: '📋 Minhas Operações',
-            callback_data: 'start_my_operations'
-          }
-        ],
-        [
-          {
-            text: '⭐ Minha Reputação',
-            callback_data: 'start_my_reputation'
-          },
-          {
-            text: '💱 Cotações',
-            callback_data: 'start_quotes'
-          }
-        ],
-        [
-          {
-            text: '📊 Ver Operações',
-            callback_data: 'start_view_operations'
-          },
-          {
-            text: '❓ Ajuda',
-            callback_data: 'start_help'
-          }
-        ]
-      ]
-    };
-
-    await ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
-      reply_markup: keyboard
-    });
-  }
 
 
 }

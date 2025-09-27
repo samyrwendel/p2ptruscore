@@ -49,6 +49,7 @@ export enum AssetType {
 export enum OperationStatus {
   PENDING = 'pending',
   ACCEPTED = 'accepted',
+  PENDING_COMPLETION = 'pending_completion', // Aguardando confirmação da outra parte
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   CLOSED = 'closed',
@@ -97,6 +98,12 @@ export class Operation extends AbstractDocument {
 
   @Prop({ enum: OperationStatus, default: OperationStatus.PENDING })
   status: OperationStatus;
+
+  @Prop({ type: Types.ObjectId, ref: User.name })
+  completionRequestedBy?: Types.ObjectId; // Quem solicitou a conclusão
+
+  @Prop()
+  completionRequestedAt?: Date; // Quando foi solicitada a conclusão
 
   @Prop()
   messageId?: number;

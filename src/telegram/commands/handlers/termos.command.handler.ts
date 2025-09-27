@@ -79,15 +79,58 @@ export class TermosCommandHandler implements ITextCommandHandler {
     const termsText = this.termsAcceptanceService.getTermsText();
     const version = this.termsAcceptanceService.getCurrentTermsVersion();
 
+    // Verificar se o usuário já aceitou os termos atuais
+    let hasAcceptedCurrent = false;
+    try {
+      if (ctx.chat.type === 'private') {
+        // Em chat privado, verificar nos grupos configurados
+        const configuredGroups = process.env.TELEGRAM_GROUPS?.split(',').map(id => parseInt(id.trim())) || [];
+        for (const groupId of configuredGroups) {
+          const accepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(ctx.from.id, groupId);
+          if (accepted) {
+            hasAcceptedCurrent = true;
+            break;
+          }
+        }
+      } else {
+        // Em grupo, verificar no próprio grupo
+        hasAcceptedCurrent = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(ctx.from.id, ctx.chat.id);
+      }
+    } catch (error) {
+      this.logger.warn('Erro ao verificar aceitação de termos:', error);
+    }
+
     const message = (
       termsText + `\n\n` +
       `📋 **Informações:**\n` +
       `🆔 **Versão:** ${version}\n` +
-      `📅 **Visualizado em:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
+      `📅 **Visualizado em:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n` +
+      `✅ **Status:** ${hasAcceptedCurrent ? 'Termos aceitos' : 'Termos não aceitos'}\n\n` +
       `💡 **Nota:** Estes são os termos atuais da plataforma TrustScore.`
     );
 
-    await ctx.reply(message, { parse_mode: 'Markdown' });
+    // Adicionar botão para aceitar termos APENAS se não aceitou ainda E está em chat privado
+    const keyboard = (hasAcceptedCurrent || ctx.chat.type !== 'private') ? undefined : {
+      inline_keyboard: [
+        [
+          {
+            text: '✅ Aceitar Termos',
+            callback_data: `accept_terms_${ctx.from.id}_${ctx.chat.id}`
+          }
+        ],
+        [
+          {
+            text: '📋 Ver Histórico',
+            callback_data: `terms_history_${ctx.from.id}`
+          }
+        ]
+      ]
+    };
+
+    await ctx.reply(message, { 
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
   }
 
   private async showUserHistory(ctx: TextCommandContext): Promise<void> {
@@ -198,6 +241,34 @@ export class TermosCommandHandler implements ITextCommandHandler {
       const data = ctx.callbackQuery?.data;
       if (!data) return false;
 
+      // Callback para aceitar termos
+      if (data.startsWith('accept_terms_')) {
+        const parts = data.split('_');
+        const userId = parseInt(parts[2]);
+        const chatId = parseInt(parts[3]);
+        
+        if (userId !== ctx.from.id) {
+          await ctx.answerCbQuery('❌ Você só pode aceitar seus próprios termos', { show_alert: true });
+          return true;
+        }
+        
+        await this.processTermsAcceptance(ctx, userId, chatId);
+        return true;
+      }
+
+      // Callback para ver histórico
+      if (data.startsWith('terms_history_')) {
+        const userId = parseInt(data.split('_')[2]);
+        
+        if (userId !== ctx.from.id) {
+          await ctx.answerCbQuery('❌ Você só pode ver seu próprio histórico', { show_alert: true });
+          return true;
+        }
+        
+        await this.showUserHistoryCallback(ctx);
+        return true;
+      }
+
       if (data.startsWith('resend_terms_confirm_')) {
         const groupId = parseInt(data.replace('resend_terms_confirm_', ''));
         await this.processResendConfirmation(ctx, groupId);
@@ -219,6 +290,98 @@ export class TermosCommandHandler implements ITextCommandHandler {
       this.logger.error('Erro ao processar callback de termos:', error);
       await ctx.answerCbQuery('❌ Erro ao processar ação', { show_alert: true });
       return true;
+    }
+  }
+
+  private async processTermsAcceptance(ctx: any, userId: number, chatId: number): Promise<void> {
+    try {
+      // ✅ VALIDAÇÃO CRÍTICA: Aceite de termos APENAS no chat privado
+      if (ctx.callbackQuery.message.chat.type !== 'private') {
+        await ctx.answerCbQuery(
+          `🚫 ACESSO NEGADO\n\n` +
+          `❌ Aceite de termos só no chat privado!\n\n` +
+          `📋 PARA CONTINUAR:\n` +
+          `1️⃣ Abra chat privado com o bot\n` +
+          `2️⃣ Use o comando /termos\n` +
+          `3️⃣ Aceite os termos`,
+          { show_alert: true }
+        );
+        return;
+      }
+      
+      // Determinar o grupo correto para aceitar os termos
+      let targetGroupId = chatId;
+      
+      // Se está em chat privado, usar o primeiro grupo configurado
+      if (ctx.callbackQuery.message.chat.type === 'private') {
+        const configuredGroups = process.env.TELEGRAM_GROUPS?.split(',').map(id => parseInt(id.trim())) || [];
+        if (configuredGroups.length > 0) {
+          targetGroupId = configuredGroups[0];
+        }
+      }
+
+      // Verificar se o usuário é membro do grupo
+      try {
+        const memberInfo = await this.bot.telegram.getChatMember(targetGroupId, userId);
+        const activeMemberStatuses = ['member', 'administrator', 'creator'];
+        
+        if (!activeMemberStatuses.includes(memberInfo.status)) {
+          await ctx.answerCbQuery('❌ Você precisa ser membro do grupo para aceitar os termos', { show_alert: true });
+          return;
+        }
+      } catch (error) {
+        await ctx.answerCbQuery('❌ Não foi possível verificar sua participação no grupo', { show_alert: true });
+        return;
+      }
+
+      // Aceitar os termos
+      await this.termsAcceptanceService.recordUserAcceptance(userId, targetGroupId);
+      
+      await ctx.editMessageText(
+        '✅ **Termos Aceitos com Sucesso!**\n\n' +
+        '🎉 Você aceitou os termos de responsabilidade da plataforma TrustScore.\n\n' +
+        '📅 **Data:** ' + new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + '\n' +
+        '🆔 **Versão:** ' + this.termsAcceptanceService.getCurrentTermsVersion() + '\n\n' +
+        '💡 **Agora você pode usar todas as funcionalidades do bot!**',
+        { parse_mode: 'Markdown' }
+      );
+      
+      await ctx.answerCbQuery('✅ Termos aceitos com sucesso!');
+      
+    } catch (error) {
+      this.logger.error('Erro ao aceitar termos:', error);
+      await ctx.answerCbQuery('❌ Erro ao aceitar termos. Tente novamente.', { show_alert: true });
+    }
+  }
+
+  private async showUserHistoryCallback(ctx: any): Promise<void> {
+    try {
+      const history = await this.termsAcceptanceService.getUserAcceptanceHistory(ctx.from.id);
+
+      if (history.length === 0) {
+        await ctx.answerCbQuery('❌ Você ainda não aceitou os termos em nenhum grupo', { show_alert: true });
+        return;
+      }
+
+      let message = '📋 **Seu Histórico de Aceitação de Termos**\n\n';
+      
+      for (const acceptance of history) {
+        const date = new Date(acceptance.acceptedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        message += (
+          `📅 **${date}**\n` +
+          `🆔 **Versão:** ${acceptance.termsVersion}\n` +
+          `👥 **Grupo:** ${acceptance.groupTelegramId}\n\n`
+        );
+      }
+
+      message += `📊 **Total de aceitações:** ${history.length}`;
+
+      await ctx.editMessageText(message, { parse_mode: 'Markdown' });
+      await ctx.answerCbQuery('📋 Histórico carregado');
+      
+    } catch (error) {
+      this.logger.error('Erro ao buscar histórico do usuário:', error);
+      await ctx.answerCbQuery('❌ Erro ao buscar histórico', { show_alert: true });
     }
   }
 
