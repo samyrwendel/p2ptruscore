@@ -68,8 +68,11 @@ export class ConfigManagementService {
       '# Username do bot (sem @)',
       `TELEGRAM_BOT_USERNAME=${this.escapeValue(config.TELEGRAM_BOT_USERNAME || '')}`,
       '',
-      '# IDs dos grupos Telegram (um por linha, separados por vírgula)',
-      `TELEGRAM_GROUPS=${this.escapeValue(config.TELEGRAM_GROUPS || '')}`,
+      '# ID do grupo onde o bot enviará mensagens',
+      `TELEGRAM_GROUP_ID=${this.escapeValue(config.TELEGRAM_GROUP_ID || '')}`,
+      '',
+      '# ID do tópico específico no grupo (opcional)',
+      `TELEGRAM_THREAD_ID=${config.TELEGRAM_THREAD_ID || ''}`,
       '',
       '# MongoDB Connection String',
       `MONGODB_CNN=${this.escapeValue(config.MONGODB_CNN || '')}`,
@@ -79,6 +82,11 @@ export class ConfigManagementService {
       '',
       '# Ambiente de execução',
       `NODE_ENV=${config.NODE_ENV || 'production'}`,
+      '',
+      '# API de Cotação',
+      `CURRENCY_API_KEY=${this.escapeValue(config.CURRENCY_API_KEY || '')}`,
+      `CURRENCY_API_URL=${this.escapeValue(config.CURRENCY_API_URL || 'https://api.coingecko.com/api/v3')}`,
+      `DEFAULT_CURRENCY=${config.DEFAULT_CURRENCY || 'BRL'}`,
       ''
     ];
 
@@ -103,10 +111,14 @@ export class ConfigManagementService {
     return {
       TELEGRAM_BOT_TOKEN: '',
       TELEGRAM_BOT_USERNAME: '',
-      TELEGRAM_GROUPS: '',
+      TELEGRAM_GROUP_ID: '',
+      TELEGRAM_THREAD_ID: '',
       MONGODB_CNN: 'mongodb://localhost:27017/trustscore',
       PORT: '3001',
-      NODE_ENV: 'production'
+      NODE_ENV: 'production',
+      CURRENCY_API_KEY: '',
+      CURRENCY_API_URL: 'https://api.coingecko.com/api/v3',
+      DEFAULT_CURRENCY: 'BRL'
     };
   }
 

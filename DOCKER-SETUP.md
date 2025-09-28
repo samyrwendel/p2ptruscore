@@ -60,8 +60,9 @@ TELEGRAM_BOT_TOKEN=seu_token_aqui
 # Username do bot (sem @)
 TELEGRAM_BOT_USERNAME=seu_bot_username
 
-# IDs dos grupos (separados por vírgula)
-TELEGRAM_GROUPS=-1001234567890,-1009876543210
+# ID do grupo principal e tópico P2P
+TELEGRAM_GROUP_ID=-1001234567890
+TELEGRAM_THREAD_ID=123
 ```
 
 3. Reinicie o container:

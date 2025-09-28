@@ -78,6 +78,20 @@
             color: #2c3e50;
         }
         
+        .form-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            margin: 30px 0;
+            border-left: 4px solid #007bff;
+        }
+        
+        .form-section h3 {
+            margin: 0 0 20px 0;
+            color: #007bff;
+            font-size: 1.2em;
+        }
+        
         .form-group input, .form-group textarea {
             width: 100%;
             padding: 12px 16px;
@@ -198,10 +212,19 @@
                 </div>
                 
                 <div class="form-group">
-                    <label for="TELEGRAM_GROUPS">👥 IDs dos Grupos</label>
-                    <textarea id="TELEGRAM_GROUPS" name="TELEGRAM_GROUPS" rows="3" 
-                              placeholder="-1001234567890,-1009876543210">{{config.TELEGRAM_GROUPS}}</textarea>
-                    <small>IDs dos grupos separados por vírgula (números negativos)</small>
+                    <label for="TELEGRAM_GROUP_ID">👥 ID do Grupo Telegram</label>
+                    <input type="text" id="TELEGRAM_GROUP_ID" name="TELEGRAM_GROUP_ID" 
+                           value="{{config.TELEGRAM_GROUP_ID}}" 
+                           placeholder="-1002907400287">
+                    <small>ID do grupo onde o bot pode enviar mensagens (um por linha). Para obter o ID: adicione o bot ao grupo, use /start e verifique os logs do servidor.</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="TELEGRAM_THREAD_ID">💬 ID do Tópico (Thread)</label>
+                    <input type="number" id="TELEGRAM_THREAD_ID" name="TELEGRAM_THREAD_ID" 
+                           value="{{config.TELEGRAM_THREAD_ID}}" 
+                           placeholder="250">
+                    <small>ID do tópico específico no grupo (opcional)</small>
                 </div>
                 
                 <div class="form-group">
@@ -216,6 +239,44 @@
                     <input type="number" id="PORT" name="PORT" 
                            value="{{config.PORT}}" min="1000" max="65535">
                     <small>Porta onde a aplicação será executada</small>
+                </div>
+                
+                <!-- Seção API de Cotação -->
+                <div class="form-section">
+                    <h3>💱 API de Cotação</h3>
+                    
+                    <div class="form-group">
+                        <label for="CURRENCY_API_KEY">🔑 Chave da API de Cotação</label>
+                        <input type="password" id="CURRENCY_API_KEY" name="CURRENCY_API_KEY" 
+                               value="{{config.CURRENCY_API_KEY}}" 
+                               placeholder="sua_api_key_aqui">
+                        <small>Chave da API para cotações automáticas (ex: CoinGecko, CoinMarketCap)</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="CURRENCY_API_URL">🌐 URL da API de Cotação</label>
+                        <input type="url" id="CURRENCY_API_URL" name="CURRENCY_API_URL" 
+                               value="{{config.CURRENCY_API_URL}}" 
+                               placeholder="https://api.coingecko.com/api/v3">
+                        <small>URL base da API de cotação</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="DEFAULT_CURRENCY">💰 Moeda Padrão</label>
+                        <select id="DEFAULT_CURRENCY" name="DEFAULT_CURRENCY">
+                            <option value="BRL" {{#if (eq config.DEFAULT_CURRENCY 'BRL')}}selected{{/if}}>BRL - Real Brasileiro</option>
+                            <option value="USD" {{#if (eq config.DEFAULT_CURRENCY 'USD')}}selected{{/if}}>USD - Dólar Americano</option>
+                            <option value="EUR" {{#if (eq config.DEFAULT_CURRENCY 'EUR')}}selected{{/if}}>EUR - Euro</option>
+                        </select>
+                        <small>Moeda padrão para cotações</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <button type="button" class="btn btn-secondary" onclick="testCurrencyAPI()" style="width: 100%;">
+                            💱 Testar API de Cotação (USD/BRL)
+                        </button>
+                        <small>Testa a conexão com a API e busca a cotação atual do dólar</small>
+                    </div>
                 </div>
                 
                 <button type="submit" class="btn">💾 Salvar Configuração</button>
@@ -276,22 +337,83 @@
             const alert = document.getElementById('alert');
             alert.style.display = 'block';
             alert.className = 'alert';
-            alert.innerHTML = '🔍 Testando conexão...';
+            alert.innerHTML = '📤 Enviando mensagem de teste...';
             
             try {
-                const response = await fetch('/setup/status');
-                const status = await response.json();
+                const response = await fetch('/config/test-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: '🤖 Teste de conexão do TrustScore Bot - ' + new Date().toLocaleString('pt-BR')
+                    })
+                });
                 
-                if (status.ready) {
+                const result = await response.json();
+                
+                if (result.success) {
                     alert.className = 'alert success';
-                    alert.innerHTML = '✅ Todas as configurações estão corretas!';
+                    let message = '✅ Mensagem de teste enviada com sucesso!<br>';
+                    
+                    if (result.results && result.results.botInfo) {
+                        message += '<small>Bot: ' + result.results.botInfo.first_name + ' (@' + result.results.botInfo.username + ')</small><br>';
+                    }
+                    
+                    if (result.results && result.results.sent) {
+                        const groupMessages = result.results.sent.filter(s => s.type === 'group');
+                        const simulations = result.results.sent.filter(s => s.type === 'simulation');
+                        
+                        if (groupMessages.length > 0) {
+                            message += '<small>Enviado para ' + groupMessages.length + ' grupo(s)</small>';
+                        } else if (simulations.length > 0) {
+                            message += '<small>⚠️ ' + simulations[0].message + '</small>';
+                        }
+                    }
+                    
+                    alert.innerHTML = message;
                 } else {
                     alert.className = 'alert error';
-                    alert.innerHTML = '⚠️ Algumas configurações precisam ser ajustadas.';
+                    alert.innerHTML = '❌ Erro ao enviar mensagem: ' + (result.message || 'Erro desconhecido');
                 }
             } catch (error) {
                 alert.className = 'alert error';
                 alert.innerHTML = '❌ Erro ao testar conexão: ' + error.message;
+            }
+        }
+        
+        async function testCurrencyAPI() {
+            const alert = document.getElementById('alert');
+            alert.style.display = 'block';
+            alert.className = 'alert';
+            alert.innerHTML = '💱 Testando API de cotação...';
+            
+            try {
+                const response = await fetch('/config/test-currency', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        from: 'USD',
+                        to: 'BRL'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                     alert.className = 'alert success';
+                     alert.innerHTML = '✅ API de cotação funcionando!<br>' +
+                                     '<strong>USD/BRL: R$ ' + result.rate.toFixed(4) + '</strong><br>' +
+                                     '<small>Fonte: ' + result.source + ' | API: ' + result.apiUsed + ' | Atualizado: ' + new Date(result.timestamp).toLocaleString('pt-BR') + '</small>';
+                 } else {
+                     alert.className = 'alert error';
+                     alert.innerHTML = '❌ Erro na API de cotação: ' + (result.message || 'Erro desconhecido');
+                 }
+            } catch (error) {
+                alert.className = 'alert error';
+                alert.innerHTML = '❌ Erro ao testar API de cotação: ' + error.message;
             }
         }
     </script>

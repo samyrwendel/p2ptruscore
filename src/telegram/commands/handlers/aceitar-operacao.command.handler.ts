@@ -248,8 +248,13 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
     }
     
     try {
-      // A validação de termos é feita globalmente no TelegramService
-      // Não precisa validar aqui novamente
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos ANTES de aceitar operação
+      const { validateUserTermsForCallback } = await import('../../../shared/terms-validation.utils');
+      const hasValidTerms = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'aceitar');
+      if (!hasValidTerms) {
+        this.logger.warn(`❌ ACEITE BLOQUEADO - Usuário ${ctx.from.id} não aceitou os termos`);
+        return true; // validateUserTermsForCallback já envia o popup
+      }
 
       // Extrair o ID da operação do callback
       const operationId = data.replace('accept_operation_', '');
@@ -301,8 +306,16 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
         return true;
       }
       
-      // Verificar se não é o próprio criador tentando aceitar
-      if (operation.creator.toString() === ctx.from.id.toString()) {
+      // Buscar ou criar usuário aceitador
+      const acceptorUser = await this.usersService.findOrCreate({
+        id: ctx.from.id,
+        username: ctx.from.username,
+        first_name: ctx.from.first_name,
+        last_name: ctx.from.last_name
+      });
+      
+      // Verificar se não é o próprio criador tentando aceitar (usando o ID do usuário no banco)
+      if (operation.creator.toString() === acceptorUser._id.toString()) {
         try {
           await ctx.answerCbQuery('❌ Você não pode aceitar sua própria operação', { show_alert: true });
         } catch (cbError: any) {
@@ -314,14 +327,6 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
         }
         return true;
       }
-      
-      // Buscar ou criar usuário aceitador
-      const acceptorUser = await this.usersService.findOrCreate({
-        id: ctx.from.id,
-        username: ctx.from.username,
-        first_name: ctx.from.first_name,
-        last_name: ctx.from.last_name
-      });
       
       // Processar a aceitação da operação
       await this.operationsService.acceptOperation(new Types.ObjectId(operationId), acceptorUser._id);

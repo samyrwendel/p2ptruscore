@@ -17,10 +17,14 @@ export class ConfigWebController {
     let currentConfig = {
       TELEGRAM_BOT_TOKEN: '',
       TELEGRAM_BOT_USERNAME: '',
-      TELEGRAM_GROUPS: '',
+      TELEGRAM_GROUP_ID: '',
+      TELEGRAM_THREAD_ID: '',
       MONGODB_CNN: 'mongodb://admin:password123@mongodb:27017/trustscore_bot?authSource=admin',
       PORT: '3000',
-      NODE_ENV: 'production'
+      NODE_ENV: 'production',
+      CURRENCY_API_KEY: '',
+      CURRENCY_API_URL: 'https://api.coingecko.com/api/v3',
+      DEFAULT_CURRENCY: 'BRL'
     };
 
     if (envExists) {
@@ -29,9 +33,16 @@ export class ConfigWebController {
         const envLines = envContent.split('\n');
         
         envLines.forEach(line => {
-          const [key, value] = line.split('=');
-          if (key && value && currentConfig.hasOwnProperty(key)) {
-            currentConfig[key] = value.trim();
+          const trimmedLine = line.trim();
+          if (trimmedLine && !trimmedLine.startsWith('#')) {
+            const equalIndex = trimmedLine.indexOf('=');
+            if (equalIndex > 0) {
+              const key = trimmedLine.substring(0, equalIndex).trim();
+              const value = trimmedLine.substring(equalIndex + 1).trim();
+              if (key && currentConfig.hasOwnProperty(key)) {
+                currentConfig[key] = value;
+              }
+            }
           }
         });
       } catch (error) {
@@ -66,8 +77,9 @@ TELEGRAM_BOT_TOKEN=${config.TELEGRAM_BOT_TOKEN || ''}
 # Username do bot (sem @)
 TELEGRAM_BOT_USERNAME=${config.TELEGRAM_BOT_USERNAME || ''}
 
-# IDs dos grupos Telegram (separados por vírgula)
-TELEGRAM_GROUPS=${config.TELEGRAM_GROUPS || ''}
+# IDs dos grupos Telegram
+TELEGRAM_GROUP_ID=${config.TELEGRAM_GROUP_ID || ''}
+TELEGRAM_THREAD_ID=${config.TELEGRAM_THREAD_ID || ''}
 
 # MongoDB Connection String
 MONGODB_CNN=${config.MONGODB_CNN || 'mongodb://admin:password123@mongodb:27017/trustscore_bot?authSource=admin'}
@@ -108,14 +120,35 @@ RATE_LIMIT_LIMIT=100
     
     let botConfigured = false;
     let mongoConfigured = false;
+    let groupConfigured = false;
+    let apiConfigured = false;
     
     if (envExists) {
       try {
         const envContent = fs.readFileSync(envPath, 'utf8');
-        botConfigured = envContent.includes('TELEGRAM_BOT_TOKEN=') && 
-                       !envContent.includes('TELEGRAM_BOT_TOKEN=SEU_TOKEN_AQUI') &&
-                       !envContent.includes('TELEGRAM_BOT_TOKEN=');
+        
+        // Verificar se o token do bot está configurado
+        const tokenMatch = envContent.match(/TELEGRAM_BOT_TOKEN=(.+)/);
+        botConfigured = !!(tokenMatch && tokenMatch[1] && 
+                       tokenMatch[1] !== 'SEU_TOKEN_AQUI' && 
+                       tokenMatch[1] !== '' &&
+                       tokenMatch[1].includes(':'));
+        
+        // Verificar se o MongoDB está configurado
         mongoConfigured = envContent.includes('MONGODB_CNN=mongodb://');
+        
+        // Verificar se o grupo está configurado
+        const groupMatch = envContent.match(/TELEGRAM_GROUP_ID=(.+)/);
+        groupConfigured = !!(groupMatch && groupMatch[1] && 
+                         groupMatch[1] !== '' &&
+                         groupMatch[1].startsWith('-'));
+        
+        // Verificar se a API de cotação está configurada
+        const apiKeyMatch = envContent.match(/CURRENCY_API_KEY=(.+)/);
+        const apiUrlMatch = envContent.match(/CURRENCY_API_URL=(.+)/);
+        apiConfigured = !!(apiKeyMatch && apiKeyMatch[1] && apiKeyMatch[1] !== '' &&
+                       apiUrlMatch && apiUrlMatch[1] && apiUrlMatch[1] !== '');
+        
       } catch (error) {
         console.error('Erro ao verificar status:', error);
       }
@@ -125,7 +158,16 @@ RATE_LIMIT_LIMIT=100
       envExists,
       botConfigured,
       mongoConfigured,
-      ready: envExists && botConfigured && mongoConfigured
+      groupConfigured,
+      apiConfigured,
+      ready: envExists && botConfigured && mongoConfigured && groupConfigured && apiConfigured,
+      details: {
+        env: envExists ? '✅ Arquivo .env existe' : '❌ Arquivo .env não encontrado',
+        bot: botConfigured ? '✅ Token do bot configurado' : '❌ Token do bot não configurado ou inválido',
+        mongo: mongoConfigured ? '✅ MongoDB configurado' : '❌ MongoDB não configurado',
+        group: groupConfigured ? '✅ Grupo Telegram configurado' : '❌ ID do grupo não configurado',
+        api: apiConfigured ? '✅ API de cotação configurada' : '❌ API de cotação não configurada'
+      }
     };
   }
 

@@ -7,7 +7,9 @@ import { createHash } from 'crypto';
 import { OperationsService } from '../../../operations/operations.service';
 import { UsersService } from '../../../users/users.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
+import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { validateActiveMembershipForCallback } from '../../../shared/group-membership.utils';
+import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -22,6 +24,7 @@ export class ReverterOperacaoCommandHandler implements ITextCommandHandler {
     private readonly operationsService: OperationsService,
     private readonly usersService: UsersService,
     private readonly keyboardService: TelegramKeyboardService,
+    private readonly termsAcceptanceService: TermsAcceptanceService,
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
@@ -114,6 +117,13 @@ export class ReverterOperacaoCommandHandler implements ITextCommandHandler {
     }
 
     try {
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos ANTES de reverter operação
+      const hasValidTerms = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'reverter');
+      if (!hasValidTerms) {
+        this.logger.warn(`❌ REVERSÃO BLOQUEADA - Usuário ${ctx.from.id} não aceitou os termos`);
+        return true; // validateUserTermsForCallback já envia o popup
+      }
+
       // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário é membro ativo
       const isActiveMember = await validateActiveMembershipForCallback(ctx, this.bot, 'reverter');
       if (!isActiveMember) {

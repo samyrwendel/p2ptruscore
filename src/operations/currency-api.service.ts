@@ -30,10 +30,13 @@ export interface CurrencyApiResponse {
 @Injectable()
 export class CurrencyApiService {
   private readonly logger = new Logger(CurrencyApiService.name);
-  private readonly apiKey = '3d7237cbd0d3ee56ce8eeaac087135beddf5d8fc3292dc5ae44acfee97d86918';
-  private readonly baseUrl = 'https://economia.awesomeapi.com.br/json/last';
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(private readonly httpService: HttpService) {
+    this.apiKey = process.env.CURRENCY_API_KEY || '3d7237cbd0d3ee56ce8eeaac087135beddf5d8fc3292dc5ae44acfee97d86918';
+    this.baseUrl = process.env.CURRENCY_API_URL || 'https://economia.awesomeapi.com.br/json/last';
+  }
 
   async getCurrentRates(): Promise<CurrencyApiResponse> {
     try {

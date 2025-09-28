@@ -3,6 +3,8 @@ import { Types } from 'mongoose';
 import { OperationsService } from '../../../operations/operations.service';
 import { UsersService } from '../../../users/users.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
+import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
+import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -17,6 +19,7 @@ export class CancelarOperacaoCommandHandler implements ITextCommandHandler {
     private readonly operationsService: OperationsService,
     private readonly usersService: UsersService,
     private readonly keyboardService: TelegramKeyboardService,
+    private readonly termsAcceptanceService: TermsAcceptanceService,
   ) {}
 
   async handle(ctx: TextCommandContext): Promise<void> {
@@ -114,6 +117,13 @@ export class CancelarOperacaoCommandHandler implements ITextCommandHandler {
     }
 
     try {
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos ANTES de cancelar operação
+      const hasValidTerms = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'cancelar');
+      if (!hasValidTerms) {
+        this.logger.warn(`❌ CANCELAMENTO BLOQUEADO - Usuário ${ctx.from.id} não aceitou os termos`);
+        return true; // validateUserTermsForCallback já envia o popup
+      }
+
       // Tentar responder ao callback, mas ignorar se expirado
       try {
         await ctx.answerCbQuery();

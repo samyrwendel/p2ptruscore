@@ -571,6 +571,12 @@ export class StartCommandHandler implements ITextCommandHandler {
         const userId = parts[0];
         const currentOffset = parseInt(parts[1]) || 10;
         await this.showMoreReviews(ctx, userId, currentOffset);
+      } else if (data.startsWith('reputation_main_')) {
+        // Delegar para o ReputacaoCommandHandler que tem o método showMainReputation
+        const handled = await this.reputacaoHandler.handleCallback(ctx);
+        if (handled) {
+          return true;
+        }
       } else if (data.startsWith('reputation_refresh_')) {
         const userId = data.replace('reputation_refresh_', '');
         await this.refreshReputation(ctx, userId);

@@ -654,8 +654,13 @@ export class OperationsBroadcastService {
         parse_mode: 'Markdown',
         reply_markup: inlineKeyboard
       };
-      if (group.groupId === -1002907400287) {
-        sendOptions.message_thread_id = 6; // Tópico específico do grupo
+      
+      // Usar as variáveis de ambiente corretas
+      const p2pGroupId = parseInt(process.env.TELEGRAM_GROUP_ID || '0');
+      const p2pThreadId = parseInt(process.env.TELEGRAM_THREAD_ID || '0');
+      
+      if (group.groupId === p2pGroupId && p2pThreadId > 0) {
+        sendOptions.message_thread_id = p2pThreadId;
       }
 
       // Editar a mensagem original em vez de criar nova

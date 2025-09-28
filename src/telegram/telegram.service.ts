@@ -212,6 +212,14 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         this.logger.log(`🔍 Resultado validação de membro ativo para ${ctx.from.id}: ${isActiveMember ? 'APROVADO' : 'NEGADO'}`);
         if (!isActiveMember) {
           this.logger.warn(`❌ COMANDO BLOQUEADO - Usuário ${ctx.from.id} (@${ctx.from.username || 'sem_username'}) não é membro ativo - Comando: ${text}`);
+          
+          // Enviar notificação para usuário não-membro usando o método dedicado
+          try {
+            await this.sendNonMemberNotification(ctx);
+          } catch (error) {
+            this.logger.error('Erro ao enviar notificação de não-membro:', error);
+          }
+          
           return; // Bloquear execução do comando
         }
       }
@@ -280,7 +288,22 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         return isActiveMember;
       } else {
         // Para comandos privados, verificar em grupos configurados
-        const configuredGroups = process.env.TELEGRAM_GROUPS?.split(',').map(id => parseInt(id.trim())) || [];
+        // Primeiro tentar TELEGRAM_GROUP_ID (novo formato)
+        let configuredGroups: number[] = [];
+        
+        if (process.env.TELEGRAM_GROUP_ID) {
+          configuredGroups.push(parseInt(process.env.TELEGRAM_GROUP_ID));
+        }
+        
+        // Depois tentar TELEGRAM_GROUPS (formato antigo)
+        if (process.env.TELEGRAM_GROUPS) {
+          const additionalGroups = process.env.TELEGRAM_GROUPS.split(',').map(id => parseInt(id.trim()));
+          configuredGroups = [...configuredGroups, ...additionalGroups];
+        }
+        
+        // Remover duplicatas
+        configuredGroups = [...new Set(configuredGroups)];
+        
         this.logger.log(`🔍 Verificando membro em ${configuredGroups.length} grupos configurados: ${configuredGroups.join(', ')}`);
         
         for (const groupId of configuredGroups) {
@@ -292,16 +315,9 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
           }
         }
 
-        // Se não é membro ativo em nenhum grupo configurado - ENVIAR MENSAGEM DE AVISO
+        // Se não é membro ativo em nenhum grupo configurado - BLOQUEIO SILENCIOSO
         this.logger.warn(`❌ ACESSO NEGADO - Usuário ${ctx.from.id} (@${ctx.from.username || 'sem_username'}) não é membro ativo de nenhum grupo configurado`);
-        
-        try {
-          // Enviar notificação visual para usuários não-membros
-          await this.sendNonMemberNotification(ctx);
-        } catch (error) {
-          this.logger.error('Erro ao enviar notificação de acesso negado:', error);
-          // Falha silenciosa - não poluir o chat
-        }
+        this.logger.warn(`Usuário ${ctx.from.id} não é membro ativo - comando bloqueado silenciosamente`);
         
         return false;
       }
@@ -434,32 +450,22 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async sendNonMemberNotification(ctx: TextCommandContext): Promise<void> {
-    // APENAS POPUP - Não enviar mensagens no chat
-    // Verificar se é um contexto de callback (tem callbackQuery) e se answerCbQuery está disponível
+    // APENAS para callbacks - usar popup nativo do Telegram
     if (ctx.callbackQuery && typeof ctx.answerCbQuery === 'function') {
       try {
         await ctx.answerCbQuery(
           `🚫 ACESSO NEGADO\n\n` +
-          `❌ Você precisa ser MEMBRO ATIVO do grupo para usar o P2P!\n\n` +
-          `📋 COMO RESOLVER:\n` +
-          `1️⃣ Entre no grupo TrustScore P2P\n` +
-          `2️⃣ Certifique-se de não ter sido removido\n` +
-          `3️⃣ Aceite os termos de responsabilidade\n` +
-          `4️⃣ Volte aqui e tente novamente\n\n` +
-          `💡 Apenas membros ativos podem usar o P2P!`,
+          `❌ Entre no grupo e aceite os termos!`,
           { show_alert: true }
         );
-        return;
       } catch (error) {
         this.logger.error('Erro ao enviar popup de não-membro:', error);
-        // REMOVIDO: Não enviar mensagem no chat em caso de erro
-        // Apenas logar o erro
       }
+      return;
     }
 
-    // REMOVIDO: Não enviar mensagem no chat para comandos de texto
-    // Apenas retornar silenciosamente
-    this.logger.warn(`Usuário ${ctx.from.id} não é membro ativo - comando bloqueado silenciosamente`);
+    // Para comandos de texto - usar o comando /termos existente que já funciona
+    await this.termosHandler.handle(ctx);
   }
 
   private async sendTermsNotification(ctx: TextCommandContext, isLegacyUser: boolean): Promise<void> {

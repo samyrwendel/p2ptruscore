@@ -4,11 +4,13 @@ import { KarmaService } from '../../../karma/karma.service';
 import { UsersService } from '../../../users/users.service';
 import { PendingEvaluationService } from '../../../operations/pending-evaluation.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
+import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { ExtraReplyMessage } from 'telegraf/typings/telegram-types';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf, Context } from 'telegraf';
 import { Update } from 'telegraf/types';
 import { getReputationInfo } from '../../../shared/reputation.utils';
+import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -26,6 +28,7 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
     private readonly usersService: UsersService,
     private readonly pendingEvaluationService: PendingEvaluationService,
     private readonly keyboardService: TelegramKeyboardService,
+    private readonly termsAcceptanceService: TermsAcceptanceService,
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
@@ -121,6 +124,13 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
 
   private async processStarEvaluationCallback(ctx: any, data: string): Promise<boolean> {
     try {
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos ANTES de avaliar
+      const hasValidTerms = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'avaliar');
+      if (!hasValidTerms) {
+        this.logger.warn(`❌ AVALIAÇÃO BLOQUEADA - Usuário ${ctx.from.id} não aceitou os termos`);
+        return true; // validateUserTermsForCallback já envia o popup
+      }
+
       // Extrair dados do callback
       const parts = data.replace('eval_star_', '').split('_');
       const starRating = parseInt(parts[0]);
@@ -810,24 +820,25 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
     comment: string
   ): Promise<void> {
     try {
-      // Buscar dados de karma do usuário avaliado
+      // Buscar dados de karma do usuário avaliado APÓS a avaliação ser registrada
       const evaluatedUser = await this.usersService.findOneByUserId(evaluatedUserId);
       if (!evaluatedUser) {
         this.logger.warn(`Usuário ${evaluatedUserId} não encontrado para notificação`);
         return;
       }
       
+      // Buscar karma atualizado após a avaliação
       const karmaDoc = await this.karmaService.getTotalKarmaForUser(evaluatedUser.userName || evaluatedUser.firstName);
       
       const evaluatorName = evaluator.username ? `@${evaluator.username}` : evaluator.first_name;
       const starEmojis = '⭐'.repeat(starRating);
       const ratingText = this.getStarRatingText(starRating);
       
-      // Calcular pontuação atual
+      // Calcular pontuação atual (APÓS a avaliação)
       let currentScore = 0;
       let starDistribution = '';
       
-      if (karmaDoc && karmaDoc.totalKarma) {
+      if (karmaDoc && karmaDoc.totalKarma !== undefined) {
         currentScore = karmaDoc.totalKarma;
         
         // Para distribuição de estrelas, precisamos buscar dados específicos do grupo
@@ -835,7 +846,7 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
         starDistribution = '';
       }
       
-      // Obter informações de reputação baseadas na pontuação
+      // Obter informações de reputação baseadas na pontuação ATUALIZADA
       const reputationInfo = getReputationInfo({ karma: currentScore });
       
       const notificationMessage = 
@@ -844,7 +855,7 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
         `${starEmojis} **Avaliação:** ${ratingText}\n` +
         `💬 **Comentário:** "${comment}"\n\n` +
         `${reputationInfo.icone} **Nível:** ${reputationInfo.nivel}\n` +
-        `🏆 **Sua Pontuação Atual:** ${currentScore} pts${starDistribution}\n\n` +
+        `🏅 **Sua Pontuação Atual:** ${currentScore} pts${starDistribution}\n\n` +
         `✨ Continue assim! Cada avaliação positiva fortalece sua reputação na comunidade.`;
       
       // Criar botão para ver reputação completa

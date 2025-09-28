@@ -39,11 +39,29 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
 
   // Configurar Handlebars como engine de template
-  app.setBaseViewsDir(join(__dirname, '..', 'views'))
+  app.setBaseViewsDir(join(__dirname, 'views'))
   app.setViewEngine('hbs')
   
-  // Registrar helpers do Handlebars se necessário
-  hbs.registerPartials(join(__dirname, '..', 'views', 'partials'))
+  // Registrar helpers do Handlebars
+  hbs.registerPartials(join(__dirname, 'views', 'partials'))
+  
+  // Registrar helper 'eq' para comparações
+  hbs.registerHelper('eq', function(a, b) {
+    return a === b;
+  });
+  
+  // Registrar helper para formatação de uptime
+  hbs.registerHelper('formatUptime', function(uptime: number) {
+    const hours = Math.floor(uptime / 3600);
+    const minutes = Math.floor((uptime % 3600) / 60);
+    const seconds = Math.floor(uptime % 60);
+    return `${hours}h ${minutes}m ${seconds}s`;
+  });
+  
+  // Registrar helper para formatação de timestamp
+  hbs.registerHelper('formatTimestamp', function(timestamp: string) {
+    return new Date(timestamp).toLocaleString('pt-BR');
+  });
 
   app.enableCors()
 

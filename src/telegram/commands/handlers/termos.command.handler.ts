@@ -76,7 +76,6 @@ export class TermosCommandHandler implements ITextCommandHandler {
   }
 
   private async showTermsText(ctx: TextCommandContext): Promise<void> {
-    const termsText = this.termsAcceptanceService.getTermsText();
     const version = this.termsAcceptanceService.getCurrentTermsVersion();
 
     // Verificar se o usuário já aceitou os termos atuais
@@ -84,7 +83,22 @@ export class TermosCommandHandler implements ITextCommandHandler {
     try {
       if (ctx.chat.type === 'private') {
         // Em chat privado, verificar nos grupos configurados
-        const configuredGroups = process.env.TELEGRAM_GROUPS?.split(',').map(id => parseInt(id.trim())) || [];
+        // Primeiro tentar TELEGRAM_GROUP_ID (novo formato)
+        let configuredGroups: number[] = [];
+        
+        if (process.env.TELEGRAM_GROUP_ID) {
+          configuredGroups.push(parseInt(process.env.TELEGRAM_GROUP_ID));
+        }
+        
+        // Depois tentar TELEGRAM_GROUPS (formato antigo)
+        if (process.env.TELEGRAM_GROUPS) {
+          const additionalGroups = process.env.TELEGRAM_GROUPS.split(',').map(id => parseInt(id.trim()));
+          configuredGroups = [...configuredGroups, ...additionalGroups];
+        }
+        
+        // Remover duplicatas
+        configuredGroups = [...new Set(configuredGroups)];
+        
         for (const groupId of configuredGroups) {
           const accepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(ctx.from.id, groupId);
           if (accepted) {
@@ -100,6 +114,8 @@ export class TermosCommandHandler implements ITextCommandHandler {
       this.logger.warn('Erro ao verificar aceitação de termos:', error);
     }
 
+    // Usar texto completo dos termos
+    const termsText = this.termsAcceptanceService.getTermsText();
     const message = (
       termsText + `\n\n` +
       `📋 **Informações:**\n` +
@@ -109,19 +125,23 @@ export class TermosCommandHandler implements ITextCommandHandler {
       `💡 **Nota:** Estes são os termos atuais da plataforma TrustScore.`
     );
 
-    // Adicionar botão para aceitar termos APENAS se não aceitou ainda E está em chat privado
-    const keyboard = (hasAcceptedCurrent || ctx.chat.type !== 'private') ? undefined : {
+    // Adicionar botões sempre - não apenas para quem não aceitou
+    const keyboard = {
       inline_keyboard: [
         [
           {
-            text: '✅ Aceitar Termos',
+            text: '✅ ACEITO OS TERMOS',
             callback_data: `accept_terms_${ctx.from.id}_${ctx.chat.id}`
+          },
+          {
+            text: '❌ NÃO ACEITO',
+            callback_data: `reject_terms_${ctx.from.id}_${ctx.chat.id}`
           }
         ],
         [
           {
-            text: '📋 Ver Histórico',
-            callback_data: `terms_history_${ctx.from.id}`
+            text: '📋 Ver Termos Detalhados',
+            callback_data: `view_terms_detail_${ctx.from.id}_${ctx.chat.id}`
           }
         ]
       ]
@@ -314,7 +334,22 @@ export class TermosCommandHandler implements ITextCommandHandler {
       
       // Se está em chat privado, usar o primeiro grupo configurado
       if (ctx.callbackQuery.message.chat.type === 'private') {
-        const configuredGroups = process.env.TELEGRAM_GROUPS?.split(',').map(id => parseInt(id.trim())) || [];
+        // Primeiro tentar TELEGRAM_GROUP_ID (novo formato)
+        let configuredGroups: number[] = [];
+        
+        if (process.env.TELEGRAM_GROUP_ID) {
+          configuredGroups.push(parseInt(process.env.TELEGRAM_GROUP_ID));
+        }
+        
+        // Depois tentar TELEGRAM_GROUPS (formato antigo)
+        if (process.env.TELEGRAM_GROUPS) {
+          const additionalGroups = process.env.TELEGRAM_GROUPS.split(',').map(id => parseInt(id.trim()));
+          configuredGroups = [...configuredGroups, ...additionalGroups];
+        }
+        
+        // Remover duplicatas
+        configuredGroups = [...new Set(configuredGroups)];
+        
         if (configuredGroups.length > 0) {
           targetGroupId = configuredGroups[0];
         }

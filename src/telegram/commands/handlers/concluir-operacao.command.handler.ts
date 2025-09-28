@@ -7,7 +7,9 @@ import { OperationsService } from '../../../operations/operations.service';
 import { UsersService } from '../../../users/users.service';
 import { PendingEvaluationService } from '../../../operations/pending-evaluation.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
+import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { validateActiveMembershipForCallback } from '../../../shared/group-membership.utils';
+import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -23,6 +25,7 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
     private readonly usersService: UsersService,
     private readonly pendingEvaluationService: PendingEvaluationService,
     private readonly keyboardService: TelegramKeyboardService,
+    private readonly termsAcceptanceService: TermsAcceptanceService,
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
@@ -91,6 +94,13 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
     }
 
     try {
+      // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos ANTES de concluir operação
+      const hasValidTerms = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'concluir');
+      if (!hasValidTerms) {
+        this.logger.warn(`❌ CONCLUSÃO BLOQUEADA - Usuário ${ctx.from.id} não aceitou os termos`);
+        return true; // validateUserTermsForCallback já envia o popup
+      }
+
       // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário é membro ativo
       const isActiveMember = await validateActiveMembershipForCallback(ctx, this.bot, 'concluir');
       if (!isActiveMember) {

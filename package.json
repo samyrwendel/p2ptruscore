@@ -5,7 +5,7 @@
   "author": "WilliamsMata",
   "license": "ISC",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build && node copy-views.js",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "cross-env NODE_ENV=development nest start --watch",
@@ -16,7 +16,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "copy-views": "node copy-views.js"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
