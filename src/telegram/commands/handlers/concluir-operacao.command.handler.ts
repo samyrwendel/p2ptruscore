@@ -138,6 +138,14 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
         const typeText = completedOperation.type === 'buy' ? 'COMPRA' : 'VENDA';
         const total = completedOperation.amount * completedOperation.price;
         
+        // Para operações com EUR, ajustar a moeda do total
+        let totalFormatted = '';
+        if (completedOperation.assets.includes('EURO' as any)) {
+          totalFormatted = `€ ${total.toFixed(2)}`;
+        } else {
+          totalFormatted = `R$ ${total.toFixed(2)}`;
+        }
+        
         // Verificar se foi uma solicitação de conclusão ou confirmação final
         if (completedOperation.status === 'pending_completion') {
           // Primeira solicitação - aguardando confirmação da outra parte
@@ -146,7 +154,8 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
             `${typeText}\n` +
             `💰 **Ativos:** ${completedOperation.assets.join(', ')}\n` +
             `📊 **Quantidade:** ${completedOperation.amount}\n` +
-            `💵 **Total:** R$ ${total.toFixed(2)}\n\n` +
+            `💵 **Total:** ${totalFormatted}\n` +
+            `🆔 **ID:** \`${completedOperation._id}\`\n\n` +
             `🤝 **Aguardando confirmação** da outra parte.\n\n` +
             `💡 A operação será concluída quando ambas as partes confirmarem.`,
             { parse_mode: 'Markdown' }
@@ -158,8 +167,9 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
             `${typeText}\n` +
             `💰 **Ativos:** ${completedOperation.assets.join(', ')}\n` +
             `📊 **Quantidade:** ${completedOperation.amount}\n` +
-            `💵 **Total:** R$ ${total.toFixed(2)}\n` +
-            `🌐 **Redes:** ${completedOperation.networks.map(n => n.toUpperCase()).join(', ')}\n\n` +
+            `💵 **Total:** ${totalFormatted}\n` +
+            `🌐 **Redes:** ${completedOperation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
+            `🆔 **ID:** \`${completedOperation._id}\`\n\n` +
             `🎉 **Parabéns pela transação bem-sucedida!**\n\n` +
             `⏳ **Redirecionando para avaliação...**`,
             { parse_mode: 'Markdown' }

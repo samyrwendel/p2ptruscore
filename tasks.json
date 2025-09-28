@@ -1535,6 +1535,38 @@
         }
       ],
       "completed": false
+    },
+    {
+      "requestId": "req-diretrizes",
+      "originalRequest": "Estabelecer diretrizes de desenvolvimento para manter consistência no projeto",
+      "splitDetails": "Criar documentação e padrões para garantir que futuras implementações sigam as melhores práticas identificadas",
+      "tasks": [
+        {
+          "id": "task-diretrizes-1",
+          "title": "✅ Criar arquivo de diretrizes de desenvolvimento",
+          "description": "Documentar padrões obrigatórios: inclusão de ID em todas as mensagens de operação, fluxo correto de mensagens, consistência de moedas (EUR/USD/BRL), e checklists de implementação",
+          "done": true,
+          "approved": false,
+          "completedDetails": "Criado arquivo DIRETRIZES-DESENVOLVIMENTO.md com princípios fundamentais, checklists de implementação, padrões de código, pontos críticos de atenção e processo de revisão. Inclui exemplos práticos e referências aos arquivos do projeto."
+        },
+        {
+          "id": "task-diretrizes-2", 
+          "title": "🔄 Implementar validação automática de padrões",
+          "description": "Criar scripts ou testes automatizados para verificar se novas implementações seguem as diretrizes: presença de IDs, formatação correta de moedas, títulos adequados",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-diretrizes-3",
+          "title": "🔄 Atualizar PRD com diretrizes",
+          "description": "Integrar as diretrizes de desenvolvimento no PRD existente para que façam parte da especificação oficial do produto",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        }
+      ],
+      "completed": false
     }
   ]
 }

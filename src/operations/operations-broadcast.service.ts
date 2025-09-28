@@ -304,10 +304,11 @@ export class OperationsBroadcastService {
         
         // Salvar no banco de dados
         try {
-          await this.operationsRepository.findOneAndUpdate(
-            { _id: operation._id },
+          await this.operationsRepository.updateOperation(
+            operation._id,
             updateData
           );
+          this.logger.log(`✅ MessageId ${sentMessage.message_id} salvo para operação ${operation._id}`);
         } catch (error) {
           this.logger.warn(`⚠️ Failed to save messageId for operation ${operation._id}: ${error.message}`);
         }
@@ -335,6 +336,11 @@ export class OperationsBroadcastService {
     acceptorId: Types.ObjectId
   ): Promise<void> {
     try {
+      this.logger.log(`🔄 [DEBUG] notifyOperationAccepted iniciado para operação ${operation._id}`);
+      this.logger.log(`🔍 [DEBUG] Operation messageId: ${operation.messageId}`);
+      this.logger.log(`🔍 [DEBUG] Operation group: ${operation.group}`);
+      this.logger.log(`🔍 [DEBUG] AcceptorId: ${acceptorId}`);
+      
       if (!operation.group) {
         this.logger.warn('Operation has no associated group for acceptance notification');
         return;
@@ -360,6 +366,42 @@ export class OperationsBroadcastService {
       if (!group || !creator || !acceptor) {
         this.logger.warn('Missing data for operation acceptance notification');
         return;
+      }
+
+      // Primeiro, notificar o criador no chat privado sobre a aceitação
+      try {
+        const acceptorName = acceptor.userName ? `@${acceptor.userName}` : acceptor.firstName || 'Usuário';
+        
+        // Enviar mensagem privada ao criador informando sobre a aceitação
+         const creatorNotificationMessage = `✅ **Operação Aceita!**\n\n` +
+           `${acceptorName} aceitou sua operação!\n\n` +
+           `🔁 **QUERO TROCAR**\n` +
+           `Ativos: ${operation.assets.join(', ')}\n` +
+           `Redes: ${operation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
+           `Quantidade: ${operation.amount} (total)\n\n` +
+           `👤 **Negociador:** ${acceptorName}\n` +
+           `🆔 **ID:** \`${operation._id}\`\n\n` +
+           `📞 **Próximos passos:**\n` +
+           `1. Entrem em contato via DM\n` +
+           `2. Combinem os detalhes da transação\n` +
+           `3. Usem o botão "Concluir Operação" quando finalizada`;
+
+        await this.bot.telegram.sendMessage(
+          creator.userId,
+          creatorNotificationMessage,
+          { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '✅ Concluir Operação', callback_data: `complete_operation_${operation._id}` },
+                { text: '❌ Cancelar Operação', callback_data: `cancel_operation_${operation._id}` }
+              ]]
+            }
+          }
+        );
+        this.logger.log(`Notificação de aceitação enviada ao criador ${creator.userId} para operação ${operation._id}`);
+      } catch (error) {
+        this.logger.warn('Erro ao notificar criador sobre aceitação:', error);
       }
 
       let typeEmoji = '🟢';
@@ -416,13 +458,27 @@ export class OperationsBroadcastService {
       
       const assetUnit = formatAssetUnit(operation.assets);
       
+      // Para operações com EUR, ajustar a moeda do preço
+      let priceFormatted = '';
+      let quotationFormatted = '';
+      
+      if (operation.assets.includes('EURO' as any)) {
+        // Para EUR, mostrar valores em EUR
+        priceFormatted = operation.quotationType === 'google' ? 'Calculado na Transação' : `€ ${operation.price.toFixed(4)}`;
+        quotationFormatted = operation.quotationType === 'google' ? 'Google' : `€ ${operation.price.toFixed(4)}`;
+      } else {
+        // Para outros ativos, manter em BRL
+        priceFormatted = operation.quotationType === 'google' ? 'Calculado na Transação' : `R$ ${operation.price.toFixed(2)}`;
+        quotationFormatted = operation.quotationType === 'google' ? 'Google' : `R$ ${operation.price.toFixed(2)}`;
+      }
+      
       const message = (
         `✅ **Operação Aceita!**\n\n` +
         `${acceptorName} aceitou a operação de ${typeText}\n\n` +
         `**Ativos:** ${assetsText}\n` +
         `**Quantidade:** ${operation.amount} ${assetUnit}\n` +
-        `**Preço:** ${operation.quotationType === 'google' ? 'Calculado na Transação' : `R$ ${operation.price.toFixed(2)}`}\n` +
-        `Cotação: ${operation.quotationType === 'google' ? 'Google' : `R$ ${operation.price.toFixed(2)}`}\n` +
+        `**Preço:** ${priceFormatted}\n` +
+        `Cotação: ${quotationFormatted}\n` +
         `Redes: ${networksText}\n\n` +
         `👥 **Partes Envolvidas:**\n` +
         `• **Criador:**\n` +
@@ -511,6 +567,7 @@ export class OperationsBroadcastService {
       // Editar a mensagem original em vez de deletar e criar nova
       if (operation.messageId) {
         try {
+          this.logger.log(`🔄 Tentando editar mensagem ${operation.messageId} para operação ${operation._id}`);
           await this.bot.telegram.editMessageText(
             group.groupId,
             operation.messageId,
@@ -521,24 +578,49 @@ export class OperationsBroadcastService {
               reply_markup: inlineKeyboard
             }
           );
-          this.logger.log(`Edited original message ${operation.messageId} for operation ${operation._id}`);
-        } catch (editError) {
-          this.logger.warn(`Failed to edit message ${operation.messageId}, sending new message:`, editError);
+          this.logger.log(`✅ Mensagem ${operation.messageId} editada com sucesso para operação ${operation._id}`);
+        } catch (editError: any) {
+          this.logger.error(`❌ Falha ao editar mensagem ${operation.messageId} para operação ${operation._id}:`, editError);
+          this.logger.warn(`🔄 Tentando deletar e enviar nova mensagem...`);
+          
           // Se falhar ao editar, deletar e enviar nova
-          await this.deleteOperationMessage(operation);
-          await this.bot.telegram.sendMessage(
+          try {
+            await this.deleteOperationMessage(operation);
+            const newMessage = await this.bot.telegram.sendMessage(
+              group.groupId,
+              message,
+              sendOptions
+            );
+            
+            // Atualizar messageId da operação
+            await this.operationsRepository.updateOperation(operation._id, {
+              messageId: newMessage.message_id
+            });
+            
+            this.logger.log(`✅ Nova mensagem ${newMessage.message_id} enviada para operação ${operation._id}`);
+          } catch (sendError: any) {
+            this.logger.error(`❌ Falha ao enviar nova mensagem para operação ${operation._id}:`, sendError);
+          }
+        }
+      } else {
+        // Se não tem messageId, enviar nova mensagem
+        this.logger.log(`📤 Enviando nova mensagem para operação ${operation._id} (sem messageId)`);
+        try {
+          const newMessage = await this.bot.telegram.sendMessage(
             group.groupId,
             message,
             sendOptions
           );
+          
+          // Atualizar messageId da operação
+          await this.operationsRepository.updateOperation(operation._id, {
+            messageId: newMessage.message_id
+          });
+          
+          this.logger.log(`✅ Nova mensagem ${newMessage.message_id} enviada e salva para operação ${operation._id}`);
+        } catch (sendError: any) {
+          this.logger.error(`❌ Falha ao enviar mensagem para operação ${operation._id}:`, sendError);
         }
-      } else {
-        // Se não tem messageId, enviar nova mensagem
-        await this.bot.telegram.sendMessage(
-          group.groupId,
-          message,
-          sendOptions
-        );
       }
 
       this.logger.log(
@@ -605,24 +687,59 @@ export class OperationsBroadcastService {
       const acceptorName = acceptor?.userName ? `@${acceptor.userName}` : acceptor?.firstName || 'Usuário';
 
       let message = (
-        `🎉 **Operação Concluída com Sucesso!**\n\n` +
-        `${typeEmoji} **${typeText} ${assetsText}**\n\n` +
-        `👤 **Criador:** ${creatorName}\n`
+        `✅ **Operação Concluída com Sucesso!**\n\n` +
+        `${typeEmoji} **${typeText} ${assetsText}**\n` +
+        `🌐 **Redes:** ${networksText}\n` +
+        `💰 **Quantidade:** ${operation.amount} (total)\n\n`
       );
 
-      if (acceptor) {
-        message += `🤝 **Negociador:** ${acceptorName}\n\n`;
+      // Mostrar detalhes da transação baseado no tipo de cotação
+      let priceFormatted = '';
+      let totalFormatted = '';
+      
+      if (operation.assets.includes('EURO' as any)) {
+        // Para EUR, mostrar valores em EUR
+        priceFormatted = operation.quotationType === 'google' ? 'Google (calculada na transação)' : `€ ${operation.price.toFixed(4)}`;
+        totalFormatted = `€ ${total.toFixed(2)}`;
       } else {
-        message += '\n';
+        // Para outros ativos, manter em BRL
+        priceFormatted = operation.quotationType === 'google' ? 'Google (calculada na transação)' : `R$ ${operation.price.toFixed(2)}`;
+        totalFormatted = `R$ ${total.toFixed(2)}`;
       }
+      
+      if (operation.quotationType === 'google') {
+        message += `💵 **Cotação:** ${priceFormatted}\n`;
+      } else {
+        message += `💵 **Preço:** ${priceFormatted}\n`;
+      }
+      
+      message += `💸 **Total:** ${totalFormatted}\n\n`;
 
+      // Informações dos participantes
+      message += `👤 **Criador:** ${creatorName}\n`;
+      if (acceptor) {
+        message += `🤝 **Negociador:** ${acceptorName}\n`;
+      }
+      
+      // Informações da operação para consulta futura
       message += (
-        `💰 **Quantidade:** ${operation.amount} (total)\n` +
-        `💵 **Preço:** R$ ${operation.price.toFixed(2)}\n` +
-        `💸 **Total:** R$ ${total.toFixed(2)}\n` +
-        `🌐 **Redes:** ${networksText}\n\n` +
-        `🆔 **ID:** \`${operation._id}\`\n\n` +
-        `💡 **Não esqueçam de se avaliarem mutuamente usando:**\n\n` +
+        `\n📋 **Detalhes da Operação:**\n` +
+        `🆔 **ID:** \`${operation._id}\`\n` +
+        `⏰ **Concluída em:** ${new Date().toLocaleString('pt-BR')}\n`
+      );
+      
+      // Adicionar detalhes da transação se fornecidos
+      if (operation.transactionDetails) {
+        message += `📝 **Detalhes:** ${operation.transactionDetails}\n`;
+      }
+      
+      // Adicionar hash da transação se fornecido
+      if (operation.transactionHash) {
+        message += `🔗 **Hash:** \`${operation.transactionHash}\`\n`;
+      }
+      
+      message += (
+        `\n💡 **Não esqueçam de se avaliarem mutuamente!**\n` +
         `🚀 **Continuem negociando com segurança!**`
       );
 
@@ -792,10 +909,24 @@ export class OperationsBroadcastService {
         const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
         const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
         
+        // Para operações com EUR, ajustar a moeda do preço
+         let totalFormatted = '';
+         let priceFormatted = '';
+         
+         if (operation.assets.includes('EURO' as any)) {
+           // Para EUR, mostrar valores em EUR
+           totalFormatted = `€ ${total.toFixed(2)}`;
+           priceFormatted = `€ ${operation.price.toFixed(4)}`;
+         } else {
+           // Para outros ativos, manter em BRL
+           totalFormatted = `R$ ${total.toFixed(2)}`;
+           priceFormatted = `R$ ${operation.price.toFixed(2)}`;
+         }
+        
         message += (
           `${arrowIcon} **${actionText}:** ${operation.amount} ${assetsText}\n` +
-          `${paymentArrow} **${paymentText}:** R$ ${total.toFixed(2)}\n` +
-          `💱 **Cotação:** R$ ${operation.price.toFixed(2)}\n\n`
+          `${paymentArrow} **${paymentText}:** ${totalFormatted}\n` +
+          `💱 **Cotação:** ${priceFormatted}\n\n`
         );
       } else {
         const arrowIcon = operation.type === 'buy' ? '⬅️' : '➡️';
@@ -1000,6 +1131,10 @@ export class OperationsBroadcastService {
          `👤 **Avaliando:** ${acceptorName}${acceptorReputationInfo}\n` +
          `Você concluiu uma operação com sucesso!\n` +
          `Para finalizar, é obrigatório avaliar seu parceiro de negociação.\n\n` +
+         `**Detalhes da Operação:**\n` +
+         `${typeEmoji} **${typeText} ${assetsText}**\n` +
+         `💰 **Quantidade:** ${operation.amount}\n` +
+         `🆔 **ID:** \`${operation._id}\`\n\n` +
          `**Como foi a experiência?**\n` +
          `Escolha quantas estrelas você daria:`
        );
@@ -1029,6 +1164,10 @@ export class OperationsBroadcastService {
          `👤 **Avaliando:** ${creatorName}${creatorReputationInfo}\n` +
          `A operação foi concluída com sucesso!\n` +
          `Para finalizar, é obrigatório avaliar seu parceiro de negociação.\n\n` +
+         `**Detalhes da Operação:**\n` +
+         `${typeEmoji} **${typeText} ${assetsText}**\n` +
+         `💰 **Quantidade:** ${operation.amount}\n` +
+         `🆔 **ID:** \`${operation._id}\`\n\n` +
          `**Como foi a experiência?**\n` +
          `Escolha quantas estrelas você daria:`
        );
@@ -1207,6 +1346,7 @@ export class OperationsBroadcastService {
         `⏳ **Solicitação de Conclusão**\n\n` +
         `${typeEmoji} **${typeText} ${assetsText}**\n\n` +
         `👤 **${requesterName}** solicitou a conclusão desta operação.\n\n` +
+        `🆔 **ID:** \`${operation._id}\`\n\n` +
         `🤝 **Você precisa confirmar** para finalizar a transação.\n\n` +
         `💡 Clique em "Aceitar Conclusão" se a operação foi realizada com sucesso.`
       );

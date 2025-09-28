@@ -104,16 +104,15 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
       first_name: ctx.from.first_name || 'Usuário',
       last_name: ctx.from.last_name
     };
-    const acceptorUser = await this.usersService.findOrCreate(acceptorUserData);
-    const acceptorId = acceptorUser._id;
 
     try {
-      // Verificar se a operação existe e está disponível
-      const operation = await this.operationsService.getOperationById(
-        new Types.ObjectId(operationId),
-      );
+      // ⚡ OTIMIZAÇÃO: Buscar operação e validações em paralelo
+      const [operation, acceptorUser] = await Promise.all([
+        this.operationsService.getOperationById(new Types.ObjectId(operationId)),
+        this.usersService.findOrCreate(acceptorUserData)
+      ]);
 
-      // Validação de grupo removida - permitir aceitar operações de qualquer grupo
+      const acceptorId = acceptorUser._id;
 
       // Verificar se o usuário não está tentando aceitar sua própria operação
       if (operation.creator.toString() === acceptorId.toString()) {
@@ -121,16 +120,13 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
         return;
       }
 
-      // Aceitar a operação
-      const acceptedOperation = await this.operationsService.acceptOperation(
-        new Types.ObjectId(operationId),
-        acceptorId,
-      );
+      // ⚡ OTIMIZAÇÃO: Aceitar operação e buscar dados em paralelo
+      const [acceptedOperation, creatorUser] = await Promise.all([
+        this.operationsService.acceptOperation(new Types.ObjectId(operationId), acceptorId),
+        this.usersService.findById(operation.creator.toString())
+      ]);
 
-      // Buscar informações do usuário criador (acceptorUser já foi obtido acima)
-      const creatorUser = await this.usersService.findById(acceptedOperation.creator.toString());
-
-      // Buscar reputação de ambos (usar karma total se não encontrar no grupo atual)
+      // ⚡ OTIMIZAÇÃO: Buscar karma de ambos em paralelo
       const [creatorKarma, acceptorKarma] = await Promise.all([
         creatorUser?.userId ? this.getKarmaForUserWithFallback(creatorUser, ctx.chat.id) : null,
         acceptorUser?.userId ? this.getKarmaForUserWithFallback(acceptorUser, ctx.chat.id) : null,
@@ -329,7 +325,9 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
       }
       
       // Processar a aceitação da operação
-      await this.operationsService.acceptOperation(new Types.ObjectId(operationId), acceptorUser._id);
+      this.logger.log(`🔄 Chamando acceptOperation para operação ${operationId}`);
+      const acceptedOperation = await this.operationsService.acceptOperation(new Types.ObjectId(operationId), acceptorUser._id);
+      this.logger.log(`✅ acceptOperation concluído para operação ${operationId}`);
       
       try {
         await ctx.answerCbQuery('✅ Operação aceita com sucesso!', { show_alert: true });

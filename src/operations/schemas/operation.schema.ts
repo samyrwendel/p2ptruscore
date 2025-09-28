@@ -109,6 +109,15 @@ export class Operation extends AbstractDocument {
   completionRequestedAt?: Date; // Quando foi solicitada a conclusão
 
   @Prop({ type: Types.ObjectId, ref: User.name })
+  awaitingConfirmationFrom?: Types.ObjectId; // De quem está aguardando confirmação
+
+  @Prop()
+  awaitingConfirmationSince?: Date; // Desde quando está aguardando
+
+  @Prop({ maxlength: 1000 })
+  transactionDetails?: string; // Detalhes da transação fornecidos pelo solicitante
+
+  @Prop({ type: Types.ObjectId, ref: User.name })
   disputedBy?: Types.ObjectId; // Quem contestou a operação
 
   @Prop()

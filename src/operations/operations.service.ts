@@ -149,8 +149,12 @@ export class OperationsService {
       `Operation ${operationId} accepted by user ${acceptorId}`,
     );
     
+    this.logger.log(`🔄 Chamando notifyOperationAccepted para operação ${operationId}`);
+    
     // Notify the group about the acceptance
     await this.broadcastService.notifyOperationAccepted(updatedOperation, acceptorId);
+    
+    this.logger.log(`✅ notifyOperationAccepted concluído para operação ${operationId}`);
     
     return updatedOperation;
   }
@@ -280,6 +284,7 @@ export class OperationsService {
   async completeOperation(
     operationId: Types.ObjectId,
     userId: Types.ObjectId,
+    transactionDetails?: string,
   ): Promise<Operation> {
     const operation = await this.getOperationById(operationId);
 
@@ -328,11 +333,18 @@ export class OperationsService {
       return updatedOperation;
     }
 
-    // Primeira solicitação de conclusão - marcar como pendente
-    const updatedOperation = await this.operationsRepository.requestCompletion(
-      operationId,
-      userId
-    );
+    // Primeira solicitação de conclusão - marcar como pendente com transparência
+    const otherPartyId = operation.creator.toString() === userId.toString() ? 
+      operation.acceptor : operation.creator;
+    
+    const updatedOperation = await this.operationsRepository.updateOperation(operationId, {
+      status: OperationStatus.PENDING_COMPLETION,
+      completionRequestedBy: userId,
+      completionRequestedAt: new Date(),
+      awaitingConfirmationFrom: otherPartyId,
+      awaitingConfirmationSince: new Date(),
+      transactionDetails: transactionDetails,
+    });
 
     if (!updatedOperation) {
       throw new Error('Erro ao solicitar conclusão da operação');

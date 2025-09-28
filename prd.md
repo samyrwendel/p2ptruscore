@@ -1,5 +1,18 @@
 # PRD - P2P Score Bot
 
+## 📋 Diretrizes de Desenvolvimento
+
+### 🎯 Padrões Obrigatórios
+- **ID da Operação**: SEMPRE incluir `🆔 **ID:** \`${operation._id}\`` em todas as mensagens
+- **Fluxo de Mensagens**: Usar títulos corretos (`Operação Criada` → `Operação Aceita` → `Operação Concluída`)
+- **Consistência de Moedas**: EUR (€), USD ($), BRL (R$) formatados corretamente
+- **Validações**: Verificar permissões, estado da operação e dados obrigatórios
+
+### 📚 Documentação de Referência
+- `DIRETRIZES-DESENVOLVIMENTO.md`: Guia completo de padrões e checklists
+- `tasks.json`: Histórico de implementações e correções
+- Seguir sempre os padrões estabelecidos para manter consistência
+
 ## Arquitetura e Ambientes - Telegram Bot
 - Deve existir uma única instância ativa do bot consumindo getUpdates por token.
 - Em desenvolvimento, usar token/username separados no arquivo .env.development (NODE_ENV=development).
@@ -66,15 +79,20 @@ Desenvolver um bot do Telegram para sistema de avaliação peer-to-peer (P2P) qu
 - **Comando**: `/verhistorico @usuario` - Histórico de outro usuário
 - **Comando**: `/hoje`, `/mes`, `/ano` - Estatísticas por período
 
-### 6. Sistema de Operações P2P (Nova - Implementada)
-- **Comando**: `/criaroperacao` - Criar nova operação de compra/venda
+### 6. Sistema de Operações P2P (Implementada e Corrigida)
+- **Comando**: `/criaroperacao` - Criar nova operação de compra/venda/troca
 - **Comando**: `/aceitaroperacao [ID]` - Aceitar operação disponível
+- **Comando**: `/concluiroperacao [ID]` - Marcar operação como concluída
+- **Comando**: `/cancelaroperacao [ID]` - Cancelar operação própria
+- **Comando**: `/minhasoperacoes` - Ver histórico de operações
 - **Funcionalidade**: Interface com botões para:
-  - Tipo: Compra ou Venda
-  - Ativos: USDC, USDT, WBTC, CBBTC
-  - Redes: Arbitrum, Polygon, Ethereum, Base, Solana, BNB
-  - Valor e preço personalizados
-  - Sistema de cotação manual/automática
+  - Tipo: Compra, Venda, Anúncio ou **Troca** (novo)
+  - Ativos: USDC, USDT, USDe, BTC, ETH, XRP, **EURO**, **DÓLAR**, **REAL** (expandido)
+  - Redes: Arbitrum, Polygon, Ethereum, Base, Solana, BNB (completo)
+  - Valor e preço personalizados com **formatação de moeda correta**
+  - Sistema de cotação manual/Google com **cotações EUR/USD reais**
+  - **ID da operação em todas as mensagens** para identificação
+  - **Fluxo de mensagens correto**: Criada → Aceita → Concluída
   - Broadcast automático para grupos
 
 ### 7. Comandos Administrativos
@@ -139,25 +157,43 @@ interface Group {
 }
 ```
 
-#### Operação P2P (Implementada)
+#### Operação P2P (Implementada e Corrigida)
 ```typescript
 interface Operation {
   _id: ObjectId;
-  type: 'buy' | 'sell';
-  asset: 'USDC' | 'USDT' | 'WBTC' | 'CBBTC';
-  network: 'arbitrum' | 'polygon' | 'ethereum' | 'base' | 'solana' | 'bnb';
+  type: 'buy' | 'sell' | 'announcement' | 'exchange'; // Expandido
+  assets: AssetType[]; // Array para múltiplos ativos
+  networks: NetworkType[]; // Array para múltiplas redes
   amount: number;
   price: number;
-  quotationType: 'manual' | 'google' | 'api';
+  quotationType: 'manual' | 'google'; // Simplificado
   description?: string;
+  paymentMethods?: string[]; // PIX, Boleto, etc.
   creator: ObjectId; // referência ao usuário
   group: ObjectId; // referência ao grupo
   acceptor?: ObjectId; // usuário que aceitou
-  status: 'active' | 'accepted' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'pending_completion' | 'completed' | 'cancelled'; // Estados corretos
+  messageId?: number; // ID da mensagem no grupo
+  privateEvaluationMessageId?: number; // ID da mensagem privada
   expiresAt: Date;
   createdAt: Date;
   acceptedAt?: Date;
   completedAt?: Date;
+  transactionHash?: string; // Hash da transação blockchain
+  transactionDetails?: string; // Detalhes fornecidos pelo usuário
+}
+
+// Enums expandidos
+enum AssetType {
+  USDC = 'USDC', USDT = 'USDT', USDE = 'USDe',
+  BTC = 'BTC', ETH = 'ETH', XRP = 'XRP',
+  DOLAR = 'DOLAR', EURO = 'EURO', REAL = 'REAL'
+}
+
+enum NetworkType {
+  ARBITRUM = 'arbitrum', POLYGON = 'polygon', 
+  ETHEREUM = 'ethereum', BASE = 'base', 
+  SOLANA = 'solana', BNB = 'bnb'
 }
 ```
 
@@ -201,17 +237,25 @@ Confiança = (
 - [x] Adaptação de comandos existentes
 - [x] Documentação atualizada
 
-### Fase 2: Funcionalidades P2P (Parcialmente Concluída)
-- [x] Sistema de Operações P2P implementado
+### Fase 2: Funcionalidades P2P (Majoritariamente Concluída)
+- [x] Sistema de Operações P2P implementado e corrigido
 - [x] Comando `/criaroperacao` com interface completa
 - [x] Comando `/aceitaroperacao` funcional
+- [x] Comando `/concluiroperacao` implementado
+- [x] Comando `/cancelaroperacao` implementado
+- [x] Comando `/minhasoperacoes` para histórico
 - [x] Sistema de broadcast automático para grupos
-- [x] Interface com botões para tipos, ativos e redes
+- [x] Interface com botões para tipos, ativos e redes expandidos
+- [x] **Correções críticas implementadas**:
+  - [x] ID da operação em todas as mensagens
+  - [x] Fluxo de mensagens correto (Criada → Aceita → Concluída)
+  - [x] Formatação consistente de moedas (EUR €, USD $, BRL R$)
+  - [x] Cotações EUR/USD com API real
+  - [x] Notificações adequadas para criador e aceitador
 - [ ] Implementar comando `/avaliar`
 - [ ] Implementar comando `/reputacao`
 - [ ] Implementar comando `/confianca`
 - [ ] Sistema de cooldowns avançado
-- [ ] Comandos de gerenciamento (/minhasoperacoes, /cancelaroperacao)
 
 ### Fase 3: Melhorias e Otimizações
 - [ ] Interface do Mini App
@@ -270,7 +314,8 @@ Confiança = (
 
 ---
 
-**Versão**: 1.0  
+**Versão**: 2.0  
 **Data**: Janeiro 2025  
-**Status**: Em Desenvolvimento  
-**Próxima Revisão**: Após Fase 2
+**Status**: Fase 2 Majoritariamente Concluída  
+**Última Atualização**: Correções críticas de UX implementadas  
+**Próxima Revisão**: Após implementação dos comandos de avaliação

@@ -45,7 +45,7 @@ echo ""
 echo "🏗️  Compilando projeto..."
 
 # Tentar compilar o projeto
-if NODE_OPTIONS="--max-old-space-size=1024" npm run build; then
+if NODE_OPTIONS="--max-old-space-size=2048" npm run build; then
     echo "✅ Compilação bem-sucedida!"
 else
     echo "⚠️  Falha na compilação, tentando iniciar sem compilar..."
@@ -56,13 +56,13 @@ echo "🎯 Iniciando servidor em modo desenvolvimento..."
 
 # Tentar diferentes métodos de inicialização
 echo "📝 Método 1: npm run start:dev"
-if NODE_ENV=development NODE_OPTIONS="--max-old-space-size=1024" timeout 10s npm run start:dev; then
+if NODE_ENV=development NODE_OPTIONS="--max-old-space-size=2048" timeout 10s npm run start:dev; then
     echo "✅ Servidor iniciado com npm run start:dev"
 else
     echo "⚠️  Falha com npm run start:dev, tentando método alternativo..."
     
     echo "📝 Método 2: npx nest start --watch"
-    if NODE_ENV=development NODE_OPTIONS="--max-old-space-size=1024" npx nest start --watch; then
+    if NODE_ENV=development NODE_OPTIONS="--max-old-space-size=2048" npx nest start --watch; then
         echo "✅ Servidor iniciado com nest start --watch"
     else
         echo "⚠️  Falha com nest start --watch, tentando modo produção..."
@@ -90,4 +90,4 @@ echo "📊 Para acompanhar os logs, o servidor está rodando em primeiro plano."
 echo "🛑 Para parar o servidor, use Ctrl+C ou execute: ./stop-bot.sh"
 
 # Usar mais memória e otimizações
-NODE_ENV=development NODE_OPTIONS="--max-old-space-size=2048 --optimize-for-size" npm run start:dev
+NODE_ENV=development NODE_OPTIONS="--max-old-space-size=4096 --optimize-for-size --max-semi-space-size=128" npm run start:dev

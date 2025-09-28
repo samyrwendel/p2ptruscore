@@ -132,13 +132,26 @@ export class BoraMessageHandler {
       const typeText = acceptedOperation.type === 'buy' ? 'COMPRA' : 'VENDA';
       const total = acceptedOperation.amount * acceptedOperation.price;
       
+      // Para operações com EUR, ajustar a moeda
+      let priceFormatted = '';
+      let totalFormatted = '';
+      
+      if (acceptedOperation.assets.includes('EURO' as any)) {
+        priceFormatted = `€ ${acceptedOperation.price.toFixed(4)}`;
+        totalFormatted = `€ ${total.toFixed(2)}`;
+      } else {
+        priceFormatted = `R$ ${acceptedOperation.price.toFixed(2)}`;
+        totalFormatted = `R$ ${total.toFixed(2)}`;
+      }
+
       await ctx.reply(
         `🚀 **OPERAÇÃO ACEITA COM BORA!**\n\n` +
         `✅ **${typeText}** aceita por ${acceptorName}\n` +
         `${reputationEmoji} **Reputação:** ${reputationInfo.score} pts | ${nivelConfianca}\n\n` +
-        `💰 **Valor:** ${acceptedOperation.amount}\n` +
-        `💵 **Preço:** R$ ${acceptedOperation.price.toFixed(2)}\n` +
-        `💸 **Total:** R$ ${total.toFixed(2)}\n\n` +
+        `💰 **Ativos:** ${acceptedOperation.assets.join(', ')}\n` +
+        `📊 **Quantidade:** ${acceptedOperation.amount}\n` +
+        `💵 **Preço:** ${priceFormatted}\n` +
+        `💸 **Total:** ${totalFormatted}\n\n` +
         `🆔 **ID:** \`${operationId}\`\n\n` +
         `📞 **Próximos passos:**\n` +
         `1. Entrem em contato para combinar os detalhes\n` +

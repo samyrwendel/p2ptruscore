@@ -366,7 +366,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         const expiresIn = `${diffHours}h ${diffMinutes}m`;
         
         let confirmationMessage = (
-          `✅ **Operação Concluída!**\n\n` +
+          `✅ **Operação Criada com Sucesso!**\n\n` +
           `${typeEmoji} **${typeText} ${assetsText}**\n` +
           `Redes: ${networksText}\n`
         );
@@ -1641,18 +1641,45 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     } else {
       const total = (session?.data.amount || 0) * (session?.data.price || 0);
       const formattedPrice = session?.data.price ? this.formatValueByAsset(session.data.price, session.data.assets || []) : '0';
-      const formattedTotal = this.formatValueByAsset(total, session?.data.assets || []);
+      
+      // Para operações de troca, ajustar a moeda do preço total
+      let formattedTotal = '';
+      let priceCurrency = '';
+      
+      if (session?.data.type === OperationType.EXCHANGE) {
+        // Para troca USDT/USDC → EUR, mostrar preço em EUR
+        if (session.data.assets?.some(asset => [AssetType.USDT, AssetType.USDC].includes(asset))) {
+          formattedTotal = `${total.toFixed(2)} EUR`;
+          priceCurrency = `${session?.data.price?.toFixed(4)} EUR`;
+        }
+        // Para troca EUR → USD, mostrar preço em USD
+        else if (session.data.assets?.includes(AssetType.EURO)) {
+          formattedTotal = `${total.toFixed(2)} USD`;
+          priceCurrency = `${session?.data.price?.toFixed(4)} USD`;
+        }
+        // Para outras trocas, usar formatação padrão
+        else {
+          const formattedTotalDefault = this.formatValueByAsset(total, session?.data.assets || []);
+          formattedTotal = `${formattedTotalDefault}${currencySuffix}`;
+          priceCurrency = `${formattedPrice}${currencySuffix}`;
+        }
+      } else {
+        // Para operações normais (compra/venda), usar formatação padrão
+        const formattedTotalDefault = this.formatValueByAsset(total, session?.data.assets || []);
+        formattedTotal = `${formattedTotalDefault}${currencySuffix}`;
+        priceCurrency = `${formattedPrice}${currencySuffix}`;
+      }
       
       // Verificar se o pagamento é PIX ou Boleto (sempre em Reais)
       const paymentMethods = session?.data.paymentMethods || [];
       const isPixOrBoleto = paymentMethods.some(method => method === 'PIX' || method === 'Boleto');
       
-      if (isPixOrBoleto) {
+      if (isPixOrBoleto && session?.data.type !== OperationType.EXCHANGE) {
         resumoText += `Preço: R$ ${total.toFixed(2)}\n` +
           `Cotação: R$ ${session?.data.price?.toFixed(2)}\n`;
       } else {
-        resumoText += `Preço: R$ ${formattedTotal}${currencySuffix}\n` +
-          `Cotação: R$ ${formattedPrice}${currencySuffix}\n`;
+        resumoText += `Preço: ${formattedTotal}\n` +
+          `Cotação: ${priceCurrency}\n`;
       }
     }
     
@@ -1782,14 +1809,59 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     if (session?.data.assets && session.data.assets.length > 0) {
       try {
         const firstAsset = session.data.assets[0];
-        const suggestedPrice = await this.currencyApiService.getSuggestedPrice(firstAsset);
         
-        if (suggestedPrice) {
-          suggestedPriceButton = Markup.button.callback(
-            `💡 Usar Cotação Atual: R$ ${suggestedPrice.toFixed(2)}`,
-            `op_use_suggested_price_${suggestedPrice.toFixed(2)}`
-          );
-          suggestedPriceText = `\n💡 **Sugestão baseada na cotação atual:** R$ ${suggestedPrice.toFixed(2)}\n`;
+        // Para operações de troca, calcular cotação entre as moedas
+         if (session.data.type === OperationType.EXCHANGE) {
+           // Para troca USDT/EUR, mostrar cotação USDT em EUR
+           if (firstAsset === AssetType.USDT || firstAsset === AssetType.USDC) {
+             const rates = await this.currencyApiService.getCurrentRates();
+             if (rates.USDBRL && rates.EURBRL) {
+               const usdInBrl = parseFloat(rates.USDBRL.bid);
+               const eurInBrl = parseFloat(rates.EURBRL.bid);
+               const usdInEur = usdInBrl / eurInBrl; // USD para EUR
+               
+               suggestedPriceButton = Markup.button.callback(
+                 `💡 Usar Cotação Atual: € ${usdInEur.toFixed(4)}`,
+                 `op_use_suggested_price_${usdInEur.toFixed(4)}`
+               );
+               suggestedPriceText = `\n💡 **Sugestão baseada na cotação atual:** € ${usdInEur.toFixed(4)}\n`;
+             }
+           }
+           // Para troca EUR/USD, mostrar cotação EUR em USD
+           else if (firstAsset === AssetType.EURO) {
+             const rates = await this.currencyApiService.getCurrentRates();
+             if (rates.EURBRL && rates.USDBRL) {
+               const eurInBrl = parseFloat(rates.EURBRL.bid);
+               const usdInBrl = parseFloat(rates.USDBRL.bid);
+               const eurInUsd = eurInBrl / usdInBrl; // EUR para USD
+               
+               suggestedPriceButton = Markup.button.callback(
+                 `💡 Usar Cotação Atual: $ ${eurInUsd.toFixed(4)}`,
+                 `op_use_suggested_price_${eurInUsd.toFixed(4)}`
+               );
+               suggestedPriceText = `\n💡 **Sugestão baseada na cotação atual:** $ ${eurInUsd.toFixed(4)}\n`;
+             }
+           } else {
+             // Para outros ativos em troca, usar cotação normal
+             const suggestedPrice = await this.currencyApiService.getSuggestedPrice(firstAsset);
+             if (suggestedPrice) {
+               suggestedPriceButton = Markup.button.callback(
+                 `💡 Usar Cotação Atual: R$ ${suggestedPrice.toFixed(2)}`,
+                 `op_use_suggested_price_${suggestedPrice.toFixed(2)}`
+               );
+               suggestedPriceText = `\n💡 **Sugestão baseada na cotação atual:** R$ ${suggestedPrice.toFixed(2)}\n`;
+             }
+           }
+         } else {
+          // Para operações normais (compra/venda), usar cotação em BRL
+          const suggestedPrice = await this.currencyApiService.getSuggestedPrice(firstAsset);
+          if (suggestedPrice) {
+            suggestedPriceButton = Markup.button.callback(
+              `💡 Usar Cotação Atual: R$ ${suggestedPrice.toFixed(2)}`,
+              `op_use_suggested_price_${suggestedPrice.toFixed(2)}`
+            );
+            suggestedPriceText = `\n💡 **Sugestão baseada na cotação atual:** R$ ${suggestedPrice.toFixed(2)}\n`;
+          }
         }
       } catch (error) {
         this.logger.warn('Erro ao obter cotação sugerida:', error);
@@ -1816,6 +1888,27 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     const formattedAmount = session?.data.amount ? this.formatValueByAsset(session.data.amount, session.data.assets || []) : '0';
     const currencySuffix = this.getCurrencySuffix(session?.data.assets || []);
     
+    // Determinar a moeda para entrada de preço baseado no tipo de operação e ativo
+    let priceCurrency = 'R$';
+    let priceExample = '5.45';
+    
+    if (session?.data.type === OperationType.EXCHANGE) {
+      // Para troca USDT/USDC → EUR, entrada em EUR
+      if (session.data.assets?.some(asset => [AssetType.USDT, AssetType.USDC].includes(asset))) {
+        priceCurrency = '€';
+        priceExample = '0.8559';
+      }
+      // Para troca EUR → USD, entrada em USD
+      else if (session.data.assets?.includes(AssetType.EURO)) {
+        priceCurrency = '$';
+        priceExample = '1.0850';
+      }
+    } else if (session?.data.assets?.includes(AssetType.EURO)) {
+      // Para compra/venda de EUR, entrada em EUR
+      priceCurrency = '€';
+      priceExample = '6.20';
+    }
+    
     const message = await ctx.reply(
       `💼 **Criar Nova Operação P2P**\n\n` +
       `${typeText}\n` +
@@ -1824,8 +1917,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       `QTD: ${formattedAmount}${currencySuffix}\n\n` +
       `💵 **COTAÇÃO MANUAL**\n` +
       suggestedPriceText +
-      `Digite o preço unitário em R$ ou use a sugestão acima:\n\n` +
-      `Exemplo: 5.45`,
+      `Digite o preço unitário em ${priceCurrency} ou use a sugestão acima:\n\n` +
+      `Exemplo: ${priceExample}`,
       { parse_mode: 'Markdown', ...keyboard }
     );
     
@@ -2014,10 +2107,16 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       // Criar teclado inline com botões de controle baseado no status
       const controlKeyboard = this.createOperationControlKeyboard(operation);
       
-      await ctx.reply(confirmationMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: controlKeyboard
-      });
+      const replyOptions: any = {
+        parse_mode: 'Markdown'
+      };
+      
+      // Só adicionar keyboard se existir (operações concluídas não têm botões)
+      if (controlKeyboard) {
+        replyOptions.reply_markup = controlKeyboard;
+      }
+      
+      await ctx.reply(confirmationMessage, replyOptions);
 
       // Enviar apenas para o grupo específico da operação
       await this.broadcastService.broadcastOperationToGroup(operation);
@@ -2054,53 +2153,84 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
   }
 
   private async calculateGooglePrice(asset: AssetType): Promise<number> {
-    // Simulação de cotação via Google - em produção, integrar com API real
-    const mockPrices = {
-      [AssetType.BTC]: 350000.00,
-      [AssetType.ETH]: 18500.00,
-      [AssetType.XRP]: 3.25,
-      [AssetType.USDC]: 5.45,
-      [AssetType.USDT]: 5.42,
-      [AssetType.USDE]: 5.43,
-      [AssetType.DOLAR]: 5.50,
-      [AssetType.EURO]: 6.20,
-      [AssetType.REAL]: 1.00,
-    };
-    
-    // Simular delay de API
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    return mockPrices[asset] || 1.00;
+    try {
+      // Para operações de troca, usar cotações reais da API
+      const rates = await this.currencyApiService.getCurrentRates();
+      
+      // Mapear ativos para suas cotações correspondentes
+      const assetMapping = {
+        [AssetType.BTC]: rates.BTCBRL ? parseFloat(rates.BTCBRL.bid) : 350000.00,
+        [AssetType.ETH]: rates.ETHBRL ? parseFloat(rates.ETHBRL.bid) : 18500.00,
+        [AssetType.USDC]: rates.USDBRL ? parseFloat(rates.USDBRL.bid) : 5.45,
+        [AssetType.USDT]: rates.USDBRL ? parseFloat(rates.USDBRL.bid) : 5.42,
+        [AssetType.USDE]: rates.USDBRL ? parseFloat(rates.USDBRL.bid) : 5.43,
+        [AssetType.DOLAR]: rates.USDBRL ? parseFloat(rates.USDBRL.bid) : 5.50,
+        [AssetType.EURO]: rates.EURBRL ? parseFloat(rates.EURBRL.bid) : 6.20,
+        [AssetType.REAL]: 1.00,
+        [AssetType.XRP]: 3.25, // Fallback para XRP
+      };
+      
+      return assetMapping[asset] || 1.00;
+    } catch (error) {
+      this.logger.warn('Erro ao buscar cotação real, usando fallback:', error);
+      
+      // Fallback para cotações simuladas
+      const mockPrices = {
+        [AssetType.BTC]: 350000.00,
+        [AssetType.ETH]: 18500.00,
+        [AssetType.XRP]: 3.25,
+        [AssetType.USDC]: 5.45,
+        [AssetType.USDT]: 5.42,
+        [AssetType.USDE]: 5.43,
+        [AssetType.DOLAR]: 5.50,
+        [AssetType.EURO]: 6.20,
+        [AssetType.REAL]: 1.00,
+      };
+      
+      return mockPrices[asset] || 1.00;
+    }
   }
 
   private createOperationControlKeyboard(operation: any): any {
     const buttons: any[] = [];
 
-    // Botão de cancelar sempre disponível para operações não concluídas
-    if (operation.status !== OperationStatus.COMPLETED) {
-      buttons.push({
-        text: '❌ Cancelar Operação',
-        callback_data: `cancel_operation_${operation._id}`
-      });
-    }
-
-    // Botão de concluir baseado no status
     if (operation.status === OperationStatus.ACCEPTED) {
       // Operação aceita - primeira solicitação de conclusão
       buttons.push({
         text: '✅ Concluir Operação',
         callback_data: `complete_operation_${operation._id}`
       });
-    } else if (operation.status === OperationStatus.PENDING_COMPLETION) {
-      // Aguardando confirmação da outra parte
       buttons.push({
-        text: '⏳ Aguardando Confirmação',
-        callback_data: `pending_completion_${operation._id}`
+        text: '❌ Cancelar Operação',
+        callback_data: `cancel_operation_${operation._id}`
+      });
+    } else if (operation.status === OperationStatus.PENDING_COMPLETION) {
+      // Aguardando confirmação - mostrar botões para aceitar/cancelar/contestar
+      buttons.push({
+        text: '✅ Aceitar Conclusão',
+        callback_data: `complete_operation_${operation._id}`
+      });
+      buttons.push({
+        text: '❌ Cancelar Operação',
+        callback_data: `cancel_operation_${operation._id}`
+      });
+      buttons.push({
+        text: '⚠️ Contestar',
+        callback_data: `dispute_operation_${operation._id}`
+      });
+    } else if (operation.status === OperationStatus.COMPLETED) {
+      // Operação concluída - sem botões de ação, apenas informativa
+      return null; // Não mostrar botões para operações concluídas
+    } else if (operation.status !== OperationStatus.CANCELLED && operation.status !== OperationStatus.CLOSED) {
+      // Outras operações ativas - apenas cancelar
+      buttons.push({
+        text: '❌ Cancelar Operação',
+        callback_data: `cancel_operation_${operation._id}`
       });
     }
 
-    return {
+    return buttons.length > 0 ? {
       inline_keyboard: [buttons]
-    };
+    } : null;
   }
 }

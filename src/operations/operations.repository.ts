@@ -100,6 +100,15 @@ export class OperationsRepository extends AbstractRepository<Operation> {
       .exec();
   }
 
+  async updateOperation(
+    operationId: Types.ObjectId,
+    updateData: Partial<Operation>,
+  ): Promise<Operation | null> {
+    return this.model
+      .findByIdAndUpdate(operationId, updateData, { new: true })
+      .exec();
+  }
+
   async completeOperation(
     operationId: Types.ObjectId,
   ): Promise<Operation | null> {

@@ -171,7 +171,8 @@ export class CancelarOperacaoCommandHandler implements ITextCommandHandler {
           `💰 **Ativos:** ${cancelledOperation.assets.join(', ')}\n` +
           `📊 **Quantidade:** ${cancelledOperation.amount}\n` +
           `💵 **Preço:** R$ ${total.toFixed(2)}\n` +
-          `🌐 **Redes:** ${cancelledOperation.networks.map(n => n.toUpperCase()).join(', ')}\n\n` +
+          `🌐 **Redes:** ${cancelledOperation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
+          `🆔 **ID:** \`${cancelledOperation._id}\`\n\n` +
           `✅ A operação foi cancelada com sucesso.`,
           { parse_mode: 'Markdown' }
         );
