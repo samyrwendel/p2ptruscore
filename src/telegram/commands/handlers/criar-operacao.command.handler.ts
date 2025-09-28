@@ -366,7 +366,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         const expiresIn = `${diffHours}h ${diffMinutes}m`;
         
         let confirmationMessage = (
-          `✅ **Operação criada com sucesso!**\n\n` +
+          `✅ **Operação Concluída!**\n\n` +
           `${typeEmoji} **${typeText} ${assetsText}**\n` +
           `Redes: ${networksText}\n`
         );
@@ -1979,7 +1979,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       const expiresIn = `${diffHours}h ${diffMinutes}m`;
       
       let confirmationMessage = (
-        `✅ **Operação criada com sucesso!**\n\n` +
+        `✅ **Operação Concluída!**\n\n` +
         `${typeEmoji} **${typeText} ${assetsText}**\n` +
         `Redes: ${networksText}\n`
       );

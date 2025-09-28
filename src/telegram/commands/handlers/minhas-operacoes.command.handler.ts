@@ -117,7 +117,25 @@ export class MinhasOperacoesCommandHandler implements ITextCommandHandler {
       }
 
       if (completedOps.length > 0) {
-        message += `✅ **CONCLUÍDAS:** ${completedOps.length}\n\n`;
+        message += '✅ **CONCLUÍDAS:**\n';
+        for (const op of completedOps.slice(0, 3)) {
+          const typeEmoji = op.type === 'buy' ? '🟢' : '🔴';
+          const typeText = op.type === 'buy' ? 'COMPRA' : 'VENDA';
+          const total = op.amount * op.price;
+          
+          message += (
+            `${typeEmoji} ${typeText} ${op.assets.join(', ')}\n` +
+            `   💰 Quantidade: ${op.amount} (total)\n` +
+            `   💵 Total: R$ ${total.toFixed(2)}\n` +
+            `   🌐 Redes: ${op.networks.map(n => n.toUpperCase()).join(', ')}\n` +
+            `   👤 Contraparte: ${op.acceptor}\n` +
+            `   🆔 \`${op._id}\`\n` +
+            `   📅 Concluída: ${(op as any).updatedAt ? new Date((op as any).updatedAt).toLocaleString('pt-BR') : 'N/A'}\n\n`
+          );
+        }
+        if (completedOps.length > 3) {
+          message += `   ... e mais ${completedOps.length - 3} operações concluídas\n\n`;
+        }
       }
 
       if (cancelledOps.length > 0) {

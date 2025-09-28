@@ -37,6 +37,7 @@ import { FecharOperacaoCommandHandler } from './commands/handlers/fechar-operaca
 import { StartCommandHandler } from './commands/handlers/start.command.handler';
 import { CotacoesCommandHandler } from './commands/handlers/cotacoes.command.handler';
 import { TermosCommandHandler } from './commands/handlers/termos.command.handler';
+import { AdminCommandHandler } from './commands/handlers/admin.command.handler';
 import { KarmaMessageHandler } from './handlers/karma-message.handler';
 import { NewMemberHandler } from './handlers/new-member.handler';
 import { TermsAcceptanceService } from '../users/terms-acceptance.service';
@@ -82,6 +83,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     private readonly startHandler: StartCommandHandler,
     private readonly cotacoesHandler: CotacoesCommandHandler,
     private readonly termosHandler: TermosCommandHandler,
+    private readonly adminHandler: AdminCommandHandler,
     private readonly newMemberHandler: NewMemberHandler,
     private readonly termsAcceptanceService: TermsAcceptanceService,
   ) {
@@ -113,6 +115,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     this.registerCommand(startHandler);
     this.registerCommand(cotacoesHandler);
     this.registerCommand(termosHandler);
+    this.registerCommand(adminHandler);
   }
 
   async onModuleInit() {

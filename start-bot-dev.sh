@@ -88,3 +88,6 @@ echo ""
 echo "🎉 TrustP2PBot iniciado!"
 echo "📊 Para acompanhar os logs, o servidor está rodando em primeiro plano."
 echo "🛑 Para parar o servidor, use Ctrl+C ou execute: ./stop-bot.sh"
+
+# Usar mais memória e otimizações
+NODE_ENV=development NODE_OPTIONS="--max-old-space-size=2048 --optimize-for-size" npm run start:dev

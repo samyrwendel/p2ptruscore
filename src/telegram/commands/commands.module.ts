@@ -31,6 +31,7 @@ import { StartCommandHandler } from './handlers/start.command.handler';
 import { CotacoesCommandHandler } from './handlers/cotacoes.command.handler';
 import { EditarAvaliacaoCommandHandler } from './handlers/editar-avaliacao.command.handler';
 import { TermosCommandHandler } from './handlers/termos.command.handler';
+import { AdminCommandHandler } from './handlers/admin.command.handler';
 import { TelegramSharedModule } from '../shared/telegram-shared.module';
 
 export const commandHandlers = [
@@ -62,6 +63,7 @@ export const commandHandlers = [
   CotacoesCommandHandler,
   EditarAvaliacaoCommandHandler,
   TermosCommandHandler,
+  AdminCommandHandler,
 ];
 
 @Module({

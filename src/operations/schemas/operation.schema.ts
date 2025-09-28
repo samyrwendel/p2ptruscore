@@ -53,6 +53,9 @@ export enum OperationStatus {
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   CLOSED = 'closed',
+  DISPUTED = 'disputed',           // Em disputa - operação contestada
+  UNDER_REVIEW = 'under_review',   // Sob análise de administrador
+  FRAUD_REPORTED = 'fraud_reported', // Fraude reportada - operação suspensa
 }
 
 export enum QuotationType {
@@ -104,6 +107,30 @@ export class Operation extends AbstractDocument {
 
   @Prop()
   completionRequestedAt?: Date; // Quando foi solicitada a conclusão
+
+  @Prop({ type: Types.ObjectId, ref: User.name })
+  disputedBy?: Types.ObjectId; // Quem contestou a operação
+
+  @Prop()
+  disputedAt?: Date; // Quando foi contestada
+
+  @Prop({ maxlength: 500 })
+  disputeReason?: string; // Motivo da contestação
+
+  @Prop({ maxlength: 200 })
+  transactionHash?: string; // Hash da transação blockchain
+
+  @Prop({ maxlength: 100 })
+  blockchainNetwork?: string; // Rede blockchain utilizada (ethereum, bitcoin, etc.)
+
+  @Prop()
+  transactionConfirmed?: boolean; // Se a transação foi confirmada
+
+  @Prop()
+  transactionConfirmedAt?: Date; // Quando foi confirmada
+
+  @Prop({ maxlength: 500 })
+  explorerUrl?: string; // URL do explorer para verificação
 
   @Prop()
   messageId?: number;

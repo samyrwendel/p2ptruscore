@@ -155,6 +155,42 @@ export class OperationsService {
     return updatedOperation;
   }
 
+  async disputeOperation(
+    operationId: Types.ObjectId,
+    complainantId: Types.ObjectId,
+    defendantId: Types.ObjectId,
+    disputeType: any,
+    reason: string,
+  ): Promise<Operation> {
+    const operation = await this.getOperationById(operationId);
+
+    // Verificar se a operação pode ser disputada
+    const disputableStatuses = [OperationStatus.ACCEPTED, OperationStatus.PENDING_COMPLETION];
+    if (!disputableStatuses.includes(operation.status)) {
+      throw new Error('Esta operação não pode ser contestada no status atual');
+    }
+
+    // Verificar se já foi disputada
+    if (operation.status === OperationStatus.DISPUTED) {
+      throw new Error('Esta operação já está em disputa');
+    }
+
+    // Atualizar a operação para status disputado
+    const updatedOperation = await this.operationsRepository.disputeOperation(
+      operationId,
+      complainantId,
+      reason
+    );
+
+    if (!updatedOperation) {
+      throw new Error('Erro ao registrar contestação');
+    }
+
+    this.logger.log(`Operation ${operationId} disputed by user ${complainantId} against ${defendantId}`);
+    
+    return updatedOperation;
+  }
+
   async cancelOperation(
     operationId: Types.ObjectId,
     userId: Types.ObjectId,
@@ -167,6 +203,11 @@ export class OperationsService {
     
     if (!isCreator && !isAcceptor) {
       throw new Error('Você só pode cancelar operações que criou ou aceitou');
+    }
+
+    // Verificar se a operação já foi concluída - não pode ser cancelada
+    if (operation.status === OperationStatus.COMPLETED) {
+      throw new Error('Operações concluídas não podem ser canceladas. As informações ficam mantidas para consulta.');
     }
 
     this.logger.log(`Tentativa de cancelamento da operação ${operationId} por usuário ${userId}`);

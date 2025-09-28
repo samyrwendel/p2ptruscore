@@ -733,9 +733,11 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
         return true;
       }
       
-      const pontos = isPositive ? 2 : -1;
       const starRating = isPositive ? 5 : 1; // Converter para sistema de estrelas
       const comentario = 'Avaliação via sistema P2P';
+      
+      // Calcular pontos baseado na conversão correta de estrelas
+      const pontos = this.convertStarsToKarma(starRating);
       
       // Buscar usuário avaliado
       const evaluatedUser = await this.usersService.findById(pendingEvaluation.target.toString());
@@ -1055,5 +1057,17 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
   hasActiveSession(sessionKey: string): boolean {
     const userId = sessionKey.split('_')[0];
     return this.pendingCustomComments.has(userId);
+  }
+
+  private convertStarsToKarma(stars: number): number {
+    // Conversão de estrelas para pontos de karma (igual ao karma.repository.ts)
+    switch (stars) {
+      case 5: return 5;  // 5 estrelas = +5 pontos
+      case 4: return 2;  // 4 estrelas = +2 pontos
+      case 3: return 0;  // 3 estrelas = neutro
+      case 2: return -2; // 2 estrelas = -2 pontos
+      case 1: return -5; // 1 estrela = -5 pontos
+      default: return 0;
+    }
   }
 }

@@ -81,6 +81,25 @@ export class OperationsRepository extends AbstractRepository<Operation> {
       .exec();
   }
 
+  async disputeOperation(
+    operationId: Types.ObjectId,
+    complainantId: Types.ObjectId,
+    reason: string,
+  ): Promise<Operation | null> {
+    return this.model
+      .findByIdAndUpdate(
+        operationId,
+        {
+          status: OperationStatus.DISPUTED,
+          disputedBy: complainantId,
+          disputedAt: new Date(),
+          disputeReason: reason,
+        },
+        { new: true },
+      )
+      .exec();
+  }
+
   async completeOperation(
     operationId: Types.ObjectId,
   ): Promise<Operation | null> {
