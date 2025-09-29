@@ -43,7 +43,7 @@ interface OperationSession {
 @Injectable()
 export class CriarOperacaoCommandHandler implements ITextCommandHandler {
   private readonly logger = new Logger(CriarOperacaoCommandHandler.name);
-  command = /^\/criaroperacao(?:@\w+)?$/;
+  command = /^\/(criaroperacao|iniciar)(?:@\w+)?$/;
   private sessions = new Map<string, OperationSession>();
 
   constructor(

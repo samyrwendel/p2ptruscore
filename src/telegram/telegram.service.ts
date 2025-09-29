@@ -126,6 +126,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       // Configurar lista de comandos do bot
       await this.bot.telegram.setMyCommands([
         { command: 'start', description: '🚀 Menu Principal' },
+        { command: 'iniciar', description: '🚀 Inicia Operações' },
         { command: 'criaroperacao', description: '💼 Criar Nova Operação' },
         { command: 'minhasoperacoes', description: '📋 Minhas Operações' },
         { command: 'reputacao', description: '⭐ Ver Reputação' },
