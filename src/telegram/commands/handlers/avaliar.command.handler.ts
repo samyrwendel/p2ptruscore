@@ -857,7 +857,7 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
         `${starEmojis} **Avaliação:** ${ratingText}\n` +
         `💬 **Comentário:** "${comment}"\n\n` +
         `${reputationInfo.icone} **Nível:** ${reputationInfo.nivel}\n` +
-        `🏅 **Sua Pontuação Atual:** ${currentScore} pts${starDistribution}\n\n` +
+        `⭐️ **Sua Pontuação Atual:** ${currentScore} pts${starDistribution}\n\n` +
         `✨ Continue assim! Cada avaliação positiva fortalece sua reputação na comunidade.`;
       
       // Criar botão para ver reputação completa

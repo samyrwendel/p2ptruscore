@@ -120,6 +120,30 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
   async onModuleInit() {
     this.registerListeners();
+    
+    // Configurar comandos e menu button automaticamente
+    try {
+      // Configurar lista de comandos do bot
+      await this.bot.telegram.setMyCommands([
+        { command: 'start', description: '🚀 Menu Principal' },
+        { command: 'criaroperacao', description: '💼 Criar Nova Operação' },
+        { command: 'minhasoperacoes', description: '📋 Minhas Operações' },
+        { command: 'reputacao', description: '⭐ Ver Reputação' },
+        { command: 'help', description: '❓ Ajuda' }
+      ]);
+      
+      // Configurar menu button para mostrar comandos
+      await this.bot.telegram.setChatMenuButton({
+        menuButton: {
+          type: 'commands'
+        }
+      });
+      
+      this.logger.log('✅ Comandos e menu button configurados automaticamente');
+    } catch (error) {
+      this.logger.warn('⚠️ Erro ao configurar comandos e menu button:', error);
+    }
+    
     this.logger.log('✅ Telegram Bot initialized successfully via NestJS injection.');
   }
 

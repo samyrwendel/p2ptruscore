@@ -789,18 +789,21 @@ export class OperationsBroadcastService {
             undefined,
             message,
             {
-              parse_mode: 'Markdown',
-              reply_markup: inlineKeyboard
+              parse_mode: 'Markdown'
+              // Removido reply_markup para operações concluídas - sem botões
             }
           );
-          this.logger.log(`Edited original message ${operation.messageId} for reverted operation ${operation._id}`);
+          this.logger.log(`Edited original message ${operation.messageId} for completed operation ${operation._id} - buttons removed`);
         } catch (editError) {
           this.logger.warn(`Failed to edit message ${operation.messageId}, sending new message:`, editError);
           // Se falhar ao editar, enviar nova mensagem
           await this.bot.telegram.sendMessage(
             group.groupId,
             message,
-            sendOptions
+            {
+              parse_mode: 'Markdown'
+              // Sem botões para operações concluídas
+            }
           );
         }
       } else {
@@ -808,7 +811,10 @@ export class OperationsBroadcastService {
         await this.bot.telegram.sendMessage(
           group.groupId,
           message,
-          sendOptions
+          {
+            parse_mode: 'Markdown'
+            // Sem botões para operações concluídas
+          }
         );
       }
 
