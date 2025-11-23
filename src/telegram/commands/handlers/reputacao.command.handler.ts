@@ -38,44 +38,70 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
        this.logger.log(`📈 totalKarma: ${JSON.stringify(totalKarma ? {totalKarma: totalKarma.totalKarma, user: totalKarma.user?.userName} : 'null')}`);
        
        if (totalKarma) {
-         // Buscar histórico de qualquer grupo onde o usuário tenha dados
+         // Buscar histórico consolidado de TODOS os grupos onde o usuário tem karma
+         let consolidatedHistory: any[] = [];
+         let consolidatedStars = { stars5: 0, stars4: 0, stars3: 0, stars2: 0, stars1: 0 };
+         
+         // Primeiro tentar o grupo principal
          let karmaWithHistory = await this.karmaService.getKarmaForUser(user.userId, -1002907400287);
          this.logger.log(`🏠 karmaWithHistory grupo principal: ${JSON.stringify(karmaWithHistory ? {historyLength: karmaWithHistory.history?.length, stars5: karmaWithHistory.stars5} : 'null')}`);
          
-         // Se não encontrar no grupo principal, buscar em qualquer grupo
-          if (!karmaWithHistory || (!karmaWithHistory.history && (!karmaWithHistory.stars5 && !karmaWithHistory.stars4 && !karmaWithHistory.stars3 && !karmaWithHistory.stars2 && !karmaWithHistory.stars1))) {
-            this.logger.log(`🔄 Buscando em outros grupos...`);
-            // Buscar todos os grupos onde o usuário tem karma usando o UsersService
-            const userGroups = await this.karmaService.getGroupsForUser(user.userId);
-            this.logger.log(`👥 userGroups encontrados: ${userGroups?.length || 0}`);
-            if (userGroups && userGroups.length > 0) {
-              // Tentar buscar karma em cada grupo até encontrar um com histórico
-              for (const group of userGroups) {
-                const groupKarma = await this.karmaService.getKarmaForUser(user.userId, group.groupId);
-                this.logger.log(`🔍 Grupo ${group.groupId}: ${JSON.stringify(groupKarma ? {historyLength: groupKarma.history?.length, stars5: groupKarma.stars5} : 'null')}`);
-                if (groupKarma && (groupKarma.history?.length > 0 || groupKarma.stars5 > 0)) {
-                  karmaWithHistory = groupKarma;
-                  this.logger.log(`✅ Encontrado histórico no grupo ${group.groupId}`);
-                  break;
-                }
-              }
-            }
-          }
+         if (karmaWithHistory && karmaWithHistory.history?.length > 0) {
+           consolidatedHistory = [...karmaWithHistory.history];
+           consolidatedStars.stars5 += karmaWithHistory.stars5 || 0;
+           consolidatedStars.stars4 += karmaWithHistory.stars4 || 0;
+           consolidatedStars.stars3 += karmaWithHistory.stars3 || 0;
+           consolidatedStars.stars2 += karmaWithHistory.stars2 || 0;
+           consolidatedStars.stars1 += karmaWithHistory.stars1 || 0;
+         }
+         
+         // Buscar em todos os outros grupos para consolidar o histórico completo
+         const userGroups = await this.karmaService.getGroupsForUser(user.userId);
+         this.logger.log(`👥 userGroups encontrados: ${userGroups?.length || 0}`);
+         
+         if (userGroups && userGroups.length > 0) {
+           for (const group of userGroups) {
+             // Pular o grupo principal se já foi processado
+             if (group.groupId === -1002907400287) continue;
+             
+             const groupKarma = await this.karmaService.getKarmaForUser(user.userId, group.groupId);
+             this.logger.log(`🔍 Grupo ${group.groupId}: ${JSON.stringify(groupKarma ? {historyLength: groupKarma.history?.length, stars3: groupKarma.stars3} : 'null')}`);
+             
+             if (groupKarma && groupKarma.history?.length > 0) {
+               // Consolidar histórico (evitar duplicatas por timestamp)
+               const existingTimestamps = new Set(consolidatedHistory.map((h: any) => h.timestamp));
+               const newHistory = groupKarma.history.filter((h: any) => !existingTimestamps.has(h.timestamp));
+               consolidatedHistory = [...consolidatedHistory, ...newHistory];
+               
+               // Consolidar contadores de estrelas
+               consolidatedStars.stars5 += groupKarma.stars5 || 0;
+               consolidatedStars.stars4 += groupKarma.stars4 || 0;
+               consolidatedStars.stars3 += groupKarma.stars3 || 0;
+               consolidatedStars.stars2 += groupKarma.stars2 || 0;
+               consolidatedStars.stars1 += groupKarma.stars1 || 0;
+               
+               this.logger.log(`✅ Consolidado histórico do grupo ${group.groupId} - Total stars3: ${consolidatedStars.stars3}`);
+             }
+           }
+         }
+         
+         // Ordenar histórico consolidado por timestamp
+         consolidatedHistory.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
          
          const result = {
            karma: totalKarma.totalKarma,
            givenKarma: totalKarma.totalGiven,
            givenHate: totalKarma.totalHate,
            user: totalKarma.user,
-           history: karmaWithHistory?.history || [],
-           stars5: karmaWithHistory?.stars5 || 0,
-           stars4: karmaWithHistory?.stars4 || 0,
-           stars3: karmaWithHistory?.stars3 || 0,
-           stars2: karmaWithHistory?.stars2 || 0,
-           stars1: karmaWithHistory?.stars1 || 0
+           history: consolidatedHistory,
+           stars5: consolidatedStars.stars5,
+           stars4: consolidatedStars.stars4,
+           stars3: consolidatedStars.stars3,
+           stars2: consolidatedStars.stars2,
+           stars1: consolidatedStars.stars1
          };
          
-         this.logger.log(`📋 Resultado final: historyLength=${result.history.length}, stars5=${result.stars5}, totalKarma=${result.karma}`);
+         this.logger.log(`📋 Resultado consolidado: historyLength=${result.history.length}, stars3=${result.stars3}, stars5=${result.stars5}, totalKarma=${result.karma}`);
          return result;
        }
        
@@ -698,46 +724,26 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         
         // Buscar karma (sempre em chat privado quando vem de callback)
         if (ctx.chat.id > 0) {
-          // Chat privado - buscar karma total em todos os grupos COM histórico
+          // Chat privado - buscar karma total em todos os grupos COM histórico consolidado
           const totalKarma = await this.karmaService.getTotalKarmaForUser(user.userName || user.firstName);
           if (totalKarma) {
-            // Buscar histórico de um grupo específico (usar o primeiro grupo encontrado)
+            // Usar a lógica de consolidação passando um chatId de grupo para forçar a busca consolidada
             const karmaWithHistory = await this.getKarmaForUserWithFallback(user, -1002907400287); // ID do grupo principal
-            karmaDoc = {
-              karma: totalKarma.totalKarma,
-              givenKarma: totalKarma.totalGiven,
-              givenHate: totalKarma.totalHate,
-              history: karmaWithHistory?.history || [],
-              stars5: karmaWithHistory?.stars5 || 0,
-              stars4: karmaWithHistory?.stars4 || 0,
-              stars3: karmaWithHistory?.stars3 || 0,
-              stars2: karmaWithHistory?.stars2 || 0,
-              stars1: karmaWithHistory?.stars1 || 0
-            };
+            karmaDoc = karmaWithHistory;
           }
         } else {
           // Grupo - buscar karma específico do grupo
           const user3 = await this.usersService.findOneByUserId(parseInt(userId));
-        karmaDoc = user3 ? await this.getKarmaForUserWithFallback(user3, ctx.chat.id) : null;
+          karmaDoc = user3 ? await this.getKarmaForUserWithFallback(user3, ctx.chat.id) : null;
         }
       } else {
         // É um nome/username, buscar diretamente
         const totalKarma = await this.karmaService.getTotalKarmaForUser(userId);
         if (totalKarma) {
           targetUser = totalKarma.user;
-          // Buscar histórico de um grupo específico para chat privado
+          // Usar a lógica de consolidação para buscar histórico completo
           const karmaWithHistory = await this.getKarmaForUserWithFallback(totalKarma.user, -1002907400287);
-          karmaDoc = {
-            karma: totalKarma.totalKarma,
-            givenKarma: totalKarma.totalGiven,
-            givenHate: totalKarma.totalHate,
-            history: karmaWithHistory?.history || [],
-            stars5: karmaWithHistory?.stars5 || 0,
-            stars4: karmaWithHistory?.stars4 || 0,
-            stars3: karmaWithHistory?.stars3 || 0,
-            stars2: karmaWithHistory?.stars2 || 0,
-            stars1: karmaWithHistory?.stars1 || 0
-          };
+          karmaDoc = karmaWithHistory;
         }
       }
       

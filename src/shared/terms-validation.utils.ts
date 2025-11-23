@@ -25,7 +25,7 @@ export async function validateUserTermsForOperation(
           try {
             await ctx.answerCbQuery(
               `🚫 ACESSO NEGADO\n\n` +
-              `❌ Você precisa ACEITAR OS TERMOS antes de ${actionText}!\n\n` +
+              `❌ Você precisa aceitar os termos de responsabilidade primeiro!\n\n` +
               `📋 COMO RESOLVER:\n` +
               `1️⃣ Use o comando /termos\n` +
               `2️⃣ Leia e aceite os termos\n` +
@@ -33,14 +33,93 @@ export async function validateUserTermsForOperation(
               `💡 Apenas quem aceitou os termos pode usar o P2P!`,
               { show_alert: true }
             );
+            
+            // Enviar mensagem com botão para aceitar termos
+            const keyboard = {
+              inline_keyboard: [
+                [
+                  {
+                    text: '✅ Aceitar Termos',
+                    callback_data: `accept_terms_${ctx.from.id}_${ctx.chat.id}`
+                  }
+                ]
+              ]
+            };
+            
+            await ctx.reply(
+              `🚫 **ACESSO NEGADO**\n\n` +
+              `❌ Você precisa aceitar os termos de responsabilidade primeiro!\n\n` +
+              `👇 Clique no botão abaixo para aceitar:`,
+              { 
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+              }
+            );
           } catch (error) {
             logger.error('Erro ao enviar popup de termos:', error);
             // REMOVIDO: Não enviar mensagem no chat em nenhum caso
             // Apenas logar o erro e retornar false
           }
         } else {
-          // REMOVIDO: Não enviar mensagem no chat em nenhum caso
-          // Apenas retornar false silenciosamente
+          // Para outros grupos
+          if (ctx.callbackQuery && typeof ctx.answerCbQuery === 'function') {
+            try {
+              await ctx.answerCbQuery(
+                `🚫 ACESSO NEGADO\n\n` +
+                `❌ Você precisa aceitar os termos de responsabilidade primeiro!\n\n` +
+                `📋 COMO RESOLVER:\n` +
+                `1️⃣ Entre no grupo TrustScore P2P\n` +
+                `2️⃣ Use o comando /termos\n` +
+                `3️⃣ Leia e aceite os termos\n` +
+                `4️⃣ Volte aqui e tente novamente\n\n` +
+                `💡 Apenas quem aceitou os termos pode usar o P2P!`,
+                { show_alert: true }
+              );
+              
+              // Enviar mensagem com botão para aceitar termos
+              const keyboard = {
+                inline_keyboard: [
+                  [
+                    {
+                      text: '✅ Aceitar Termos',
+                      callback_data: `accept_terms_${ctx.from.id}_${ctx.chat.id}`
+                    }
+                  ]
+                ]
+              };
+              
+              await ctx.reply(
+                `🚫 **ACESSO NEGADO**\n\n` +
+                `❌ Você precisa aceitar os termos de responsabilidade primeiro!\n\n` +
+                `👇 Clique no botão abaixo para aceitar:`,
+                { 
+                  parse_mode: 'Markdown',
+                  reply_markup: keyboard
+                }
+              );
+            } catch (error) {
+              logger.error('Erro ao enviar popup de termos:', error);
+            }
+          } else {
+            // Para outros grupos
+            try {
+              await ctx.reply(
+                `🚫 **ACESSO NEGADO**\n\n` +
+                `❌ Você precisa aceitar os termos de responsabilidade primeiro!\n\n` +
+                `📋 COMO RESOLVER:\n` +
+                `1️⃣ Entre no grupo TrustScore P2P\n` +
+                `2️⃣ Use o comando /termos\n` +
+                `3️⃣ Leia e aceite os termos\n` +
+                `4️⃣ Volte aqui e tente novamente\n\n` +
+                `💡 Apenas quem aceitou os termos pode usar o P2P!`,
+                { 
+                  parse_mode: 'Markdown'
+                }
+              );
+            } catch (error) {
+              logger.error('Erro ao enviar mensagem de termos:', error);
+            }
+          }
         }
         return false;
       }
@@ -132,11 +211,12 @@ export async function validateUserTermsForCallback(
       }
       
       // Não aceitou termos no grupo configurado - POPUP ENCURTADO
+      const botUsername = process.env.BOT_USERNAME || 'TrustP2PBot';
       await ctx.answerCbQuery(
         `🚫 ACESSO NEGADO\n\n` +
         `❌ Você precisa ACEITAR OS TERMOS!\n\n` +
         `📋 PARA CONTINUAR:\n` +
-        `1️⃣ Entre no grupo TrustScore P2P\n` +
+        `1️⃣ Clique aqui: t.me/${botUsername}\n` +
         `2️⃣ Use o comando /termos\n` +
         `3️⃣ Aceite os termos\n\n` +
         `Toque OK para fechar 👇🏽`,
@@ -151,12 +231,14 @@ export async function validateUserTermsForCallback(
       );
 
       if (!hasAccepted) {
+        const botUsername = process.env.BOT_USERNAME || 'TrustP2PBot';
         await ctx.answerCbQuery(
           `🚫 ACESSO NEGADO\n\n` +
           `❌ Você precisa ACEITAR OS TERMOS!\n\n` +
           `📋 PARA CONTINUAR:\n` +
-          `1️⃣ Use o comando /termos\n` +
-          `2️⃣ Aceite os termos`,
+          `1️⃣ Clique aqui: t.me/${botUsername}\n` +
+          `2️⃣ Use o comando /termos\n` +
+          `3️⃣ Aceite os termos`,
           { show_alert: true }
         );
         return false;

@@ -9,6 +9,7 @@ import { PendingEvaluationService } from './pending-evaluation.service';
 import { OperationsBroadcastService } from './operations-broadcast.service';
 import { OperationsSchedulerService } from './operations-scheduler.service';
 import { CurrencyApiService } from './currency-api.service';
+import { OperationHistoryService } from './operation-history.service';
 import { Operation, OperationSchema } from './schemas/operation.schema';
 import { PendingEvaluation, PendingEvaluationSchema } from './schemas/pending-evaluation.schema';
 import { UsersModule } from '../users/users.module';
@@ -22,12 +23,15 @@ import { KarmaModule } from '../karma/karma.module';
       { name: PendingEvaluation.name, schema: PendingEvaluationSchema },
     ]),
     // ScheduleModule.forRoot(),
-    HttpModule,
+    HttpModule.register({
+      timeout: 5000,
+      maxRedirects: 5,
+    }),
     UsersModule,
     GroupsModule,
     KarmaModule,
   ],
-  providers: [OperationsRepository, PendingEvaluationRepository, PendingEvaluationService, OperationsService, OperationsBroadcastService, OperationsSchedulerService, CurrencyApiService],
-  exports: [OperationsService, OperationsRepository, PendingEvaluationRepository, PendingEvaluationService, OperationsBroadcastService, CurrencyApiService],
+  providers: [OperationsRepository, PendingEvaluationRepository, PendingEvaluationService, OperationsService, OperationsBroadcastService, OperationsSchedulerService, CurrencyApiService, OperationHistoryService],
+  exports: [OperationsService, OperationsRepository, PendingEvaluationRepository, PendingEvaluationService, OperationsBroadcastService, CurrencyApiService, OperationHistoryService],
 })
 export class OperationsModule {}

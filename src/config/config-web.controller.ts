@@ -1,4 +1,8 @@
-import { Controller, Get, Post, Body, Render, Res, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Render, Res, Req, Logger, Query, Param } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Operation, OperationStatus } from '../operations/schemas/operation.schema';
+import { OperationsService } from '../operations/operations.service';
 import { Response, Request } from 'express';
 import { ConfigManagementService } from './config-management.service';
 import * as fs from 'fs';
@@ -6,7 +10,12 @@ import * as path from 'path';
 
 @Controller('setup')
 export class ConfigWebController {
-  constructor(private readonly configService: ConfigManagementService) {}
+  private readonly logger = new Logger(ConfigWebController.name);
+  constructor(
+    private readonly configService: ConfigManagementService,
+    @InjectModel(Operation.name) private readonly operationModel: Model<Operation>,
+    private readonly operationsService: OperationsService,
+  ) {}
 
   @Get()
   @Render('setup')
@@ -24,7 +33,18 @@ export class ConfigWebController {
       NODE_ENV: 'production',
       CURRENCY_API_KEY: '',
       CURRENCY_API_URL: 'https://api.coingecko.com/api/v3',
-      DEFAULT_CURRENCY: 'BRL'
+      DEFAULT_CURRENCY: 'BRL',
+      RATE_LIMIT_TTL: '60000',
+      RATE_LIMIT_LIMIT: '100',
+      BROADCAST_CONCURRENCY: '3',
+      BROADCAST_DELAY_MS: '150',
+      TELEGRAM_BACKOFF_RETRIES: '3',
+      TELEGRAM_BACKOFF_INITIAL_MS: '500',
+      TELEGRAM_BACKOFF_FACTOR: '2',
+      REQUEST_TIMEOUT: '5000',
+      CACHE_TTL: '60',
+      TELEGRAM_ADMIN_CHANNEL_ID: '',
+      TELEGRAM_ADMINS: ''
     };
 
     if (envExists) {
@@ -46,7 +66,7 @@ export class ConfigWebController {
           }
         });
       } catch (error) {
-        console.error('Erro ao ler .env:', error);
+        this.logger.error('Erro ao ler .env:', error as any);
       }
     }
 
@@ -59,8 +79,23 @@ export class ConfigWebController {
       title: 'Configuração TrustScore Bot',
       config: currentConfig,
       isConfigured,
-      envExists
+      envExists,
+      stats: await this.getStats()
     };
+  }
+
+  private async getStats() {
+    try {
+      const total = await this.operationModel.countDocuments({}).exec();
+      const completed = await this.operationModel.countDocuments({ status: OperationStatus.COMPLETED }).exec();
+      const disputed = await this.operationModel.countDocuments({ status: OperationStatus.DISPUTED }).exec();
+      const reverted = await this.operationModel.countDocuments({ status: OperationStatus.PENDING, acceptor: { $exists: true } }).exec();
+      const cancelled = await this.operationModel.countDocuments({ status: OperationStatus.CANCELLED }).exec();
+      return { total, completed, disputed, reverted, cancelled };
+    } catch (e) {
+      this.logger.error('Erro ao coletar estatísticas:', e as any);
+      return { total: '-', completed: '-', disputed: '-', reverted: '-', cancelled: '-' };
+    }
   }
 
   @Post('save')
@@ -92,9 +127,17 @@ NODE_ENV=${config.NODE_ENV || 'production'}
 
 # Configurações adicionais
 LOG_LEVEL=info
-REQUEST_TIMEOUT=30000
-RATE_LIMIT_TTL=60
-RATE_LIMIT_LIMIT=100
+REQUEST_TIMEOUT=${config.REQUEST_TIMEOUT || '5000'}
+RATE_LIMIT_TTL=${config.RATE_LIMIT_TTL || '60000'}
+RATE_LIMIT_LIMIT=${config.RATE_LIMIT_LIMIT || '100'}
+BROADCAST_CONCURRENCY=${config.BROADCAST_CONCURRENCY || '3'}
+BROADCAST_DELAY_MS=${config.BROADCAST_DELAY_MS || '150'}
+TELEGRAM_BACKOFF_RETRIES=${config.TELEGRAM_BACKOFF_RETRIES || '3'}
+TELEGRAM_BACKOFF_INITIAL_MS=${config.TELEGRAM_BACKOFF_INITIAL_MS || '500'}
+TELEGRAM_BACKOFF_FACTOR=${config.TELEGRAM_BACKOFF_FACTOR || '2'}
+CACHE_TTL=${config.CACHE_TTL || '60'}
+TELEGRAM_ADMIN_CHANNEL_ID=${config.TELEGRAM_ADMIN_CHANNEL_ID || ''}
+TELEGRAM_ADMINS=${config.TELEGRAM_ADMINS || ''}
 `;
 
       fs.writeFileSync(envPath, envContent, 'utf8');
@@ -104,13 +147,13 @@ RATE_LIMIT_LIMIT=100
         message: 'Configuração salva com sucesso! Reinicie o container para aplicar as mudanças.',
         restart_required: true
       });
-    } catch (error) {
-      console.error('Erro ao salvar configuração:', error);
-      res.status(500).json({ 
-        success: false, 
-        message: 'Erro ao salvar configuração: ' + error.message 
-      });
-    }
+      } catch (error) {
+        this.logger.error('Erro ao salvar configuração:', error as any);
+        res.status(500).json({ 
+          success: false, 
+          message: 'Erro ao salvar configuração: ' + error.message 
+        });
+      }
   }
 
   @Get('status')
@@ -150,7 +193,7 @@ RATE_LIMIT_LIMIT=100
                        apiUrlMatch && apiUrlMatch[1] && apiUrlMatch[1] !== '');
         
       } catch (error) {
-        console.error('Erro ao verificar status:', error);
+        this.logger.error('Erro ao verificar status:', error as any);
       }
     }
 
@@ -169,6 +212,130 @@ RATE_LIMIT_LIMIT=100
         api: apiConfigured ? '✅ API de cotação configurada' : '❌ API de cotação não configurada'
       }
     };
+  }
+
+  @Get('disputes')
+  async getDisputes() {
+    try {
+      const items = await this.operationModel
+        .find({ status: OperationStatus.DISPUTED })
+        .populate('creator', 'userName firstName')
+        .populate('acceptor', 'userName firstName')
+        .populate('disputedBy', 'userName firstName')
+        .sort({ updatedAt: -1 })
+        .limit(50)
+        .lean()
+        .exec();
+      const mapped = items.map((op: any) => ({
+        _id: op._id,
+        status: op.status,
+        type: op.type,
+        assets: op.assets,
+        networks: op.networks,
+        amount: op.amount,
+        price: op.price,
+        reason: op.disputeReason,
+        complainant: op.disputedBy ? (op.disputedBy.userName ? '@' + op.disputedBy.userName : op.disputedBy.firstName) : '—',
+        defendant: op.acceptor ? (op.acceptor.userName ? '@' + op.acceptor.userName : op.acceptor.firstName) : '—',
+        creator: op.creator ? (op.creator.userName ? '@' + op.creator.userName : op.creator.firstName) : '—',
+        createdAt: op.disputedAt || op.updatedAt || op.createdAt
+      }));
+      return { success: true, items: mapped };
+    } catch (error: any) {
+      return { success: false, message: error.message };
+    }
+  }
+
+  @Get('operations')
+  async getOperations(
+    @Query('status') status?: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+  ) {
+    try {
+      const filter: any = {};
+      if (status) filter.status = status;
+      const skip = (Math.max(1, Number(page)) - 1) * Math.max(1, Number(limit));
+      const items = await this.operationModel
+        .find(filter)
+        .populate('creator', 'userName firstName')
+        .populate('acceptor', 'userName firstName')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Math.max(1, Number(limit)))
+        .lean()
+        .exec();
+      const total = await this.operationModel.countDocuments(filter).exec();
+      return { success: true, items, total, page: Number(page), limit: Number(limit) };
+    } catch (error: any) {
+      return { success: false, message: error.message };
+    }
+  }
+
+  @Post('admin/operations/:id/cancel')
+  async adminCancel(@Param('id') id: string, @Body('reason') reason?: string) {
+    try {
+      const opId = (await import('mongoose')).Types.ObjectId.createFromHexString(id);
+      const updated = await this.operationsService.adminCancelOperation(opId, { telegramId: 0, username: 'web', firstName: 'WebAdmin' }, reason);
+      return { success: true, item: updated };
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  }
+
+  @Post('admin/operations/:id/clear')
+  async adminClear(@Param('id') id: string, @Body('reason') reason?: string) {
+    try {
+      const opId = (await import('mongoose')).Types.ObjectId.createFromHexString(id);
+      const updated = await this.operationsService.adminClearDispute(opId, { telegramId: 0, username: 'web', firstName: 'WebAdmin' }, reason);
+      return { success: true, item: updated };
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  }
+
+  @Post('admin/operations/:id/flag')
+  async adminFlag(@Param('id') id: string, @Body('reason') reason?: string) {
+    try {
+      const opId = (await import('mongoose')).Types.ObjectId.createFromHexString(id);
+      const updated = await this.operationsService.adminFlagFraud(opId, { telegramId: 0, username: 'web', firstName: 'WebAdmin' }, reason);
+      return { success: true, item: updated };
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  }
+
+  @Post('admin/disputes/:id/clear')
+  async adminClearDispute(@Param('id') id: string, @Body('reason') reason?: string) {
+    try {
+      const opId = (await import('mongoose')).Types.ObjectId.createFromHexString(id);
+      const updated = await this.operationsService.adminClearDispute(opId, { telegramId: 0, username: 'web', firstName: 'WebAdmin' }, reason);
+      return { success: true, item: updated };
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  }
+
+  @Post('admin/disputes/:id/penalize-accused')
+  async adminPenalizeAccused(@Param('id') id: string, @Body('reason') reason?: string) {
+    try {
+      const opId = (await import('mongoose')).Types.ObjectId.createFromHexString(id);
+      const updated = await this.operationsService.adminFlagFraud(opId, { telegramId: 0, username: 'web', firstName: 'WebAdmin' }, reason);
+      return { success: true, item: updated };
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
+  }
+
+  @Post('admin/disputes/:id/penalize-accuser')
+  async adminPenalizeAccuser(@Param('id') id: string, @Body('reason') reason?: string) {
+    try {
+      const opId = (await import('mongoose')).Types.ObjectId.createFromHexString(id);
+      await this.operationsService.adminPenalizeAccuser(opId, { telegramId: 0, username: 'web', firstName: 'WebAdmin' }, reason);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
   }
 
   @Get('help')

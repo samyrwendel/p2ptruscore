@@ -61,7 +61,14 @@ export enum OperationStatus {
 export enum QuotationType {
   MANUAL = 'manual',
   GOOGLE = 'google',
+  BINANCE = 'binance',
   API = 'api',
+}
+
+export enum QuotationSource {
+  GOOGLE = 'google',
+  BINANCE = 'binance',
+  MANUAL = 'manual',
 }
 
 @Schema({ timestamps: true, versionKey: false })
@@ -96,8 +103,20 @@ export class Operation extends AbstractDocument {
   @Prop({ enum: QuotationType, required: true })
   quotationType: QuotationType;
 
+  @Prop({ enum: QuotationSource })
+  quotationSource?: QuotationSource;
+
+  @Prop()
+  exchangeRate?: number;
+
+  @Prop()
+  exchangeRateTimestamp?: Date;
+
   @Prop()
   description?: string;
+
+  @Prop({ type: [String] })
+  paymentMethods?: string[];
 
   @Prop({ enum: OperationStatus, default: OperationStatus.PENDING })
   status: OperationStatus;
@@ -146,6 +165,14 @@ export class Operation extends AbstractDocument {
 
   @Prop()
   privateEvaluationMessageId?: number;
+
+  // ID da mensagem privada enviada ao criador ao notificar a aceitação
+  @Prop()
+  creatorAcceptanceDmMessageId?: number;
+
+  // ID da mensagem privada enviada à outra parte ao solicitar conclusão
+  @Prop()
+  completionRequestDmMessageId?: number;
 
   @Prop({ default: Date.now })
   expiresAt: Date;

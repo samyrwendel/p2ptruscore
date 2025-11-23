@@ -101,6 +101,11 @@ Quantidade: [AMOUNT]
 - Formatação correta da moeda
 - Título correto conforme o estado
 - Validação de permissões
+- Porta do serviço: FIXA em `3031`. Nunca alterar.
+- Em caso de conflito (EADDRINUSE): encerrar a outra instância ocupando a porta:
+  - `ss -ltnp | grep ':3031 '`
+  - `kill <PID_encontrado>` (se persistir, `kill -9 <PID>`)
+  - Nunca usar comandos globais perigosos (ex.: `pkill -f "node.*main"`).
 
 ### **2. Sempre Verificar:**
 - Se a operação existe
@@ -125,6 +130,8 @@ Quantidade: [AMOUNT]
 - `src/operations/operations-broadcast.service.ts`: Mensagens de broadcast
 - `src/telegram/commands/handlers/`: Handlers de comandos
 - `src/operations/schemas/operation.schema.ts`: Schema das operações
+- `src/main.ts`: Porta derivada de `PORT` (fixada nos `.env` em 3031) e views.
+- `.env.*`: Porta configurada como `3031` (não alterar).
 
 ## 🔄 Processo de Revisão
 

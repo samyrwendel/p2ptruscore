@@ -5,13 +5,18 @@ import { KarmaService } from '../../../karma/karma.service';
 import { UsersService } from '../../../users/users.service';
 import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { OperationsService } from '../../../operations/operations.service';
+import { PendingEvaluationService } from '../../../operations/pending-evaluation.service';
 import { getReputationInfo } from '../../../shared/reputation.utils';
 import { formatKarmaHistory } from '../command.helpers';
 import { CriarOperacaoCommandHandler } from './criar-operacao.command.handler';
+import { PopupStateService } from '../../shared/popup-state.service';
 import { ReputacaoCommandHandler } from './reputacao.command.handler';
 import { CotacoesCommandHandler } from './cotacoes.command.handler';
 import { validateActiveMembershipForCallback } from '../../../shared/group-membership.utils';
 import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
+import { getOrCreateUserFromCtx } from '../../shared/user.utils';
+import { pendingEvaluationGuard } from '../../shared/pending-eval.guard';
+import { safeAnswerCbQuery } from '../../shared/callback.utils';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf, Context } from 'telegraf';
 import { Update } from 'telegraf/types';
@@ -31,6 +36,8 @@ export class StartCommandHandler implements ITextCommandHandler {
     private readonly criarOperacaoHandler: CriarOperacaoCommandHandler,
     private readonly reputacaoHandler: ReputacaoCommandHandler,
     private readonly cotacoesHandler: CotacoesCommandHandler,
+    private readonly pendingEvaluationService: PendingEvaluationService,
+    private readonly popupStateService: PopupStateService,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
@@ -338,6 +345,33 @@ export class StartCommandHandler implements ITextCommandHandler {
             this.logger.warn(`❌ CRIAÇÃO BLOQUEADA - Usuário ${ctx.from.id} não tem termos aceitos`);
             return true; // validateUserTermsForCallback já envia o popup
           }
+
+          // Bloqueio por avaliações pendentes nas tentativas via menu (apenas privado)
+          if (ctx.callbackQuery?.message?.chat?.type === 'private') {
+            try {
+              const userData = {
+                id: ctx.from.id,
+                username: ctx.from.username,
+                first_name: ctx.from.first_name,
+                last_name: ctx.from.last_name,
+              };
+              const user = await this.usersService.findOrCreate(userData);
+              const hasPending = await this.pendingEvaluationService.hasPendingEvaluations(user._id);
+              if (hasPending) {
+                this.logger.warn(`Criação via menu bloqueada por avaliação pendente para usuário ${ctx.from.id}`);
+                // Marcar one-shot popup para o próximo callback do fluxo de criação (sem alerta aqui)
+                try {
+                  this.popupStateService.setNextPopup(ctx.from.id, ctx.callbackQuery.message.chat.id, 'create_op', 30_000);
+                } catch (flagErr) {
+                  this.logger.warn('Falha ao setar flag de popup (menu criação):', flagErr);
+                }
+                await ctx.answerCbQuery(); // fechar spinner sem alerta
+                return true;
+              }
+            } catch (evalErr) {
+              this.logger.error('Erro ao validar avaliações pendentes na criação via menu:', evalErr);
+            }
+          }
           
           // ✅ Apenas após validações aprovadas, mostrar mensagem de início
           this.logger.log(`✅ Validações aprovadas - Iniciando criação para usuário ${ctx.from.id}`);
@@ -449,7 +483,27 @@ export class StartCommandHandler implements ITextCommandHandler {
           await ctx.answerCbQuery('❓ Carregando ajuda...');
           await this.showHelpMenu(ctx);
         } else if (data === 'start_operation_flow') {
-          await ctx.answerCbQuery('🚀 Iniciando criação...');
+          await safeAnswerCbQuery(ctx, '🚀 Iniciando criação...');
+          // Bloqueio por avaliações pendentes nas tentativas via menu (apenas privado)
+          if (ctx.callbackQuery?.message?.chat?.type === 'private') {
+            try {
+              const user = await getOrCreateUserFromCtx(ctx, this.usersService);
+              if (user) {
+                const res = await pendingEvaluationGuard(ctx, user._id, 'criar', 'callback', this.pendingEvaluationService);
+                if (res.blocked) {
+                  try {
+                    this.popupStateService.setNextPopup(ctx.from.id, ctx.callbackQuery.message.chat.id, 'create_op', 30_000);
+                  } catch (flagErr) {
+                    this.logger.warn('Falha ao setar flag de popup (operation_flow):', flagErr);
+                  }
+                  this.logger.warn(`Start menu bloqueado por avaliação pendente — usuário ${ctx.from.id}`);
+                  return true;
+                }
+              }
+            } catch (evalErr) {
+              this.logger.error('Erro ao validar avaliações pendentes na criação via menu (operation_flow):', evalErr);
+            }
+          }
           // Simular comando /criaroperacao exatamente
           const fakeCtx = {
             from: ctx.from,

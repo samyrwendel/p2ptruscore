@@ -1,8 +1,19 @@
 import { Logger } from '@nestjs/common';
 import { Telegraf } from 'telegraf';
+import * as NodeCache from 'node-cache';
 import { TextCommandContext } from '../telegram/telegram.types';
 
 const logger = new Logger('GroupMembershipUtils');
+const membershipCache = new NodeCache({ stdTTL: 60, checkperiod: 120 });
+function cacheKey(userId: number, groupId: number) { return `${groupId}:${userId}`; }
+async function getChatMemberCached(bot: Telegraf, groupId: number, userId: number) {
+  const key = cacheKey(userId, groupId);
+  const cached = membershipCache.get<any>(key);
+  if (cached) return cached;
+  const member = await bot.telegram.getChatMember(groupId, userId);
+  membershipCache.set(key, member);
+  return member;
+}
 
 export async function validateActiveMembership(
   ctx: TextCommandContext,
@@ -38,7 +49,7 @@ async function checkMembershipInGroup(
   operationType: string
 ): Promise<boolean> {
   try {
-    const memberInfo = await bot.telegram.getChatMember(groupId, userId);
+    const memberInfo = await getChatMemberCached(bot, groupId, userId);
     const activeMemberStatuses = ['member', 'administrator', 'creator'];
     
     // Verificar se o status indica membro ativo
@@ -161,7 +172,7 @@ export async function validateActiveMembershipForCallback(
     } else {
       // Se está em grupo, verificar no próprio grupo
       const groupId = ctx.callbackQuery.message.chat.id;
-      const memberInfo = await bot.telegram.getChatMember(groupId, ctx.from.id);
+      const memberInfo = await getChatMemberCached(bot, groupId, ctx.from.id);
       const activeMemberStatuses = ['member', 'administrator', 'creator'];
       
       const isActiveMember = activeMemberStatuses.includes(memberInfo.status);

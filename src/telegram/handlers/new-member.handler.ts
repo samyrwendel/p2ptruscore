@@ -5,6 +5,7 @@ import { Update } from 'telegraf/types';
 import { TermsAcceptanceService } from '../../users/terms-acceptance.service';
 import { UsersService } from '../../users/users.service';
 import { GroupsService } from '../../groups/groups.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class NewMemberHandler {
@@ -21,6 +22,7 @@ export class NewMemberHandler {
     private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly usersService: UsersService,
     private readonly groupsService: GroupsService,
+    private readonly configService: ConfigService,
   ) {
     // Limpar pendências antigas a cada 5 minutos
     setInterval(() => this.cleanupExpiredPendencies(), 5 * 60 * 1000);
@@ -88,6 +90,8 @@ export class NewMemberHandler {
       const message = (
         `🎉 **Bem-vindo(a) ao grupo, ${userName}!**\n\n` +
         `🔒 **POLÍTICA DE SEGURANÇA:** Todos os membros (incluindo quem retorna) devem aceitar os termos atuais.\n\n` +
+        `🔄 *Por que preciso aceitar novamente?*\n` +
+        `Nossos termos foram modificados para melhor proteger você e a comunidade. Mesmo usuários que já estavam no grupo precisam aceitar as novas condições.\n\n` +
         termsText + `\n\n` +
         `👤 **Usuário:** ${userName}\n` +
         `🆔 **ID:** \`${userId}\`\n` +
@@ -134,19 +138,24 @@ export class NewMemberHandler {
         this.logger.log(`Termos enviados no privado para ${userName} (${userId}) no grupo ${chatId}`);
 
       } catch (privateError) {
-        // Se não conseguir enviar no privado, enviar no grupo
-        this.logger.warn(`Não foi possível enviar mensagem privada para ${userId}, enviando no grupo`);
-        
+        // Se não conseguir enviar no privado, orientar a abrir PV do bot e usar /termos
+        this.logger.warn(`Não foi possível enviar mensagem privada para ${userId}, orientando abrir PV`);
+        const botUsername = this.configService.get<string>('TELEGRAM_BOT_USERNAME') || 'p2pscorebot';
+        const deepLink = `https://t.me/${botUsername}?start=terms_${chatId}`;
+        const instruction = (
+          `🔒 **Aceite de Termos no Privado**\n\n` +
+          `Não foi possível enviar os termos no seu privado.\n` +
+          `Por favor, abra o chat com o bot e envie o comando \`/termos\` para aceitar.\n\n` +
+          `📩 Clique no botão abaixo para abrir o PV do bot.`
+        );
         const groupMessage = await this.bot.telegram.sendMessage(
           chatId,
-          message,
+          instruction,
           {
             parse_mode: 'Markdown',
-            reply_markup: keyboard
+            reply_markup: { inline_keyboard: [[{ text: '📩 Abrir PV do Bot', url: deepLink }]] }
           }
         );
-
-        // Registrar pendência
         this.pendingAcceptances.set(`${userId}_${chatId}`, {
           userId,
           groupId: chatId,
@@ -195,6 +204,13 @@ export class NewMemberHandler {
       // Verificar se é o próprio usuário
       if (ctx.from.id !== userId) {
         await ctx.answerCbQuery('❌ Você não pode responder por outro usuário', { show_alert: true });
+        return true;
+      }
+
+      // Garantir que aceite/rejeição ocorra APENAS no chat privado
+      const chatType = ctx.callbackQuery?.message?.chat?.type;
+      if (chatType !== 'private') {
+        await ctx.answerCbQuery('🚫 Aceite apenas no chat privado com o bot. Abra o PV e envie /termos.', { show_alert: true });
         return true;
       }
 

@@ -1,8 +1,5 @@
 import { Module } from '@nestjs/common';
-import { KarmaModule } from '../../karma/karma.module';
-import { OperationsModule } from '../../operations/operations.module';
-import { UsersModule } from '../../users/users.module';
-import { GroupsModule } from '../../groups/groups.module';
+import { StartCommandHandler } from './handlers/start.command.handler';
 import { MeCommandHandler } from './handlers/me.command.handler';
 import { TopCommandHandler } from './handlers/top.command.handler';
 import { HateCommandHandler } from './handlers/hate.command.handler';
@@ -18,6 +15,7 @@ import { ReputacaoCommandHandler } from './handlers/reputacao.command.handler';
 import { ConfiancaCommandHandler } from './handlers/confianca.command.handler';
 import { CriarOperacaoCommandHandler } from './handlers/criar-operacao.command.handler';
 import { AceitarOperacaoCommandHandler } from './handlers/aceitar-operacao.command.handler';
+import { ConfirmAcceptOperationCommandHandler } from './handlers/confirm-accept-operation.command.handler';
 import { MinhasOperacoesCommandHandler } from './handlers/minhas-operacoes.command.handler';
 import { CancelarOperacaoCommandHandler } from './handlers/cancelar-operacao.command.handler';
 import { CancelarOrdemCommandHandler } from './handlers/cancelar-ordem.command.handler';
@@ -27,14 +25,23 @@ import { OperacoesDisponiveisCommandHandler } from './handlers/operacoes-disponi
 import { HelloCommandHandler } from './handlers/hello.command.handler';
 import { ApagarOperacoesPendentesCommandHandler } from './handlers/apagar-operacoes-pendentes.command.handler';
 import { FecharOperacaoCommandHandler } from './handlers/fechar-operacao.command.handler';
-import { StartCommandHandler } from './handlers/start.command.handler';
 import { CotacoesCommandHandler } from './handlers/cotacoes.command.handler';
-import { EditarAvaliacaoCommandHandler } from './handlers/editar-avaliacao.command.handler';
 import { TermosCommandHandler } from './handlers/termos.command.handler';
 import { AdminCommandHandler } from './handlers/admin.command.handler';
+import { ContestarOperacaoCommandHandler } from './handlers/contestar-operacao.command.handler';
+import { DisputarOperacaoCallbackCommandHandler } from './handlers/disputar-operacao-callback.command.handler';
+import { AdminDisputeCommandHandler } from './handlers/admin-dispute.command.handler';
+import { NotificarTermosCommandHandler } from './handlers/notificar-termos.command.handler';
+import { DesbloquearUsuarioCommandHandler } from './handlers/desbloquear-usuario.command.handler';
+import { OperationsModule } from '../../operations/operations.module';
+import { UsersModule } from '../../users/users.module';
+import { GroupsModule } from '../../groups/groups.module';
+import { KarmaModule } from '../../karma/karma.module';
 import { TelegramSharedModule } from '../shared/telegram-shared.module';
+import { IntegrationsModule } from '../../integrations/integrations.module';
 
-export const commandHandlers = [
+const commandHandlers = [
+  StartCommandHandler,
   MeCommandHandler,
   TopCommandHandler,
   HateCommandHandler,
@@ -50,6 +57,7 @@ export const commandHandlers = [
   ConfiancaCommandHandler,
   CriarOperacaoCommandHandler,
   AceitarOperacaoCommandHandler,
+  ConfirmAcceptOperationCommandHandler,
   MinhasOperacoesCommandHandler,
   CancelarOperacaoCommandHandler,
   CancelarOrdemCommandHandler,
@@ -59,16 +67,21 @@ export const commandHandlers = [
   HelloCommandHandler,
   ApagarOperacoesPendentesCommandHandler,
   FecharOperacaoCommandHandler,
-  StartCommandHandler,
   CotacoesCommandHandler,
-  EditarAvaliacaoCommandHandler,
   TermosCommandHandler,
   AdminCommandHandler,
+  ContestarOperacaoCommandHandler,
+  DisputarOperacaoCallbackCommandHandler,
+  AdminDisputeCommandHandler,
+  NotificarTermosCommandHandler,
+  DesbloquearUsuarioCommandHandler,
 ];
 
 @Module({
-  imports: [KarmaModule, OperationsModule, UsersModule, GroupsModule, TelegramSharedModule],
-  providers: [...commandHandlers],
-  exports: [...commandHandlers],
+  imports: [OperationsModule, UsersModule, GroupsModule, KarmaModule, TelegramSharedModule, IntegrationsModule],
+  providers: commandHandlers,
+  exports: commandHandlers,
 })
 export class CommandsModule {}
+
+export { commandHandlers };

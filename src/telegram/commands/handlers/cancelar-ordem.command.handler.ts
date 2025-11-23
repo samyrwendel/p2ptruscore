@@ -61,48 +61,8 @@ export class CancelarOrdemCommandHandler implements ITextCommandHandler {
         user._id
       );
       
-      // Forçar deleção da mensagem do grupo
+      // Deletar a mensagem vinculada à operação (quando existir)
       await this.broadcastService.deleteOperationMessage(operation);
-      
-      // Buscar e deletar mensagem específica no grupo
-      try {
-        const groupId = -1002907400287; // ID do grupo específico
-        const operationIdToFind = operationId;
-        
-        this.logger.log(`🔍 Buscando mensagem com ID da operação: ${operationIdToFind}`);
-        
-        // Tentar encontrar e deletar a mensagem que contém o ID da operação
-        // Buscar nas últimas 100 mensagens
-        for (let messageId = 1; messageId <= 200; messageId++) {
-          try {
-            // Tentar deletar cada mensagem - se conseguir, é porque existe
-            await ctx.telegram.deleteMessage(groupId, messageId);
-            this.logger.log(`✅ SUCESSO: Deletada mensagem ${messageId} do grupo ${groupId}`);
-            break; // Para no primeiro sucesso
-          } catch (deleteError) {
-            // Mensagem não existe ou não pode ser deletada, continua
-            if (messageId % 20 === 0) {
-              this.logger.log(`🔍 Verificando mensagem ${messageId}...`);
-            }
-          }
-        }
-        
-        // Tentar também com IDs maiores (mensagens mais recentes)
-        const baseId = 100;
-        for (let offset = 0; offset <= 100; offset++) {
-          try {
-            const messageIdToTry = baseId + offset;
-            await ctx.telegram.deleteMessage(groupId, messageIdToTry);
-            this.logger.log(`✅ SUCESSO: Deletada mensagem recente ${messageIdToTry} do grupo`);
-            break;
-          } catch (deleteError) {
-            // Continua tentando
-          }
-        }
-        
-      } catch (error) {
-        this.logger.warn(`Erro ao buscar mensagens no grupo: ${error.message}`);
-      }
       
       await ctx.reply(
         `✅ **Ordem Cancelada e Deletada**\n\n` +

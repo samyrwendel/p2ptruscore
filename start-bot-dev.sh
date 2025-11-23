@@ -53,22 +53,41 @@ fi
 
 echo ""
 echo "🎯 Iniciando servidor em modo desenvolvimento..."
+echo "🛡️  Política de Porta: FIXA em 3031 (NUNCA alterar)"
+export PORT=3031
+
+echo "🔍 Verificando porta 3031 ocupada..."
+occupied=$(ss -ltnp | grep ':3031 ' || true)
+if [ -n "$occupied" ]; then
+  echo "⚠️  Porta 3031 já está em uso. Encerrando processo ocupante..."
+  pid=$(echo "$occupied" | sed -E 's/.*pid=([0-9]+).*/\1/')
+  if [ -n "$pid" ]; then
+    echo "   ⏹️  kill $pid"
+    kill $pid || true
+    sleep 1
+    if kill -0 $pid 2>/dev/null; then
+      echo "   ⚠️  Processo ainda rodando, forçando kill -9 $pid"
+      kill -9 $pid || true
+      sleep 1
+    fi
+  fi
+fi
 
 # Tentar diferentes métodos de inicialização
-echo "📝 Método 1: npm run start:dev"
-if NODE_ENV=development NODE_OPTIONS="--max-old-space-size=2048" timeout 10s npm run start:dev; then
+echo "📝 Método 1: npm run start:dev (PORT=3031)"
+if NODE_ENV=development NODE_OPTIONS="--max-old-space-size=2048" timeout 10s PORT=3031 npm run start:dev; then
     echo "✅ Servidor iniciado com npm run start:dev"
 else
     echo "⚠️  Falha com npm run start:dev, tentando método alternativo..."
     
-    echo "📝 Método 2: npx nest start --watch"
-    if NODE_ENV=development NODE_OPTIONS="--max-old-space-size=2048" npx nest start --watch; then
+    echo "📝 Método 2: npx nest start --watch (PORT=3031)"
+    if NODE_ENV=development NODE_OPTIONS="--max-old-space-size=2048" PORT=3031 npx nest start --watch; then
         echo "✅ Servidor iniciado com nest start --watch"
     else
         echo "⚠️  Falha com nest start --watch, tentando modo produção..."
         
-        echo "📝 Método 3: npm start (modo produção)"
-        if NODE_ENV=development npm start; then
+        echo "📝 Método 3: npm start (modo produção, PORT=3031)"
+        if NODE_ENV=development PORT=3031 npm start; then
             echo "✅ Servidor iniciado em modo produção"
         else
             echo "❌ Falha em todos os métodos de inicialização!"
@@ -89,5 +108,5 @@ echo "🎉 TrustP2PBot iniciado!"
 echo "📊 Para acompanhar os logs, o servidor está rodando em primeiro plano."
 echo "🛑 Para parar o servidor, use Ctrl+C ou execute: ./stop-bot.sh"
 
-# Usar mais memória e otimizações
-NODE_ENV=development NODE_OPTIONS="--max-old-space-size=4096 --optimize-for-size --max-semi-space-size=128" npm run start:dev
+# Usar mais memória e otimizações (sempre 3031)
+NODE_ENV=development NODE_OPTIONS="--max-old-space-size=4096 --optimize-for-size --max-semi-space-size=128" PORT=3031 npm run start:dev

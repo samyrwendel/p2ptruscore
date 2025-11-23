@@ -39,6 +39,14 @@ export class GroupsService {
     return this.groupsRepository.countDocuments();
   }
 
+  async getDefaultGroupId(): Promise<number | null> {
+    const envId = process.env.TELEGRAM_GROUP_ID;
+    if (envId) return parseInt(envId);
+    const groups = await this.groupsRepository.findAll();
+    if (groups && groups.length > 0) return groups[0].groupId;
+    return null;
+  }
+
   async findByIds(groupIds: any[]): Promise<Group[]> {
     return this.groupsRepository.findByIds(groupIds);
   }

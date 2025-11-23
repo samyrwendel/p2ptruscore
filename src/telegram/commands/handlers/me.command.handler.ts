@@ -22,27 +22,22 @@ export class MeCommandHandler implements ITextCommandHandler {
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
     try {
-      // Primeiro tentar buscar karma no grupo atual
-      const groupKarma = await this.karmaService.getKarmaForUser(user.userId, chatId);
-      
-      if (groupKarma && groupKarma.karma !== undefined) {
-        return groupKarma;
-      }
-      
-      // Se não encontrar no grupo atual, buscar karma total
+      // Priorizar total consolidado para consistência
       const totalKarma = await this.karmaService.getTotalKarmaForUser(user.userName || user.firstName);
-      
       if (totalKarma) {
-        // Simular estrutura de karma do grupo para compatibilidade
         return {
           karma: totalKarma.totalKarma,
           givenKarma: totalKarma.totalGiven,
           givenHate: totalKarma.totalHate,
           user: totalKarma.user,
-          history: [] // Histórico vazio para karma total
+          history: []
         };
       }
-      
+      // Fallback para karma do grupo
+      const groupKarma = await this.karmaService.getKarmaForUser(user.userId, chatId);
+      if (groupKarma && groupKarma.karma !== undefined) {
+        return groupKarma;
+      }
       return null;
     } catch (error) {
       this.logger.error('Erro ao buscar karma com fallback:', error);

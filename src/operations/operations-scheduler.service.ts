@@ -15,6 +15,13 @@ export class OperationsSchedulerService {
     
     try {
       await this.operationsService.cleanupExpiredOperations();
+      try {
+        const { PendingEvaluationService } = require('./pending-evaluation.service');
+        const svc: typeof PendingEvaluationService = (global as any).pendingEvalServiceInstance;
+        if (svc && typeof svc.cleanupOrphanPendings === 'function') {
+          await svc.cleanupOrphanPendings();
+        }
+      } catch (_) {}
       this.logger.log('Limpeza de operações expiradas concluída com sucesso');
     } catch (error) {
       this.logger.error('Erro durante a limpeza de operações expiradas:', error);

@@ -3,6 +3,8 @@
  * Centraliza a lógica de níveis para evitar duplicação de código
  */
 
+import { getReputationInfo as getConfigReputationInfo } from './karma-config.utils';
+
 export interface ReputationInfo {
   nivel: string;
   icone: string;
@@ -16,30 +18,13 @@ export interface ReputationInfo {
  */
 export function getReputationInfo(karma: any): ReputationInfo {
   const score = typeof karma === 'number' ? karma : (karma?.karma || 0);
-  let nivel = 'Iniciante';
-  let icone = '🔰';
+  const configInfo = getConfigReputationInfo(score);
   
-  if (score < 0) {
-    nivel = 'Problemático';
-    icone = '🔴';
-  } else if (score < 50) {
-    nivel = 'Iniciante';
-    icone = '🔰';
-  } else if (score < 100) {
-    nivel = 'Bronze';
-    icone = '🥉';
-  } else if (score < 200) {
-    nivel = 'Prata';
-    icone = '🥈';
-  } else if (score < 500) {
-    nivel = 'Ouro';
-    icone = '🥇';
-  } else {
-    nivel = 'Mestre P2P';
-    icone = '🏆';
-  }
-  
-  return { nivel, icone, score };
+  return { 
+    nivel: configInfo.name, 
+    icone: configInfo.icon, 
+    score 
+  };
 }
 
 /**
@@ -49,36 +34,23 @@ export function getReputationInfo(karma: any): ReputationInfo {
  */
 export function getReputationInfoAlt(karma: any): { nivel: string; emoji: string; score: number } {
   const score = typeof karma === 'number' ? karma : (karma?.karma || 0);
-  let nivel = 'Iniciante';
-  let emoji = '▼';
+  const configInfo = getConfigReputationInfo(score);
   
-  if (score < 0) {
-    nivel = 'Problemático';
-    emoji = '🔴';
-  } else if (score < 50) {
-    nivel = 'Iniciante';
-    emoji = '▼';
-  } else if (score >= 50) {
-    nivel = 'Experiente';
-    emoji = '▲';
-  }
+  // Mapeamento para emojis alternativos
+  const altEmojis = {
+    'Problemático': '🔴',
+    'Iniciante': '▼',
+    'Bronze': '▲',
+    'Prata': '■',
+    'Ouro': '♦',
+    'Mestre P2P': '●'
+  };
   
-  if (score >= 100) {
-    nivel = 'Veterano';
-    emoji = '■';
-  }
-  
-  if (score >= 200) {
-    nivel = 'Especialista';
-    emoji = '♦';
-  }
-  
-  if (score >= 500) {
-    nivel = 'Mestre P2P';
-    emoji = '●';
-  }
-  
-  return { nivel, emoji, score };
+  return { 
+    nivel: configInfo.name, 
+    emoji: altEmojis[configInfo.name] || '▼', 
+    score 
+  };
 }
 
 /**
@@ -88,31 +60,21 @@ export function getReputationInfoAlt(karma: any): { nivel: string; emoji: string
  */
 export function getReputationInfoColored(karma: any): { nivel: string; emoji: string; score: number } {
   const score = typeof karma === 'number' ? karma : (karma?.karma || 0);
-  let nivel = 'Iniciante';
-  let emoji = '🔴';
+  const configInfo = getConfigReputationInfo(score);
   
-  if (score < 50) {
-    nivel = 'Iniciante';
-    emoji = '🔴';
-  } else if (score >= 50) {
-    nivel = 'Experiente';
-    emoji = '🟡';
-  }
+  // Mapeamento para emojis coloridos
+  const coloredEmojis = {
+    'Problemático': '🔴',
+    'Iniciante': '🔴',
+    'Bronze': '🟡',
+    'Prata': '🟢',
+    'Ouro': '🟢',
+    'Mestre P2P': '💎'
+  };
   
-  if (score >= 100) {
-    nivel = 'Veterano';
-    emoji = '🟢';
-  }
-  
-  if (score >= 200) {
-    nivel = 'Especialista';
-    emoji = '🟢';
-  }
-  
-  if (score >= 500) {
-    nivel = 'Mestre P2P';
-    emoji = '💎';
-  }
-  
-  return { nivel, emoji, score };
+  return { 
+    nivel: configInfo.name, 
+    emoji: coloredEmojis[configInfo.name] || '🔴', 
+    score 
+  };
 }

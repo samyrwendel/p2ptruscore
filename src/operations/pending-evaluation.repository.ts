@@ -35,11 +35,37 @@ export class PendingEvaluationRepository extends AbstractRepository<PendingEvalu
   }
 
   async hasPendingEvaluations(userId: Types.ObjectId): Promise<boolean> {
-    const count = await this.model.countDocuments({ 
-      evaluator: userId, 
-      completed: false 
-    });
-    return count > 0;
+    // Somente considerar pendências que realmente exigem ação do usuário:
+    // aquelas vinculadas a operações já concluídas.
+    try {
+      const results = await this.model.aggregate([
+        { $match: { evaluator: userId, completed: false } },
+        {
+          $lookup: {
+            from: 'operations',
+            localField: 'operation',
+            foreignField: '_id',
+            as: 'op'
+          }
+        },
+        { $unwind: '$op' },
+        // No banco os statuses são strings minúsculas (e.g., 'completed')
+        { $match: { 'op.status': 'completed' } },
+        { $limit: 1 }
+      ]).exec();
+      return (results?.length || 0) > 0;
+    } catch (err) {
+      this.logger.warn('Failed to check pending evaluations with operation status filter:', err);
+      return false;
+    }
+  }
+
+  async findAllPending(): Promise<PendingEvaluation[]> {
+    return this.find({ completed: false });
+  }
+
+  async deleteById(id: Types.ObjectId): Promise<void> {
+    await this.model.deleteOne({ _id: id });
   }
 
   async completePendingEvaluation(

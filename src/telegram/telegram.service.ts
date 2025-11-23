@@ -25,6 +25,7 @@ import { ReputacaoCommandHandler } from './commands/handlers/reputacao.command.h
 import { ConfiancaCommandHandler } from './commands/handlers/confianca.command.handler';
 import { CriarOperacaoCommandHandler } from './commands/handlers/criar-operacao.command.handler';
 import { AceitarOperacaoCommandHandler } from './commands/handlers/aceitar-operacao.command.handler';
+import { ConfirmAcceptOperationCommandHandler } from './commands/handlers/confirm-accept-operation.command.handler';
 import { MinhasOperacoesCommandHandler } from './commands/handlers/minhas-operacoes.command.handler';
 import { CancelarOperacaoCommandHandler } from './commands/handlers/cancelar-operacao.command.handler';
 import { CancelarOrdemCommandHandler } from './commands/handlers/cancelar-ordem.command.handler';
@@ -38,6 +39,9 @@ import { StartCommandHandler } from './commands/handlers/start.command.handler';
 import { CotacoesCommandHandler } from './commands/handlers/cotacoes.command.handler';
 import { TermosCommandHandler } from './commands/handlers/termos.command.handler';
 import { AdminCommandHandler } from './commands/handlers/admin.command.handler';
+import { DesbloquearUsuarioCommandHandler } from './commands/handlers/desbloquear-usuario.command.handler';
+import { DisputarOperacaoCallbackCommandHandler } from './commands/handlers/disputar-operacao-callback.command.handler';
+import { NotificarTermosCommandHandler } from './commands/handlers/notificar-termos.command.handler';
 import { KarmaMessageHandler } from './handlers/karma-message.handler';
 import { NewMemberHandler } from './handlers/new-member.handler';
 import { TermsAcceptanceService } from '../users/terms-acceptance.service';
@@ -71,6 +75,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     private readonly confiancaHandler: ConfiancaCommandHandler,
     private readonly criarOperacaoHandler: CriarOperacaoCommandHandler,
     private readonly aceitarOperacaoHandler: AceitarOperacaoCommandHandler,
+    private readonly confirmAcceptOperationHandler: ConfirmAcceptOperationCommandHandler,
     private readonly minhasOperacoesHandler: MinhasOperacoesCommandHandler,
     private readonly cancelarOperacaoHandler: CancelarOperacaoCommandHandler,
     private readonly cancelarOrdemHandler: CancelarOrdemCommandHandler,
@@ -84,6 +89,9 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     private readonly cotacoesHandler: CotacoesCommandHandler,
     private readonly termosHandler: TermosCommandHandler,
     private readonly adminHandler: AdminCommandHandler,
+    private readonly desbloquearUsuarioHandler: DesbloquearUsuarioCommandHandler,
+    private readonly disputarOperacaoCallbackHandler: DisputarOperacaoCallbackCommandHandler,
+    private readonly notificarTermosHandler: NotificarTermosCommandHandler,
     private readonly newMemberHandler: NewMemberHandler,
     private readonly termsAcceptanceService: TermsAcceptanceService,
   ) {
@@ -112,10 +120,12 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     this.registerCommand(helloHandler);
     this.registerCommand(apagarOperacoesPendentesHandler);
     this.registerCommand(fecharOperacaoHandler);
+    this.registerCommand(this.desbloquearUsuarioHandler);
     this.registerCommand(startHandler);
     this.registerCommand(cotacoesHandler);
     this.registerCommand(termosHandler);
     this.registerCommand(adminHandler);
+    this.registerCommand(notificarTermosHandler);
   }
 
   async onModuleInit() {
@@ -410,7 +420,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       '/terms',
       '/start', // Permitir /start para mostrar informações
       '/help',
-      '/comandos'
+      '/comandos',
+      '/notificar_termos' // Permitir comando de notificação para admins
     ];
 
     // Verificar se é um comando permitido
@@ -424,9 +435,19 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
   private async validateUserTermsGlobally(ctx: TextCommandContext): Promise<boolean> {
     try {
+      // Para chat privado, usar o grupo configurado para verificar termos
+      let groupIdToCheck = ctx.chat.id;
+      
+      if (ctx.chat.type === 'private') {
+        const configuredGroupId = parseInt(process.env.TELEGRAM_GROUP_ID || '0');
+        if (configuredGroupId !== 0) {
+          groupIdToCheck = configuredGroupId;
+        }
+      }
+      
       const hasAccepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(
         ctx.from.id,
-        ctx.chat.id
+        groupIdToCheck
       );
 
       if (!hasAccepted) {
@@ -500,11 +521,13 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
     
     const introMessage = isLegacyUser 
-      ? `👋 **Olá ${userName}!**\n\n🔄 **Atualização:** Novos termos implementados para maior segurança.\n\n`
+      ? `👋 **Olá ${userName}!**\n\n🔄 **NOSSOS TERMOS MUDARAM!** Novos termos implementados para maior segurança.\n\n`
       : `🎉 **Bem-vindo(a) ${userName}!**\n\n`;
     
     const message = (
       introMessage +
+      `🔄 *Por que estou recebendo esta mensagem?*\n` +
+      `Nossos termos foram modificados para melhor proteger você e a comunidade. Como usuário ativo, você precisa aceitar as novas condições.\n\n` +
       `⚠️ **IMPORTANTE:** Você precisa aceitar os termos de responsabilidade antes de poder interagir ou abrir operações no P2P.\n\n` +
       `📋 **Para continuar:**\n` +
       `1️⃣ Leia os termos de responsabilidade\n` +
@@ -521,12 +544,6 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
           {
             text: '📋 Ver e Aceitar Termos',
             callback_data: `view_accept_terms_${ctx.from.id}_${ctx.chat.id}`
-          }
-        ],
-        [
-          {
-            text: '✅ OK, Entendi',
-            callback_data: `acknowledge_terms_needed_${ctx.from.id}`
           }
         ]
       ]
@@ -561,22 +578,6 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
        return true;
      }
 
-     // Callbacks de notificação de termos necessários
-     if (callbackData.startsWith('acknowledge_terms_needed_')) {
-       await ctx.answerCbQuery('✅ Mensagem confirmada!');
-       await ctx.editMessageText(
-         '✅ **Confirmado**\n\n' +
-         'Você confirmou que entendeu a necessidade de aceitar os termos.\n\n' +
-         '📋 **Para aceitar os termos:**\n' +
-         '• Use o comando `/termos`\n' +
-         '• Leia os termos completos\n' +
-         '• Clique em "ACEITO OS TERMOS"\n\n' +
-         '💡 Após aceitar, você poderá usar todos os comandos do bot.',
-         { parse_mode: 'Markdown' }
-       );
-       return true;
-     }
-
      // Callback para ver e aceitar termos
      if (callbackData.startsWith('view_accept_terms_')) {
        const parts = callbackData.split('_');
@@ -592,13 +593,12 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
          // Apresentar os termos completos para aceite
          await this.presentTermsForAcceptance(ctx, isLegacyUser);
          
-         // Editar a mensagem original
-         await ctx.editMessageText(
-           '📋 **Termos Apresentados**\n\n' +
-           'Os termos de responsabilidade foram apresentados acima.\n' +
-           'Por favor, leia-os cuidadosamente e clique em "ACEITO OS TERMOS" se concordar.',
-           { parse_mode: 'Markdown' }
-         );
+         // Remover a mensagem original ao invés de editá-la
+         try {
+           await ctx.deleteMessage();
+         } catch (error) {
+           this.logger.warn('Could not delete original message:', error);
+         }
        } else {
          await ctx.answerCbQuery('❌ Este botão não é para você!', { show_alert: true });
        }
@@ -613,7 +613,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     const termsText = this.termsAcceptanceService.getTermsText();
     
     const introMessage = isLegacyUser 
-      ? `👋 **Olá ${userName}!**\n\n🔄 **Atualização:** Novos termos implementados para maior segurança.\n\n`
+      ? `👋 **Olá ${userName}!**\n\n🔄 **NOSSOS TERMOS MUDARAM!** Novos termos implementados para maior segurança.\n\n🔄 *Por que estou recebendo esta mensagem?*\nNossos termos foram modificados para melhor proteger você e a comunidade. Como usuário ativo, você precisa aceitar as novas condições.\n\n`
       : `🎉 **Bem-vindo(a) ${userName}!**\n\n`;
     
     const message = (
@@ -672,6 +672,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       // Tentar processar com cada handler que suporta callbacks
       const handlers = [
         this.avaliarHandler,
+        this.disputarOperacaoCallbackHandler, // ADICIONADO ANTES para processar dispute_operation_ callbacks
+        this.confirmAcceptOperationHandler, // ADICIONADO para processar confirm_accept_ callbacks
         this.criarOperacaoHandler,
         this.aceitarOperacaoHandler,
         this.minhasOperacoesHandler,
@@ -763,8 +765,33 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
       if (!hasAccepted) {
         await ctx.answerCbQuery(
-          `🚫 Você precisa aceitar os termos de responsabilidade primeiro!`,
+          `🚫 Você precisa aceitar os termos de responsabilidade primeiro!\n\n` +
+          `📋 PARA CONTINUAR:\n` +
+          `1️⃣ Use o comando /termos\n` +
+          `2️⃣ Aceite os termos`,
           { show_alert: true }
+        );
+        
+        // Enviar mensagem com botão para aceitar termos
+        const keyboard = {
+          inline_keyboard: [
+            [
+              {
+                text: '✅ Aceitar Termos',
+                callback_data: `accept_terms_${ctx.from.id}_${ctx.callbackQuery.message.chat.id}`
+              }
+            ]
+          ]
+        };
+        
+        await ctx.reply(
+          `🚫 **ACESSO NEGADO**\n\n` +
+          `❌ Você precisa aceitar os termos de responsabilidade primeiro!\n\n` +
+          `👇 Clique no botão abaixo para aceitar:`,
+          { 
+            parse_mode: 'Markdown',
+            reply_markup: keyboard
+          }
         );
         
         // Apresentar termos diretamente

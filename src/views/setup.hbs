@@ -278,6 +278,139 @@
                         <small>Testa a conexão com a API e busca a cotação atual do dólar</small>
                     </div>
                 </div>
+
+                <!-- Seção Rate Limit e Backoff -->
+                <div class="form-section">
+                    <h3>🚦 Rate Limit e Backoff</h3>
+                    <div class="form-group">
+                        <label for="RATE_LIMIT_TTL">⏱️ TTL de Rate Limit (ms)</label>
+                        <input type="number" id="RATE_LIMIT_TTL" name="RATE_LIMIT_TTL" value="{{config.RATE_LIMIT_TTL}}" min="1000" max="600000">
+                        <small>Tempo de janela para rate limiting (ex: 60000 = 60s)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="RATE_LIMIT_LIMIT">🔢 Limite de Requisições</label>
+                        <input type="number" id="RATE_LIMIT_LIMIT" name="RATE_LIMIT_LIMIT" value="{{config.RATE_LIMIT_LIMIT}}" min="10" max="1000">
+                        <small>Número máximo de requisições por janela</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="BROADCAST_CONCURRENCY">📡 Concorrência de Broadcast</label>
+                        <input type="number" id="BROADCAST_CONCURRENCY" name="BROADCAST_CONCURRENCY" value="{{config.BROADCAST_CONCURRENCY}}" min="1" max="10">
+                        <small>Quantas mensagens enviar em paralelo</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="BROADCAST_DELAY_MS">⏳ Delay entre envios (ms)</label>
+                        <input type="number" id="BROADCAST_DELAY_MS" name="BROADCAST_DELAY_MS" value="{{config.BROADCAST_DELAY_MS}}" min="0" max="5000">
+                        <small>Atraso pequeno para evitar 429</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="TELEGRAM_BACKOFF_RETRIES">🔁 Retries de Backoff</label>
+                        <input type="number" id="TELEGRAM_BACKOFF_RETRIES" name="TELEGRAM_BACKOFF_RETRIES" value="{{config.TELEGRAM_BACKOFF_RETRIES}}" min="0" max="10">
+                        <small>Tentativas ao receber 429</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="TELEGRAM_BACKOFF_INITIAL_MS">⏳ Delay Inicial (ms)</label>
+                        <input type="number" id="TELEGRAM_BACKOFF_INITIAL_MS" name="TELEGRAM_BACKOFF_INITIAL_MS" value="{{config.TELEGRAM_BACKOFF_INITIAL_MS}}" min="0" max="10000">
+                        <small>Tempo inicial antes do retry</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="TELEGRAM_BACKOFF_FACTOR">📈 Fator de Backoff</label>
+                        <input type="number" step="0.1" id="TELEGRAM_BACKOFF_FACTOR" name="TELEGRAM_BACKOFF_FACTOR" value="{{config.TELEGRAM_BACKOFF_FACTOR}}" min="1" max="5">
+                        <small>Multiplicador do delay a cada retry</small>
+                    </div>
+                </div>
+
+                <!-- Seção Admin e Cache -->
+                <div class="form-section">
+                    <h3>🛠️ Admin e Cache</h3>
+                    <div class="form-group">
+                        <label for="TELEGRAM_ADMIN_CHANNEL_ID">🛡️ Canal de Admin</label>
+                        <input type="text" id="TELEGRAM_ADMIN_CHANNEL_ID" name="TELEGRAM_ADMIN_CHANNEL_ID" value="{{config.TELEGRAM_ADMIN_CHANNEL_ID}}" placeholder="-1001234567890">
+                        <small>ID do canal para notificações administrativas</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="CACHE_TTL">🧠 TTL de Cache (s)</label>
+                        <input type="number" id="CACHE_TTL" name="CACHE_TTL" value="{{config.CACHE_TTL}}" min="1" max="3600">
+                        <small>Tempo de vida do cache de cotações</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="REQUEST_TIMEOUT">⏱️ Timeout de Requisições (ms)</label>
+                        <input type="number" id="REQUEST_TIMEOUT" name="REQUEST_TIMEOUT" value="{{config.REQUEST_TIMEOUT}}" min="1000" max="60000">
+                        <small>Timeout para integrações externas</small>
+                    </div>
+                </div>
+
+                <!-- Seção Admins adicionais -->
+                <div class="form-section">
+                    <h3>👑 Admins</h3>
+                    <div class="form-group">
+                        <label for="TELEGRAM_ADMINS">IDs de Administradores (PV habilitado)</label>
+                        <input type="text" id="TELEGRAM_ADMINS" name="TELEGRAM_ADMINS" value="{{config.TELEGRAM_ADMINS}}" placeholder="30289486,7844787567">
+                        <small>Lista de IDs separados por vírgula para receber DM de disputas</small>
+                    </div>
+                </div>
+
+                <!-- Seção Operações e Disputas -->
+                <div class="form-section">
+                    <h3>📊 Operações e Disputas</h3>
+                    <div class="form-group">
+                        <label>Resumo</label>
+                        <div style="background:#fff;border:1px solid #e1e8ed;border-radius:8px;padding:12px;">
+                            <div><strong>Total:</strong> {{stats.total}}</div>
+                            <div><strong>Concluídas:</strong> {{stats.completed}}</div>
+                            <div><strong>Em Disputa:</strong> {{stats.disputed}}</div>
+                            <div><strong>Revertidas:</strong> {{stats.reverted}}</div>
+                            <div><strong>Canceladas:</strong> {{stats.cancelled}}</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <button type="button" class="btn btn-secondary" onclick="loadDisputes()" style="width: 100%;">⚖️ Ver Disputas</button>
+                    </div>
+                    <div id="disputesContainer" style="display:none;background:#fff;border:1px solid #e1e8ed;border-radius:8px;padding:12px;margin-top:10px;"></div>
+                </div>
+
+                <!-- Seção Todas Operações -->
+                <div class="form-section">
+                    <h3>📁 Todas as Operações</h3>
+                    <div class="form-group" style="display:flex;gap:10px;align-items:center;">
+                        <label for="opsStatus">Status:</label>
+                        <select id="opsStatus" name="opsStatus">
+                            <option value="">Todos</option>
+                            <option value="pending">Pendente</option>
+                            <option value="accepted">Aceita</option>
+                            <option value="pending_completion">Aguardando Conclusão</option>
+                            <option value="completed">Concluída</option>
+                            <option value="disputed">Em Disputa</option>
+                            <option value="cancelled">Cancelada</option>
+                          </select>
+                          <label for="opsPage">Página:</label>
+                          <input type="number" id="opsPage" min="1" value="1" style="width:80px;">
+                          <label for="opsLimit">Limite:</label>
+                          <input type="number" id="opsLimit" min="5" value="20" style="width:80px;">
+                          <button type="button" class="btn btn-secondary" onclick="loadOperations()">🔍 Buscar</button>
+                    </div>
+                    <div id="operationsContainer" style="display:none;background:#fff;border:1px solid #e1e8ed;border-radius:8px;padding:0;margin-top:10px;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                            <tr style="background:#f8f9fa;">
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">ID</th>
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Status</th>
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Tipo</th>
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Ativos</th>
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Redes</th>
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:right;">Qtde</th>
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:right;">Preço</th>
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Criador</th>
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Negociador</th>
+                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Criado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="opsTableBody"></tbody>
+                        </table>
+                    <div id="opsTableFooter" style="padding:8px; border-top:1px solid #e1e8ed; display:flex; gap:10px; align-items:center;">
+                        <button class="btn btn-secondary" onclick="exportOpsCsv()">📄 Exportar CSV</button>
+                    </div>
+                    </div>
+                </div>
                 
                 <button type="submit" class="btn">💾 Salvar Configuração</button>
                 <button type="button" class="btn btn-secondary" onclick="testConnection()">🔍 Testar Conexão</button>
@@ -381,6 +514,38 @@
                 alert.innerHTML = '❌ Erro ao testar conexão: ' + error.message;
             }
         }
+
+        function exportOpsCsv() {
+            const status = document.getElementById('opsStatus').value;
+            const page = document.getElementById('opsPage').value;
+            const limit = document.getElementById('opsLimit').value;
+            const params = new URLSearchParams();
+            if (status) params.set('status', status);
+            params.set('page', page);
+            params.set('limit', limit);
+            fetch('/config/operations?' + params.toString())
+              .then(r => r.json())
+              .then(result => {
+                if (!result.success) return;
+                const rows = [['ID','Status','Tipo','Ativos','Redes','Quantidade','Preço','Criador','Negociador','Criado']];
+                result.items.forEach(op => {
+                  const assets = (op.assets && op.assets.join) ? op.assets.join(', ') : op.assets;
+                  const networks = (op.networks && op.networks.map) ? op.networks.map(n=>String(n).toUpperCase()).join(', ') : op.networks;
+                  const creator = op.creator ? (op.creator.userName ? '@'+op.creator.userName : (op.creator.firstName || '—')) : '—';
+                  const acceptor = op.acceptor ? (op.acceptor.userName ? '@'+op.acceptor.userName : (op.acceptor.firstName || '—')) : '—';
+                  rows.push([op._id, op.status, op.type, assets, networks, op.amount, op.price, creator, acceptor, new Date(op.createdAt).toLocaleString('pt-BR')]);
+                });
+                const csv = rows.map(r => r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'operacoes.csv';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              });
+        }
         
         async function testCurrencyAPI() {
             const alert = document.getElementById('alert');
@@ -416,6 +581,144 @@
                 alert.innerHTML = '❌ Erro ao testar API de cotação: ' + error.message;
             }
         }
+
+        async function loadDisputes() {
+            const container = document.getElementById('disputesContainer');
+            container.style.display = 'block';
+            container.innerHTML = '⏳ Carregando disputas...';
+            try {
+                const resp = await fetch('/setup/disputes');
+                const result = await resp.json();
+                if (result.success) {
+                    if (!result.items || result.items.length === 0) {
+                        container.innerHTML = '✅ Sem disputas no momento';
+                        return;
+                    }
+                    let html = '';
+                    result.items.forEach(d => {
+                        const assets = (d.assets && d.assets.join) ? d.assets.join(', ') : d.assets;
+                        const networks = (d.networks && d.networks.map) ? d.networks.map(n=>String(n).toUpperCase()).join(', ') : d.networks;
+                        html += `<div style="padding:12px;border:1px solid #e1e8ed;border-radius:8px;margin-bottom:10px;background:#f9fafb;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div><strong>ID:</strong> ${d._id}</div>
+                                <div>
+                                    <button class="btn btn-secondary" onclick="adminDisputeAction('${d._id}','clear')">✅ Resolver</button>
+                                    <button class="btn btn-secondary" onclick="adminDisputeAction('${d._id}','penalize-accused')">🚨 Penalizar Acusado</button>
+                                    <button class="btn btn-secondary" onclick="adminDisputeAction('${d._id}','penalize-accuser')">⚠️ Penalizar Acusador</button>
+                                </div>
+                            </div>
+                            <div><strong>Status:</strong> ${d.status} — <strong>Tipo:</strong> ${d.type}</div>
+                            <div><strong>Ativos:</strong> ${assets} — <strong>Redes:</strong> ${networks}</div>
+                            <div><strong>Quantidade:</strong> ${d.amount} — <strong>Preço:</strong> ${d.price}</div>
+                            <div><strong>Motivo:</strong> ${d.reason || '—'}</div>
+                            <div><strong>Criador:</strong> ${d.creator || '—'} — <strong>Contestante:</strong> ${d.complainant || '—'} — <strong>Contestado:</strong> ${d.defendant || '—'}</div>
+                            <div><small>${new Date(d.createdAt).toLocaleString('pt-BR')}</small></div>
+                        </div>`;
+                    });
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '❌ Erro ao carregar disputas';
+                }
+            } catch (e) {
+                container.innerHTML = '❌ Erro ao carregar disputas: ' + e.message;
+            }
+        }
+
+        async function loadOperations() {
+            const container = document.getElementById('operationsContainer');
+            container.style.display = 'block';
+            const body = document.getElementById('opsTableBody');
+            const footer = document.getElementById('opsTableFooter');
+            body.innerHTML = '<tr><td colspan="10" style="padding:8px;">⏳ Carregando operações...</td></tr>';
+            const status = document.getElementById('opsStatus').value;
+            const page = document.getElementById('opsPage').value;
+            const limit = document.getElementById('opsLimit').value;
+            const params = new URLSearchParams();
+            if (status) params.set('status', status);
+            params.set('page', page);
+            params.set('limit', limit);
+            try {
+                const resp = await fetch('/setup/operations?' + params.toString());
+                const result = await resp.json();
+                if (result.success) {
+                    if (!result.items || result.items.length === 0) {
+                        body.innerHTML = '<tr><td colspan="8" style="padding:8px;">✅ Nenhuma operação encontrada</td></tr>';
+                        footer.innerHTML = '';
+                        return;
+                    }
+                    let rows = '';
+                    result.items.forEach(op => {
+                        const assets = (op.assets && op.assets.join) ? op.assets.join(', ') : op.assets;
+                        const networks = (op.networks && op.networks.map) ? op.networks.map(n=>String(n).toUpperCase()).join(', ') : op.networks;
+                        const creator = op.creator ? (op.creator.userName ? '@'+op.creator.userName : (op.creator.firstName || '—')) : '—';
+                        const acceptor = op.acceptor ? (op.acceptor.userName ? '@'+op.acceptor.userName : (op.acceptor.firstName || '—')) : '—';
+                        rows += `<tr>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${op._id}</td>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${op.status}</td>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${op.type}</td>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${assets}</td>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${networks}</td>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:right;">${op.amount}</td>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:right;">${op.price}</td>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${creator}</td>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${acceptor}</td>
+                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${new Date(op.createdAt).toLocaleString('pt-BR')}</td>
+                            <td style=\"padding:8px;border-bottom:1px solid #e1e8ed;text-align:center;\">\n                                <button class=\"btn btn-secondary\" onclick=\"adminAction('${op._id}','cancel')\">🛑</button>\n                                <button class=\"btn btn-secondary\" onclick=\"adminAction('${op._id}','clear')\">✅</button>\n                                <button class=\"btn btn-secondary\" onclick=\"adminAction('${op._id}','flag')\">🚨</button>\n                            </td>
+                        </tr>`;
+                    });
+                    body.innerHTML = rows;
+                    footer.innerHTML = `Total: ${result.total} | Página: ${result.page} | Limite: ${result.limit}`;
+                } else {
+                    body.innerHTML = '<tr><td colspan="8" style="padding:8px;">❌ Erro ao carregar operações</td></tr>';
+                    footer.innerHTML = '';
+                }
+            } catch (e) {
+                body.innerHTML = '<tr><td colspan="8" style="padding:8px;">❌ Erro ao carregar operações: ' + e.message + '</td></tr>';
+                footer.innerHTML = '';
+            }
+        }
+        function adminAction(opId, action) {
+            const reason = prompt('Informe o motivo (opcional):');
+            fetch('/setup/admin/operations/' + opId + '/' + action, { 
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason })
+            })
+              .then(r => r.json())
+              .then(result => {
+                const alert = document.getElementById('alert');
+                alert.style.display = 'block';
+                if (result.success) {
+                  alert.className = 'alert success';
+                  alert.innerHTML = '✅ Ação aplicada: ' + action;
+                  loadOperations();
+                } else {
+                  alert.className = 'alert error';
+                  alert.innerHTML = '❌ Erro: ' + (result.message || 'falha');
+                }
+              })
+        }
     </script>
 </body>
 </html>
+        function adminDisputeAction(opId, action) {
+            const reason = prompt('Informe o motivo (opcional):');
+            fetch('/setup/admin/disputes/' + opId + '/' + action, { 
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason })
+            })
+              .then(r => r.json())
+              .then(result => {
+                const alert = document.getElementById('alert');
+                alert.style.display = 'block';
+                if (result.success) {
+                  alert.className = 'alert success';
+                  alert.innerHTML = '✅ Ação aplicada na disputa: ' + action;
+                  loadDisputes();
+                } else {
+                  alert.className = 'alert error';
+                  alert.innerHTML = '❌ Erro: ' + (result.message || 'falha');
+                }
+              })
+        }

@@ -119,15 +119,9 @@ export class KarmaRepository extends AbstractRepository<Karma> {
   }
 
   private convertStarsToKarma(stars: number): number {
-    // Conversão de estrelas para pontos de karma
-    switch (stars) {
-      case 5: return 5;  // 5 estrelas = +5 pontos
-      case 4: return 2;  // 4 estrelas = +2 pontos
-      case 3: return 0;  // 3 estrelas = neutro
-      case 2: return -2; // 2 estrelas = -2 pontos
-      case 1: return -5; // 1 estrela = -5 pontos
-      default: return 0;
-    }
+    // Usar configuração centralizada para conversão de estrelas
+    const { convertStarsToKarma } = require('../shared/karma-config.utils');
+    return convertStarsToKarma(stars);
   }
 
   async updateSenderKarmaWithComment(

@@ -17,7 +17,7 @@ export interface TermsAcceptanceData {
 @Injectable()
 export class TermsAcceptanceService {
   private readonly logger = new Logger(TermsAcceptanceService.name);
-  private readonly CURRENT_TERMS_VERSION = '1.1.0';
+  private readonly CURRENT_TERMS_VERSION = '1.2.0';
 
   constructor(
     private readonly termsAcceptanceRepository: TermsAcceptanceRepository,
@@ -104,20 +104,101 @@ export class TermsAcceptanceService {
     groupTelegramId: number
   ): Promise<void> {
     try {
-      // Remover registro de aceitação de termos
       await this.termsAcceptanceRepository.removeUserAcceptance(
         userTelegramId,
         groupTelegramId
       );
 
       this.logger.log(
-        `Removed terms acceptance for user ${userTelegramId} from group ${groupTelegramId}`
+        `Terms acceptance removed for user ${userTelegramId} from group ${groupTelegramId}`
       );
     } catch (error) {
       this.logger.error(
-        `Failed to remove user ${userTelegramId} from group ${groupTelegramId}:`,
+        `Failed to remove terms acceptance for user ${userTelegramId} from group ${groupTelegramId}:`,
         error
       );
+      throw error;
+    }
+  }
+
+  /**
+   * Busca todos os usuários que precisam aceitar a versão atual dos termos
+   * @param groupTelegramId ID do grupo para verificar
+   * @returns Lista de IDs de usuários que precisam aceitar os termos atuais
+   */
+  async getUsersNeedingCurrentTermsAcceptance(groupTelegramId: number): Promise<number[]> {
+    try {
+      const usersNeedingUpdate = await this.termsAcceptanceRepository.getUsersNeedingTermsUpdate(
+        groupTelegramId,
+        this.CURRENT_TERMS_VERSION
+      );
+
+      this.logger.log(
+        `Found ${usersNeedingUpdate.length} users needing terms update in group ${groupTelegramId}`
+      );
+
+      return usersNeedingUpdate;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get users needing terms acceptance for group ${groupTelegramId}:`,
+        error
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Busca todos os usuários de todos os grupos que precisam aceitar a versão atual
+   * @returns Mapa com groupId -> array de userIds que precisam aceitar
+   */
+  async getAllUsersNeedingCurrentTermsAcceptance(): Promise<Map<number, number[]>> {
+    try {
+      // Buscar todos os grupos distintos que têm aceitações de termos
+      const distinctGroups = await this.termsAcceptanceRepository.getDistinctGroups();
+
+      const result = new Map<number, number[]>();
+
+      // Para cada grupo, buscar usuários que precisam aceitar a versão atual
+      for (const groupId of distinctGroups) {
+        const usersNeedingUpdate = await this.getUsersNeedingCurrentTermsAcceptance(groupId);
+        if (usersNeedingUpdate.length > 0) {
+          result.set(groupId, usersNeedingUpdate);
+        }
+      }
+
+      const totalUsers = Array.from(result.values()).reduce((sum, users) => sum + users.length, 0);
+      this.logger.log(
+        `Found ${totalUsers} users across ${result.size} groups needing terms update`
+      );
+
+      return result;
+    } catch (error) {
+      this.logger.error('Failed to get all users needing terms acceptance:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Busca todos os grupos distintos que têm usuários registrados
+   */
+  async getAllDistinctGroups(): Promise<number[]> {
+    try {
+      return await this.termsAcceptanceRepository.getDistinctGroups();
+    } catch (error) {
+      this.logger.error('Failed to get distinct groups:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Busca TODOS os usuários de um grupo específico (independente de terem aceito os termos)
+   * Para cenário de atualização de termos onde todos devem ser notificados
+   */
+  async getAllUsersInGroup(groupTelegramId: number): Promise<number[]> {
+    try {
+      return await this.termsAcceptanceRepository.getAllUsersInGroup(groupTelegramId);
+    } catch (error) {
+      this.logger.error(`Failed to get all users in group ${groupTelegramId}:`, error);
       throw error;
     }
   }
@@ -140,7 +221,11 @@ export class TermsAcceptanceService {
       `7️⃣ **Cautela com Feriados:** Seja cauteloso com valores altos em vésperas de feriados e finais de semana.\n\n` +
       `8️⃣ **Conduta Ética:** Tentativas de fraude resultam em banimento permanente da comunidade.\n\n` +
       `9️⃣ **Negociações Privadas:** Todas as tratativas devem ser feitas no privado entre os interessados.\n\n` +
-      `🔟 **Isenção de Responsabilidade:** A comunidade e o bot não se responsabilizam por perdas ou problemas nas negociações.\n\n` +
+      `🔟 **Ativos Ilícitos - ATENÇÃO ESPECIAL:** Existe a possibilidade de negociar ativos marcados como provenientes de roubos, hacks e outras origens ilegais. Para sua segurança:\n\n` +
+      `   🏦 **RECOMENDADO:** Priorize stablecoins, BTC e ETH de corretoras conhecidas (Binance, Coinbase, Bybit, Bitget, MEXC e outras), pois possuem sistemas de prevenção contra ativos ilícitos.\n\n` +
+      `   🚫 **NÃO RECOMENDADO:** Ativos que passaram por mixers - tenha extrema cautela nessas situações.\n\n` +
+      `   ⚖️ **RESPONSABILIDADE:** Você é totalmente responsável por verificar a origem dos ativos que negocia.\n\n` +
+      `1️⃣1️⃣ **Isenção de Responsabilidade:** A comunidade e o bot não se responsabilizam por perdas ou problemas nas negociações.\n\n` +
       `⚠️ **ACEITAR OS TERMOS significa concordar com todas essas condições e assumir total responsabilidade por suas ações.**`
     );
   }

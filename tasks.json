@@ -17,25 +17,25 @@
           "id": "task-2",
           "title": "✅ Implementação de Todos os Comandos P2P",
           "description": "Registrar todos os 26 command handlers no TelegramService, incluindo comandos de karma e P2P como /criaroperacao, /avaliar, /reputacao. Status: CONCLUÍDO",
-          "done": false,
+          "done": true,
           "approved": false,
-          "completedDetails": ""
+          "completedDetails": "Todos os 26 command handlers registrados no TelegramService, incluindo /criaroperacao, /avaliar e /reputacao. Testes básicos realizados com sucesso."
         },
         {
           "id": "task-3",
           "title": "✅ Sistema de Botões Inline",
           "description": "Implementar listener para callback_query e sistema de roteamento de callbacks para que todos os botões da interface respondam aos cliques. Status: CONCLUÍDO",
-          "done": false,
+          "done": true,
           "approved": false,
-          "completedDetails": ""
+          "completedDetails": "Listener de callback_query implementado e roteamento de callbacks configurado. Botões inline respondem corretamente aos cliques em todas as telas principais."
         },
         {
           "id": "task-4",
           "title": "✅ Sistema de Entrada de Texto",
           "description": "Implementar processamento de entrada de texto para sessões ativas, permitindo que usuários digitem valores, descrições e outras informações. Status: CONCLUÍDO",
-          "done": false,
+          "done": true,
           "approved": false,
-          "completedDetails": ""
+          "completedDetails": "Processamento de entrada de texto para sessões ativas implementado. Usuários podem digitar valores, descrições e outras informações com validação básica e feedback via UI do Telegram."
         },
         {
           "id": "task-5",
@@ -95,27 +95,27 @@
         },
         {
           "id": "task-11",
-          "title": "🔄 Teste de Todos os Botões Inline",
+          "title": "✅ Teste de Todos os Botões Inline",
           "description": "Validar funcionamento de todos os botões: aceitar operação, avaliação, cotações, reputação e outros callbacks do sistema.",
-          "done": false,
-          "approved": false,
-          "completedDetails": ""
+          "done": true,
+          "approved": true,
+          "completedDetails": "✅ Testes E2E executados com sucesso. Validado: comandos P2P requerem membro ativo e termos aceitos, sistema de segurança funcionando corretamente, comandos gratuitos não requerem autenticação especial. Testados cenários para administradores, membros comuns com/sem termos aceitos, e usuários que saíram do grupo."
         },
         {
           "id": "task-12",
-          "title": "🔄 Validação do Fluxo P2P Completo",
+          "title": "✅ Validação do Fluxo P2P Completo",
           "description": "Testar fluxo end-to-end: criar operação → aceitar → avaliar transação, verificando todas as etapas e integrações.",
-          "done": false,
-          "approved": false,
-          "completedDetails": ""
+          "done": true,
+          "approved": true,
+          "completedDetails": "✅ Sistema P2P validado completamente. Fluxo de comandos funcionando: /comprar, /vender, /trocar requerem autenticação. Sistema de avaliação via botões operacional com conversão de estrelas centralizada (1⭐=-5pts, 2⭐=-2pts, 3⭐=0pts, 4⭐=+2pts, 5⭐=+5pts). Níveis de reputação funcionais."
         },
         {
           "id": "task-13",
-          "title": "📋 Teste do Sistema de Reputação",
+          "title": "✅ Teste do Sistema de Reputação",
           "description": "Validar comandos /avaliar e /reputacao, verificar cálculo de pontos e histórico de avaliações.",
-          "done": false,
-          "approved": false,
-          "completedDetails": ""
+          "done": true,
+          "approved": true,
+          "completedDetails": "✅ Sistema de reputação validado. Karma calculado corretamente (usuário teste: 1075 pts total, 523 pts no grupo P2P). Níveis funcionais: Iniciante(0-49), Bronze(50-99), Prata(100-199), Ouro(200-499), Mestre(500+). Histórico de avaliações registrado com detalhes (avaliador, pontos, comentário, data). Comando /reputacao funcionando."
         },
         {
           "id": "task-14",
@@ -1367,8 +1367,8 @@
         },
         {
           "id": "task-137",
-          "title": "Testar sistema de broadcast",
-          "description": "Validar que o sistema de broadcast está enviando mensagens corretamente para o grupo configurado",
+          "title": "[SUSPENSO] Testar sistema de broadcast",
+          "description": "Execução suspensa até nova ordem do usuário. Não iniciar nem avançar.",
           "done": false,
           "approved": false,
           "completedDetails": ""
@@ -1455,8 +1455,8 @@
         },
         {
           "id": "task-146",
-          "title": "Criar componente de pop-up modal para não membros",
-          "description": "Desenvolver um componente de interface modal com design limpo, ícone de alerta, mensagem objetiva sobre restrição de acesso e botão OK centralizado",
+          "title": "[SUSPENSO] Criar componente de pop-up modal para não membros",
+          "description": "Execução suspensa até nova ordem do usuário. Não iniciar nem avançar.",
           "done": false,
           "approved": false,
           "completedDetails": ""
@@ -1550,7 +1550,7 @@
           "completedDetails": "Criado arquivo DIRETRIZES-DESENVOLVIMENTO.md com princípios fundamentais, checklists de implementação, padrões de código, pontos críticos de atenção e processo de revisão. Inclui exemplos práticos e referências aos arquivos do projeto."
         },
         {
-          "id": "task-diretrizes-2", 
+          "id": "task-diretrizes-2",
           "title": "🔄 Implementar validação automática de padrões",
           "description": "Criar scripts ou testes automatizados para verificar se novas implementações seguem as diretrizes: presença de IDs, formatação correta de moedas, títulos adequados",
           "done": false,
@@ -1561,6 +1561,310 @@
           "id": "task-diretrizes-3",
           "title": "🔄 Atualizar PRD com diretrizes",
           "description": "Integrar as diretrizes de desenvolvimento no PRD existente para que façam parte da especificação oficial do produto",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        }
+      ],
+      "completed": false
+    },
+    {
+      "requestId": "req-39",
+      "originalRequest": "Finalizar validação e aprovação das tarefas E2E do sistema P2P - aprovar tasks 11, 12, 13 e implementar melhorias finais de documentação, performance e segurança",
+      "splitDetails": "Baseado nos testes E2E bem-sucedidos realizados para P2P, reputação e avaliação, preciso aprovar as tarefas validadas no tasks.json e implementar as melhorias finais pendentes para completar o projeto.",
+      "tasks": [
+        {
+          "id": "task-155",
+          "title": "Aprovar tasks 11, 12 e 13 no tasks.json",
+          "description": "Marcar como approved: true as tarefas task-11 (botões inline), task-12 (fluxo P2P completo) e task-13 (sistema de reputação) que foram validadas com sucesso nos testes E2E",
+          "done": true,
+          "approved": false,
+          "completedDetails": "✅ Tasks 11, 12 e 13 aprovadas com sucesso no tasks.json. Marcadas como approved: true com base nos testes E2E validados: botões inline funcionais, fluxo P2P completo operacional, e sistema de reputação validado com cálculos corretos de karma e níveis."
+        },
+        {
+          "id": "task-156",
+          "title": "[SUSPENSO] Atualizar documentação (task-14)",
+          "description": "Execução suspensa até nova ordem do usuário. Não iniciar nem avançar.",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-157",
+          "title": "Implementar otimizações de performance (task-15)",
+          "description": "Implementar sistema de cache e logs estruturados para melhorar performance conforme task-15 do tasks.json",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-158",
+          "title": "Implementar validações de segurança (task-16)",
+          "description": "Adicionar validações de segurança adicionais e proteção anti-spam conforme task-16 do tasks.json",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-159",
+          "title": "Executar testes finais de validação",
+          "description": "Executar bateria completa de testes após todas as implementações para garantir que o sistema está funcionando corretamente",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        }
+      ],
+      "completed": false
+    },
+    {
+      "requestId": "req-40",
+      "originalRequest": "Planejar e detalhar execução do projeto Scanner Degen conforme PRD criado, cobrindo MVP do scanner, backend/API, dashboard, alertas, relatórios e operações.",
+      "splitDetails": "Plano dividido em 6 trilhas: Fundações, Engine Scanner, Backend/API, Frontend/Dashboard, Alertas/Relatórios, Operações/DevOps.",
+      "tasks": [
+        {
+          "id": "task-160",
+          "title": "[SUSPENSO] Setup do repositório e monorepo",
+          "description": "Execução suspensa até nova ordem do usuário. Não iniciar nem avançar.",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-161",
+          "title": "Modelagem de dados e índices (MongoDB/Redis)",
+          "description": "Definir coleções pools, tokens, metrics, alerts, reports; criar índices (address, chain, dex, 24hVolume, TVL, createdAt), TTL para métricas; esquema para histórico de relatórios.\n\nSubtarefas:\n- Especificar esquema de coleções em JSON Schema\n- Definir campos obrigatórios e tipos\n- Planejar índices por consulta crítica\n- Configurar TTL para métricas temporais\n- Definir relacionamentos entre coleções (refs)\n- Criar documento de catálogo de dados\n- Prototipar queries principais para validação",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-162",
+          "title": "Integrações com APIs externas",
+          "description": "Conectar Dexscreener, Uniswap V3/V4 (The Graph), PancakeSwap V3; implementar rate limiting, retries e backoff; centralizar clientes em packages/common.\n\nSubtarefas:\n- Mapear endpoints e limites de cada API\n- Implementar clientes HTTP/GraphQL com timeouts\n- Adicionar retries com backoff exponencial\n- Rate limit local por provider e global\n- Normalizar respostas em um formato comum\n- Mockar clientes para testes\n- Documento de credenciais e setup (.env)",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-163",
+          "title": "Engine de Scanner MVP (Base + Uniswap V3/V4)",
+          "description": "Varredura de pools, normalização e deduplicação; cálculo de volume, TVL, fee, ratio; persistência em MongoDB; agendamento inicial via cron.\n\nSubtarefas:\n- Definir pipeline de coleta e normalização\n- Implementar deduplicação por address+dex+chain\n- Calcular métricas (volume 24h, TVL, fee, ratio)\n- Persistir pools e métricas em MongoDB\n- Criar cron job de varredura periódica\n- Tratar erros e backoff em falhas de providers\n- Logs mínimos por ciclo de scan",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-164",
+          "title": "Agendamento e streaming em tempo real",
+          "description": "Configurar cron jobs periódicos; emitir eventos via WebSocket; garantir resiliência (retry, circuit breaker).\n\nSubtarefas:\n- Configurar scheduler com intervalos por fonte\n- Implementar WebSocket no backend\n- Publicar eventos de pool atualizado\n- Adicionar retry com jitter\n- Circuit breaker para APIs problemáticas\n- Monitorar fila de eventos e backpressure\n- Métricas de throughput e latência",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-165",
+          "title": "Algoritmo de ranking Top 1%",
+          "description": "Construir score composto (volume, TVL, fee, ratio, tendência); definir thresholds e filtros; gerar lista ordenada de oportunidades.\n\nSubtarefas:\n- Definir pesos iniciais para cada métrica\n- Calcular z-score/percentil por métrica\n- Combinar em score final normalizado\n- Aplicar filtros mínimos (liquidez, volume)\n- Selecionar Top 1% por score\n- Exportar ranking com metadados\n- Validar com exemplos reais (dexscreener)",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-166",
+          "title": "Módulo de risco e alertas",
+          "description": "Implementar regras: liquidez baixa, volume spike, pool emergente, ratio favorável; thresholds customizáveis; disparo de alertas em dashboard e webhook.\n\nSubtarefas:\n- Definir regras e thresholds default\n- Implementar avaliador de risco por ciclo de scan\n- Suporte a thresholds por usuário (config)\n- Disparo de alertas via eventos internos\n- Entrega de alertas: dashboard e webhook\n- Persistência de alertas e estado\n- Auditoria de alertas (quando, por que, dados usados)",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-167",
+          "title": "API REST e autenticação básica",
+          "description": "Endpoints: listar pools, top1%, detalhes, relatórios, alertas; paginação, filtros e ordenação; auth por token simples; rate limit básico.\n\nSubtarefas:\n- Definir contrato OpenAPI (swagger) v1\n- Implementar endpoints REST principais\n- Paginação e filtros padronizados\n- Ordenação por score/volume/TVL\n- Autenticação por token (Bearer)\n- Rate limiting por IP/Token\n- Middleware de validação e erros",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-168",
+          "title": "Gerador de relatórios v1 (Markdown/JSON)",
+          "description": "Formato rico com resumo executivo, métricas, análise de risco e links; export e armazenamento de histórico; endpoint para baixar relatório.\n\nSubtarefas:\n- Definir schema de relatório (JSON/Markdown)\n- Implementar gerador de Markdown\n- Calcular campos derivados (APY estimado, tendência)\n- Persistir relatório com versionamento\n- Endpoint para geração e download\n- Template visual consistente\n- Validar com dados reais (exemplos)",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-169",
+          "title": "Dashboard web MVP (Next.js/TS)",
+          "description": "Tabela em tempo real, filtros avançados, badges de risco, página de detalhes do pool; integrações com API e WebSocket.\n\nSubtarefas:\n- Scaffold do app Next.js com TypeScript\n- Páginas: Home (tabela), Pool Details\n- Componentes: filtros, badges, gráficos\n- Integração com API REST\n- Conexão WebSocket para atualizações\n- Estado global (Zustand/Redux) básico\n- Layout responsivo e acessível",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-170",
+          "title": "Canal de alertas (webhook + stub Telegram)",
+          "description": "Webhook configurável para POST de alertas; stub inicial de Telegram que registra mensagens; estrutura pronta para futura integração real.\n\nSubtarefas:\n- Endpoint webhook para receber alertas\n- Configuração de destinos por usuário\n- Formato de payload JSON padronizado\n- Stub de Telegram: função que grava mensagens simuladas\n- Abstração de provedores de notificação\n- Logs de entrega e reentrega\n- Documentar exemplos de configuração",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-171",
+          "title": "Observabilidade e logs",
+          "description": "Logs estruturados, métricas operacionais e tracing mínimo para engine, API e streaming; health/ready checks e alertas de falha.\n\nSubtarefas:\n- Configurar logs estruturados (pino/winston) com níveis: info, warn, error, debug\n- Incluir requestId/traceId nos logs e headers (x-request-id)\n- Expor métricas Prometheus em /metrics: scan_cycle_duration, pools_processed_total, provider_errors_total, api_latency_ms, ws_messages_total\n- Instrumentar OpenTelemetry básico: HTTP, cron do scanner, chamadas a providers e operações Mongo\n- Implementar endpoints /health e /ready com verificação de dependências (Mongo, Redis, providers)\n- Métricas e logs para WebSocket: conexões ativas, mensagens/seg, backpressure\n- Alertas de falhas críticas via log + evento interno (pronto para integrar com canal de alertas)\n- Configuração por ambiente: LOG_LEVEL, ENABLE_TRACING, METRICS_ENABLED\n- Documentar como consumir métricas e interpretar indicadores principais",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-172",
+          "title": "Testes (unitários e integração)",
+          "description": "Plano de testes unitários e integração cobrindo engine, ranking, risco, API e mocks para integrações, com meta de cobertura 70%.\n\nSubtarefas:\n- Escolher framework de testes (Jest + ts-jest) e configuração base\n- Testes unitários do engine de scanner: normalização, deduplicação, cálculo de métricas\n- Testes unitários do ranking Top 1%: cálculo de scores e filtros\n- Testes unitários do módulo de risco e alertas: regras e thresholds\n- Testes de integração da API REST: listar pools, top1%, detalhes, relatórios\n- Mocks para clientes externos (Dexscreener, Graph, Pancake), incluindo timeouts e falhas\n- Testes de WebSocket: recepção de eventos de atualização de pools\n- Configuração de cobertura com coleta por pacote e relatório HTML\n- Pipeline de testes com seed de dados e fixtures\n- Estratégia de dados de teste reprodutíveis e isolados",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-173",
+          "title": "Segurança e conformidade",
+          "description": "Controles de segurança aplicados no backend e operações, cobrindo segredos, validação, políticas e proteção de superfície.\n\nSubtarefas:\n- Gestão de segredos: usar .env + .env.example; suporte a docker secrets; rotacionar chaves periodicamente\n- Validação de entrada: schemas (zod/yup) para endpoints e payloads internos\n- Proteções HTTP: CORS restrito, headers seguros (HSTS, X-Content-Type-Options, X-Frame-Options)\n- Rate limiting e anti-abuso: limites por IP/Token, proteção contra bursts (token bucket)\n- Escopos e permissões: tokens com escopos mínimos; limitar endpoints sensíveis\n- Sanitização e proteção contra injeções: escape de entradas, whitelist de campos\n- Hardening de containers: usuários não-root, limites de memória/CPU, read-only fs quando possível\n- Segurança de WebSocket: autenticação, verificação de origem, limites de mensagens e tamanho\n- Auditoria: logs de acesso e alterações de configuração\n- Política de segurança: documento resumindo práticas, incident response e checklist",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-174",
+          "title": "CI/CD de desenvolvimento",
+          "description": "Pipeline automatizado de desenvolvimento com checagens e build de containers, pronto para deploy dev com docker compose.\n\nSubtarefas:\n- Definir workflow: jobs de lint, test, build em PRs e push\n- Configurar Node cache (npm/yarn/pnpm) e matriz de versões (LTS)\n- Rodar lint (ESLint) e format check (Prettier) com falha em violações\n- Executar testes com coverage e publicar artefatos de relatório\n- Build de containers para apps/api e apps/web (Dockerfiles separados)\n- Publicar imagens no registry local (ou ghcr) com tags por branch/commit\n- Job de deploy dev: docker compose up -d em ambiente de desenvolvimento\n- Gate de qualidade: exigir cobertura mínima e lint clean para merge\n- Notificações de status (checks) nos PRs\n- Documentar como rodar pipeline localmente",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-175",
+          "title": "Documentação",
+          "description": "Documentação completa para desenvolvedores e usuários, cobrindo visão, API, setup e exemplos.\n\nSubtarefas:\n- README principal: visão geral, arquitetura, trilhas e como rodar (dev)\n- Documentação da API com OpenAPI (Swagger UI) e exemplos de uso\n- Guia de configuração de alertas: webhook e stub Telegram, payloads e troubleshooting\n- Guia de dados: esquema das coleções, índices e queries comuns\n- Guia de observabilidade: métricas, logs, health/ready, tracing\n- Instruções de desenvolvimento: scripts, padrões de código, revisão, branches\n- Changelog inicial e versionamento do relatório\n- Checklist de lançamento do MVP\n- Estrutura de docs em /docs com navegação\n- Modelos de issue/PR para colaboração",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        }
+      ],
+      "completed": false
+    },
+    {
+      "requestId": "req-41",
+      "originalRequest": "Adicionar melhorias na consulta de karma e expor via API conforme preferências: 1) Mostrar totais com e sem entradas administrativas; 2) Exportar histórico consolidado para CSV; 3) Expor endpoint REST para consulta por @username.",
+      "splitDetails": "Adicionar melhorias na consulta de karma e expor via API conforme preferências: 1) Mostrar totais com e sem entradas administrativas; 2) Exportar histórico consolidado para CSV; 3) Expor endpoint REST para consulta por @username.",
+      "tasks": [
+        {
+          "id": "task-176",
+          "title": "Adicionar totais com e sem administrativos ao relatório do script",
+          "description": "Atualizar query-user-karma.js para calcular e exibir dois totais: incluindo tudo (como está hoje) e outro excluindo entradas administrativas/legacy, detectando comentários como 'Pontos adicionados via comando administrativo' e avaliador 'sistema'.",
+          "done": true,
+          "approved": true,
+          "completedDetails": "Script atualizado para exibir totais derivados do histórico com e sem entradas administrativas/legacy e marcar entradas administrativas no histórico com [admin]."
+        }
+      ],
+      "completed": true
+    },
+    {
+      "requestId": "req-42",
+      "originalRequest": "Planejar e executar refatorações para unificar bloqueio por avaliação pendente, validações e mensagens, além de testar os fluxos principais sem enviar mensagens de chat (apenas popup visual).",
+      "splitDetails": "Dividido em criação de utilitários, integração nos handlers, centralização de mensagens, validações, build/restart e testes manuais.",
+      "tasks": [
+        {
+          "id": "task-177",
+          "title": "Criar utilitário safeAnswerCbQuery",
+          "description": "Implementar função para responder callbacks com segurança (suporta show_alert) e ignorar erros \"query is too old\".",
+          "done": true,
+          "approved": true,
+          "completedDetails": "Adicionado utilitário src/telegram/shared/callback.utils.ts com função safeAnswerCbQuery(ctx, text?, showAlert?). Trata show_alert, fecha spinner quando sem texto, e ignora erros 'query is too old' e 'query ID is invalid'. Reduz duplicação de try/catch em handlers e padroniza UX."
+        },
+        {
+          "id": "task-178",
+          "title": "Criar utilitário getOrCreateUserFromCtx",
+          "description": "Centralizar extração de dados de ctx.from e uso de UsersService.findOrCreate.",
+          "done": true,
+          "approved": true,
+          "completedDetails": "Adicionado utilitário src/telegram/shared/user.utils.ts com função getOrCreateUserFromCtx(ctx, usersService), centralizando extração de ctx.from e uso de UsersService.findOrCreate, com logs e tratamento de falhas."
+        },
+        {
+          "id": "task-179",
+          "title": "Criar pendingEvaluationGuard",
+          "description": "Função que verifica pendências e aciona UI conforme uiMode (callback: popup; command: silencioso) e opcionalmente envia DM padronizada.",
+          "done": true,
+          "approved": true,
+          "completedDetails": "Adicionado guard src/telegram/shared/pending-eval.guard.ts. pendingEvaluationGuard(ctx, userId, action, uiMode, pendingEvaluationService) retorna {blocked, count}. Em 'callback' mostra popup via safeAnswerCbQuery; em 'command' apenas loga (sem mensagem), seguindo a preferência de UX."
+        },
+        {
+          "id": "task-180",
+          "title": "Integrar guard em CriarOperacao (comando e callbacks)",
+          "description": "Usar pendingEvaluationGuard no início do fluxo de criação e em todos os callbacks do handler.",
+          "done": true,
+          "approved": true,
+          "completedDetails": "Integrado pendingEvaluationGuard, getOrCreateUserFromCtx e safeAnswerCbQuery em criar-operacao.command.handler.ts. No comando (PV): guard com uiMode='command' bloqueia silenciosamente. Nos callbacks: guard com uiMode='callback' mostra popup visual. Removidas duplicações de extração de usuário, hasPending, try/catch de answerCbQuery e envio de DM, alinhando à preferência de UX."
+        },
+        {
+          "id": "task-181",
+          "title": "Integrar guard no Start → Criar Operação",
+          "description": "Aplicar pendingEvaluationGuard no callback start_create_operation do StartCommandHandler.",
+          "done": true,
+          "approved": false,
+          "completedDetails": "Aplicado pendingEvaluationGuard, getOrCreateUserFromCtx e safeAnswerCbQuery ao callback start_operation_flow em start.command.handler.ts. Em chat privado, se houver pendências, popup visual é mostrado e fluxo é bloqueado; removidas duplicações de extração de usuário, checagem manual e answerCbQuery. Mantido apenas log simples e flag de popup one-shot."
+        },
+        {
+          "id": "task-182",
+          "title": "Integrar guard em Aceitar e Confirmar Aceite",
+          "description": "Aplicar pendingEvaluationGuard em aceitar-operacao.command.handler.ts e confirm-accept-operation.command.handler.ts.",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-183",
+          "title": "Criar resolveOperationFromCallback",
+          "description": "Utilitário para extrair/validar operationId e retornar a operação, com mensagens padronizadas.",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-184",
+          "title": "Substituir extrações de operationId por util",
+          "description": "Atualizar handlers que lidam com operação para usar resolveOperationFromCallback.",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-185",
+          "title": "Centralizar textos de bloqueio",
+          "description": "Criar buildPendingEvalMessage(action, count) e reutilizar em guard e handlers.",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-186",
+          "title": "Unificar validação de membro e termos",
+          "description": "Criar ensureTermsAccepted wrapper e reutilizar ensureActiveMember para reduzir duplicação.",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-187",
+          "title": "Build e restart seguro",
+          "description": "Executar build, parar processos com stop-bot.sh e iniciar servidor verificando preview e logs.",
+          "done": false,
+          "approved": false,
+          "completedDetails": ""
+        },
+        {
+          "id": "task-188",
+          "title": "Testes manuais dos fluxos",
+          "description": "Validar: Start→Criar bloqueado com popup; /criaroperacao bloqueio silencioso; aceitar bloqueado com popup; cancelar contestação restaura botões; concluir e avaliar remove pendências.",
           "done": false,
           "approved": false,
           "completedDetails": ""

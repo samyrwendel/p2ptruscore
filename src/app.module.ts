@@ -12,6 +12,7 @@ import { UsersApiModule } from './api/users/users-api.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule as CustomConfigModule } from './config/config.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 
 @Module({
   imports: [
@@ -22,12 +23,19 @@ import { ConfigModule as CustomConfigModule } from './config/config.module';
         MONGODB_CNN: Joi.string().required(),
         TELEGRAM_BOT_USERNAME: Joi.string().required(),
         PORT: Joi.string().default('3000'),
+        TELEGRAM_GROUP_ID: Joi.string().optional(),
+        TELEGRAM_THREAD_ID: Joi.string().optional(),
+        TELEGRAM_ADMIN_CHANNEL_ID: Joi.string().optional(),
+        CURRENCY_API_KEY: Joi.string().optional(),
+        CURRENCY_API_URL: Joi.string().optional(),
+        REQUEST_TIMEOUT: Joi.number().optional(),
+        CACHE_TTL: Joi.number().optional(),
       }),
     }),
     ThrottlerModule.forRoot([
       {
-        ttl: 60000,
-        limit: 100,
+        ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
+        limit: parseInt(process.env.RATE_LIMIT_LIMIT || '100'),
       },
     ]),
     TelegrafModule.forRootAsync({
@@ -49,6 +57,7 @@ import { ConfigModule as CustomConfigModule } from './config/config.module';
     
     // Config management module
     CustomConfigModule,
+    IntegrationsModule,
   ],
   controllers: [],
   providers: [

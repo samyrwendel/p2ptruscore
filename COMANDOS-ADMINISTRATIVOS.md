@@ -138,6 +138,29 @@ O sistema verifica automaticamente se o usuário é administrador antes de execu
 /admin resetkarma @usuario_problema Reset por múltiplas infrações
 ```
 
+### **💼 Utilidades de Administração**
+
+#### **Desbloquear Usuário (Pendências de Avaliação)**
+```
+/desbloquearusuario @usuario [fix|force]
+/desbloquearusuario [ID_NUMERICO] [fix|force]
+```
+**Função:** Marca como concluídas avaliações pendentes para desbloquear criação/aceite de operações.
+
+**Modos:**
+- `fix`: Limpa apenas pendências ligadas a operações `completed`, `cancelled` ou `expired`.
+- `force`: Limpa todas as pendências (use com cautela).
+
+**Requisitos:**
+- Executar no PV do bot.
+- Ser `administrator` ou `creator` do grupo configurado (`TELEGRAM_GROUP_ID`).
+
+**Exemplo:**
+```
+/desbloquearusuario @usuario_exemplo fix
+/desbloquearusuario 7844787567 force
+```
+
 ### **📊 Informações e Logs**
 
 #### **9. Informações do Usuário**

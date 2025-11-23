@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import * as NodeCache from 'node-cache';
 
 export interface CurrencyRate {
   code: string;
@@ -32,23 +34,30 @@ export class CurrencyApiService {
   private readonly logger = new Logger(CurrencyApiService.name);
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly cache = new NodeCache({ stdTTL: parseInt(process.env.CACHE_TTL || '60'), checkperiod: 120 });
 
-  constructor(private readonly httpService: HttpService) {
-    this.apiKey = process.env.CURRENCY_API_KEY || '3d7237cbd0d3ee56ce8eeaac087135beddf5d8fc3292dc5ae44acfee97d86918';
-    this.baseUrl = process.env.CURRENCY_API_URL || 'https://economia.awesomeapi.com.br/json/last';
+  constructor(private readonly httpService: HttpService, private readonly configService: ConfigService) {
+    this.apiKey = this.configService.get<string>('CURRENCY_API_KEY') || '';
+    this.baseUrl = this.configService.get<string>('CURRENCY_API_URL') || 'https://economia.awesomeapi.com.br/json/last';
   }
 
   async getCurrentRates(): Promise<CurrencyApiResponse> {
     try {
-      const url = `${this.baseUrl}/USD-BRL,EUR-BRL,BTC-USD,BTC-BRL,ETH-USD,ETH-BRL,SOL-USD,SOL-BRL?token=${this.apiKey}`;
-      
+      const url = `${this.baseUrl}/USD-BRL,EUR-BRL,BTC-USD,BTC-BRL,ETH-USD,ETH-BRL,SOL-USD,SOL-BRL${this.apiKey ? `?token=${this.apiKey}` : ''}`;
+      const cached = this.cache.get<CurrencyApiResponse>('currentRates');
+      if (cached) {
+        return cached;
+      }
       this.logger.log('Fetching current currency rates...');
+      const timeout = parseInt(this.configService.get<string>('REQUEST_TIMEOUT') || '5000');
       const response = await firstValueFrom(
-        this.httpService.get<CurrencyApiResponse>(url)
+        this.httpService.get<CurrencyApiResponse>(url, { timeout })
       );
-      
+      const data = response.data as CurrencyApiResponse;
+      const ttl = parseInt(this.configService.get<string>('CACHE_TTL') || '60');
+      this.cache.set('currentRates', data, ttl);
       this.logger.log('Currency rates fetched successfully');
-      return response.data as CurrencyApiResponse;
+      return data;
     } catch (error) {
       this.logger.error('Failed to fetch currency rates:', error);
       throw new Error('Erro ao buscar cotações atuais');
@@ -66,7 +75,6 @@ export class CurrencyApiService {
         'USDE': 'USDBRL',
         'DAI': 'USDBRL',
         'BUSD': 'USDBRL',
-        'BTC': 'BTCBRL',
         'ETH': 'ETHBRL',
         'SOL': 'SOLBRL',
         'EUR': 'EURBRL'
@@ -113,9 +121,7 @@ export class CurrencyApiService {
         message += this.formatCurrencyRate(rates.USDBRL) + '\n\n';
       }
       
-      if (rates.BTCBRL) {
-        message += this.formatCurrencyRate(rates.BTCBRL) + '\n\n';
-      }
+      
       
       if (rates.ETHBRL) {
         message += this.formatCurrencyRate(rates.ETHBRL) + '\n\n';

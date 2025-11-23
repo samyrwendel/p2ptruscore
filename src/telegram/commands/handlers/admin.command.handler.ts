@@ -241,7 +241,9 @@ export class AdminCommandHandler implements ITextCommandHandler {
       await this.logAdminAction(ctx, targetUser, 'WARN', reason);
 
       // Reduzir karma como punição leve
-      await this.adjustUserKarma(targetUser, -10, `Advertência administrativa: ${reason}`);
+      const { getAdminPenalty } = require('../../../shared/karma-config.utils');
+      const warningPenalty = getAdminPenalty('warning');
+      await this.adjustUserKarma(targetUser, warningPenalty, `Advertência administrativa: ${reason}`);
 
       const targetName = targetUser.userName ? `@${targetUser.userName}` : targetUser.firstName;
       
@@ -250,7 +252,7 @@ export class AdminCommandHandler implements ITextCommandHandler {
         `⚠️ **Advertência Oficial**\n\n` +
         `👤 **Usuário:** ${targetName}\n` +
         `📝 **Motivo:** ${reason}\n` +
-        `💰 **Penalidade:** -10 pontos de karma\n` +
+        `💰 **Penalidade:** ${Math.abs(warningPenalty)} pontos de karma\n` +
         `👮 **Admin:** @${ctx.from.username || ctx.from.first_name}`,
         { parse_mode: 'Markdown' }
       );
@@ -262,7 +264,7 @@ export class AdminCommandHandler implements ITextCommandHandler {
           `⚠️ **Você recebeu uma advertência oficial**\n\n` +
           `**Grupo:** ${(ctx.chat as any).title || 'Trust P2P Group'}\n` +
           `**Motivo:** ${reason}\n` +
-          `**Penalidade:** -10 pontos de karma\n\n` +
+          `**Penalidade:** ${Math.abs(warningPenalty)} pontos de karma\n` +
           `Por favor, ajuste seu comportamento para evitar punições mais severas.`,
           { parse_mode: 'Markdown' }
         );

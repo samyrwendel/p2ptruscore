@@ -4,6 +4,7 @@ import { Telegraf, Context } from 'telegraf';
 import { Update } from 'telegraf/types';
 import { Types } from 'mongoose';
 import { OperationsService } from '../../../operations/operations.service';
+import { PendingEvaluationService } from '../../../operations/pending-evaluation.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { UsersService } from '../../../users/users.service';
 import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
@@ -23,6 +24,7 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
 
   constructor(
     private readonly operationsService: OperationsService,
+    private readonly pendingEvaluationService: PendingEvaluationService,
     private readonly keyboardService: TelegramKeyboardService,
     private readonly usersService: UsersService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
@@ -32,27 +34,22 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
     try {
-      // Primeiro tentar buscar karma no grupo atual
-      const groupKarma = await this.karmaService.getKarmaForUser(user.userId, chatId);
-      
-      if (groupKarma && groupKarma.karma !== undefined) {
-        return groupKarma;
-      }
-      
-      // Se não encontrar no grupo atual, buscar karma total
+      // Priorizar total consolidado
       const totalKarma = await this.karmaService.getTotalKarmaForUser(user.userName || user.firstName);
-      
       if (totalKarma) {
-        // Simular estrutura de karma do grupo para compatibilidade
         return {
           karma: totalKarma.totalKarma,
           givenKarma: totalKarma.totalGiven,
           givenHate: totalKarma.totalHate,
           user: totalKarma.user,
-          history: [] // Histórico vazio para karma total
+          history: []
         };
       }
-      
+      // Fallback para karma do grupo
+      const groupKarma = await this.karmaService.getKarmaForUser(user.userId, chatId);
+      if (groupKarma && groupKarma.karma !== undefined) {
+        return groupKarma;
+      }
       return null;
     } catch (error) {
       this.logger.error('Erro ao buscar karma com fallback:', error);
@@ -114,6 +111,49 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
 
       const acceptorId = acceptorUser._id;
 
+      // Bloqueio por avaliação pendente — enviar notificação direta por DM
+      try {
+        const hasPending = await this.pendingEvaluationService.hasPendingEvaluations(acceptorId);
+        if (hasPending) {
+          let pendingCount = 0;
+          let pendingOps: string[] = [];
+          try {
+            const pendings = await this.pendingEvaluationService.getPendingEvaluations(acceptorId);
+            pendingCount = pendings.length;
+            pendingOps = pendings.map((p: any) => p.operation?.toString?.() || 'unknown');
+          } catch (listErr) {
+            this.logger.warn('Falha ao listar avaliações pendentes (aceitar):', listErr);
+          }
+
+          const dmMessage = [
+            '🚫 Operação não pode ser aceita.',
+            '',
+            `Você tem ${pendingCount} avaliação(ões) pendente(s). Conclua-as para aceitar novas operações.`,
+            '',
+            'Como resolver:',
+            '• Abra o chat com @p2pscorebot',
+            '• Use /start e toque em "Minha Reputação"',
+            '• Finalize as avaliações recebidas após suas operações',
+            '',
+            `Se acredita que não há pendências, envie /ajuda com este ID: ${ctx.from.id}.`
+          ].join('\n');
+
+          try {
+            await this.bot.telegram.sendMessage(ctx.from.id, dmMessage, { parse_mode: 'Markdown' });
+          } catch (dmErr) {
+            this.logger.warn('Não foi possível enviar DM de bloqueio (aceitar):', dmErr);
+          }
+
+          this.logger.warn(
+            `Aceite bloqueado por avaliação pendente para usuário ${ctx.from.id} — ` +
+            `count=${pendingCount}, ops=[${pendingOps.join(',')}]`
+          );
+          return;
+        }
+      } catch (evalErr) {
+        this.logger.error('Erro ao validar avaliações pendentes (aceitar - comando):', evalErr);
+      }
+
       // Verificar se o usuário não está tentando aceitar sua própria operação
       if (operation.creator.toString() === acceptorId.toString()) {
         await ctx.reply('▼ Você não pode aceitar sua própria operação.');
@@ -125,6 +165,21 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
         this.operationsService.acceptOperation(new Types.ObjectId(operationId), acceptorId),
         this.usersService.findById(operation.creator.toString())
       ]);
+
+      // Verificar se o criador da operação tem disputas ativas
+      let disputeWarning = '';
+      try {
+        if (creatorUser) {
+          const warning = await this.pendingEvaluationService.getUserDisputeWarning(operation.creator);
+          if (warning) {
+            disputeWarning = `\n\n${warning}\n` +
+              `⚠️ **Cuidado:** O criador desta operação tem disputas pendentes.\n` +
+              `Considere isso ao negociar e mantenha evidências da transação.\n`;
+          }
+        }
+      } catch (error) {
+        this.logger.error('Erro ao verificar disputas do criador:', error);
+      }
 
       // ⚡ OTIMIZAÇÃO: Buscar karma de ambos em paralelo
       const [creatorKarma, acceptorKarma] = await Promise.all([
@@ -141,29 +196,31 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
       const creatorIcons = getReputationInfo(creatorReputation);
       const acceptorIcons = getReputationInfo(acceptorReputation);
       
-      // Determinar ordem de transferência (menor reputação transfere primeiro)
-      const creatorTransfersFirst = creatorReputation <= acceptorReputation;
-      const firstTransferer = creatorTransfersFirst ? 
-        { name: creatorName, reputation: creatorReputation, icons: { nivel: creatorIcons.nivel, icone: creatorIcons.icone }, role: 'Criador' } :
-        { name: acceptorName, reputation: acceptorReputation, icons: { nivel: acceptorIcons.nivel, icone: acceptorIcons.icone }, role: 'Negociador' };
-      const secondTransferer = creatorTransfersFirst ? 
-        { name: acceptorName, reputation: acceptorReputation, icons: { nivel: acceptorIcons.nivel, icone: acceptorIcons.icone }, role: 'Negociador' } :
-        { name: creatorName, reputation: creatorReputation, icons: { nivel: creatorIcons.nivel, icone: creatorIcons.icone }, role: 'Criador' };
+      // REMOVIDO: Lógica de ordem de transferência duplicada
+      // A ordem de transferência é determinada no operations-broadcast.service.ts
+      // com base em disputas ativas, não apenas reputação
       
       // Formatar quantidade conforme tipo de ativo
       const formattedAmount = this.formatValueByAsset(acceptedOperation.amount, acceptedOperation.assets);
       const currencySuffix = this.getCurrencySuffix(acceptedOperation.assets);
       
       // Verificar tipo de cotação para exibir informações corretas
-      const isGoogleQuotation = acceptedOperation.quotationType === 'google';
-      const priceText = isGoogleQuotation ? 'Calculado na Transação' : `R$ ${(acceptedOperation.amount * acceptedOperation.price).toFixed(2)}`;
-      const quotationText = isGoogleQuotation ? 'Google' : `R$ ${acceptedOperation.price.toFixed(2)}`;
+      const isAutomaticQuotation = acceptedOperation.quotationType === 'google' || acceptedOperation.quotationType === 'binance';
+      const priceText = isAutomaticQuotation ? 'Calculado na Transação' : `R$ ${(acceptedOperation.amount * acceptedOperation.price).toFixed(2)}`;
+      const quotationText = acceptedOperation.quotationType === 'google' ? 'Google' : 
+                           acceptedOperation.quotationType === 'binance' ? 'Binance' : 
+                           `R$ ${acceptedOperation.price.toFixed(2)}`;
+      
+      // Enviar aviso de disputa se existir
+      if (disputeWarning) {
+        await ctx.reply(disputeWarning, { parse_mode: 'Markdown' });
+      }
       
       // Não enviar mensagem aqui - deixar que o broadcast service gerencie
       // A mensagem será enviada via notifyOperationAccepted no operations.service.ts
 
       this.logger.log(
-        `Operation ${operationId} accepted by user ${acceptorId} in group ${ctx.chat.id}`,
+        `Operation ${operationId} accepted by user ${acceptorId} in group ${ctx.chat.id}${disputeWarning ? ' - Creator has active disputes' : ''}`,
       );
       
     } catch (error) {
@@ -196,7 +253,7 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
       return value.toFixed(2);
     }
 
-    // Outros casos (XRP, etc.) - 2 casas decimais por padrão
+    // Outros casos - 2 casas decimais por padrão
     return value.toFixed(2);
   }
 
@@ -237,13 +294,23 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
 
   async handleCallback(ctx: any): Promise<boolean> {
     const data = ctx.callbackQuery.data;
-    
+
     // Verificar se este callback pertence a este handler
     if (!data.startsWith('accept_operation_')) {
       return false;
     }
-    
+
     try {
+      // Interceptar ACK do alerta
+      if (data === 'eval_pending_ack_accept_cb') {
+        try {
+          await ctx.answerCbQuery('Você precisa avaliar a outra parte antes de operar.', { show_alert: true });
+        } catch (cbError) {
+          this.logger.warn('Falha ao exibir popup de avaliação pendente (aceitar-callback):', cbError);
+        }
+        return true;
+      }
+
       // ✅ VALIDAÇÃO CRÍTICA: Verificar se usuário aceitou os termos ANTES de aceitar operação
       const { validateUserTermsForCallback } = await import('../../../shared/terms-validation.utils');
       const hasValidTerms = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'aceitar');
@@ -309,6 +376,21 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
         first_name: ctx.from.first_name,
         last_name: ctx.from.last_name
       });
+
+      // Bloqueio por avaliação pendente
+      try {
+        const hasPending = await this.pendingEvaluationService.hasPendingEvaluations(acceptorUser._id);
+        if (hasPending) {
+          try {
+            await ctx.answerCbQuery('❌ Você tem uma avaliação pendente. Conclua antes de aceitar novas operações.', { show_alert: true });
+          } catch (cbError: any) {
+            this.logger.warn('Falha ao responder popup de avaliação pendente (aceitar-callback):', cbError);
+          }
+          return true;
+        }
+      } catch (evalErr) {
+        this.logger.error('Erro ao validar avaliações pendentes (aceitar - callback):', evalErr);
+      }
       
       // Verificar se não é o próprio criador tentando aceitar (usando o ID do usuário no banco)
       if (operation.creator.toString() === acceptorUser._id.toString()) {
@@ -340,9 +422,9 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
       }
       
       this.logger.log(`✅ Operação ${operationId} aceita por ${acceptorUser._id}`);
-      
+
       return true;
-      
+
     } catch (error) {
       this.logger.error('❌ Erro ao processar callback de aceitar operação:', error);
       

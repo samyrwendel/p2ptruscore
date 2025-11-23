@@ -209,9 +209,7 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
     
     let message = '**Cotação do Bitcoin**\n\n';
     
-    if (rates.BTCBRL) {
-      message += this.formatCurrencyRateImproved(rates.BTCBRL, 'BTC/BRL') + '\n\n';
-    }
+    
     
     if (rates.BTCUSD) {
       message += this.formatCurrencyRateImproved(rates.BTCUSD, 'BTC/USD', '$') + '\n\n';

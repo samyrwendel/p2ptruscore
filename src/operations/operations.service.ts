@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { OperationsRepository } from './operations.repository';
 import { OperationsBroadcastService } from './operations-broadcast.service';
@@ -10,9 +10,11 @@ import {
   AssetType,
   OperationStatus,
   QuotationType,
+  QuotationSource,
 } from './schemas/operation.schema';
 import { UsersService } from '../users/users.service';
 import { GroupsService } from '../groups/groups.service';
+import { KarmaService } from '../karma/karma.service';
 
 export interface CreateOperationDto {
   creatorId: Types.ObjectId;
@@ -24,7 +26,9 @@ export interface CreateOperationDto {
   amount: number;
   price: number;
   quotationType: QuotationType;
+  quotationSource?: QuotationSource;
   description?: string;
+  paymentMethods?: string[];
   expiresInHours?: number;
 }
 
@@ -38,6 +42,7 @@ export class OperationsService {
     private readonly usersService: UsersService,
     private readonly groupsService: GroupsService,
     private readonly pendingEvaluationRepository: PendingEvaluationRepository,
+    private readonly karmaService: KarmaService,
   ) {}
 
   async createOperation(dto: CreateOperationDto): Promise<Operation> {
@@ -69,7 +74,9 @@ export class OperationsService {
       amount: dto.amount,
       price: dto.price,
       quotationType: dto.quotationType,
+      quotationSource: dto.quotationSource,
       description: dto.description,
+      paymentMethods: dto.paymentMethods,
       status: OperationStatus.PENDING,
       expiresAt,
     });
@@ -124,16 +131,16 @@ export class OperationsService {
     const operation = await this.getOperationById(operationId);
 
     if (operation.status !== OperationStatus.PENDING) {
-      throw new Error('Esta operação não está mais disponível');
+      throw new BadRequestException('Esta operação não está mais disponível');
     }
 
     if (operation.creator.toString() === acceptorId.toString()) {
-      throw new Error('Você não pode aceitar sua própria operação');
+      throw new ForbiddenException('Você não pode aceitar sua própria operação');
     }
 
     if (new Date() > operation.expiresAt) {
       await this.operationsRepository.cancelOperation(operationId);
-      throw new Error('Esta operação expirou');
+      throw new BadRequestException('Esta operação expirou');
     }
 
     const updatedOperation = await this.operationsRepository.acceptOperation(
@@ -142,7 +149,7 @@ export class OperationsService {
     );
 
     if (!updatedOperation) {
-      throw new Error('Erro ao aceitar operação');
+      throw new BadRequestException('Erro ao aceitar operação');
     }
 
     this.logger.log(
@@ -171,12 +178,12 @@ export class OperationsService {
     // Verificar se a operação pode ser disputada
     const disputableStatuses = [OperationStatus.ACCEPTED, OperationStatus.PENDING_COMPLETION];
     if (!disputableStatuses.includes(operation.status)) {
-      throw new Error('Esta operação não pode ser contestada no status atual');
+      throw new BadRequestException('Esta operação não pode ser contestada no status atual');
     }
 
     // Verificar se já foi disputada
     if (operation.status === OperationStatus.DISPUTED) {
-      throw new Error('Esta operação já está em disputa');
+      throw new BadRequestException('Esta operação já está em disputa');
     }
 
     // Atualizar a operação para status disputado
@@ -187,10 +194,24 @@ export class OperationsService {
     );
 
     if (!updatedOperation) {
-      throw new Error('Erro ao registrar contestação');
+      throw new BadRequestException('Erro ao registrar contestação');
     }
 
     this.logger.log(`Operation ${operationId} disputed by user ${complainantId} against ${defendantId}`);
+    
+    // Notificar todas as partes sobre a disputa
+    try {
+      await this.broadcastService.notifyOperationDisputed(
+        updatedOperation,
+        complainantId,
+        defendantId,
+        reason
+      );
+      this.logger.log(`✅ Dispute notifications sent for operation ${operationId}`);
+    } catch (notificationError) {
+      this.logger.error(`Failed to send dispute notifications for operation ${operationId}:`, notificationError);
+      // Não falhar a operação se as notificações falharem
+    }
     
     return updatedOperation;
   }
@@ -206,12 +227,12 @@ export class OperationsService {
     const isAcceptor = operation.acceptor?.toString() === userId.toString();
     
     if (!isCreator && !isAcceptor) {
-      throw new Error('Você só pode cancelar operações que criou ou aceitou');
+      throw new ForbiddenException('Você só pode cancelar operações que criou ou aceitou');
     }
 
     // Verificar se a operação já foi concluída - não pode ser cancelada
     if (operation.status === OperationStatus.COMPLETED) {
-      throw new Error('Operações concluídas não podem ser canceladas. As informações ficam mantidas para consulta.');
+      throw new BadRequestException('Operações concluídas não podem ser canceladas. As informações ficam mantidas para consulta.');
     }
 
     this.logger.log(`Tentativa de cancelamento da operação ${operationId} por usuário ${userId}`);
@@ -225,10 +246,76 @@ export class OperationsService {
     await this.broadcastService.deleteOperationMessage(operation);
 
     if (!updatedOperation) {
-      throw new Error('Erro ao cancelar operação');
+      throw new BadRequestException('Erro ao cancelar operação');
     }
 
     return updatedOperation;
+  }
+
+  async adminCancelOperation(
+    operationId: Types.ObjectId,
+    admin: { telegramId: number; username?: string; firstName?: string },
+    reason?: string
+  ): Promise<Operation> {
+    const operation = await this.getOperationById(operationId);
+    const updatedOperation = await this.operationsRepository.cancelOperation(operationId);
+    if (!updatedOperation) {
+      throw new BadRequestException('Erro ao cancelar operação (admin)');
+    }
+    await this.broadcastService.deleteOperationMessage(operation);
+    const adminName = admin.username ? `@${admin.username}` : admin.firstName || 'Administrador';
+    await this.broadcastService.notifyOperationAdminCancelled(updatedOperation as Operation, adminName, reason);
+    return updatedOperation as Operation;
+  }
+
+  async adminClearDispute(
+    operationId: Types.ObjectId,
+    admin: { telegramId: number; username?: string; firstName?: string },
+    reason?: string
+  ): Promise<Operation> {
+    const operation = await this.getOperationById(operationId);
+    const updatedOperation = await this.operationsRepository.updateOperation(operationId, { status: OperationStatus.ACCEPTED });
+    if (!updatedOperation) {
+      throw new BadRequestException('Erro ao remover disputa (admin)');
+    }
+    const adminName = admin.username ? `@${admin.username}` : admin.firstName || 'Administrador';
+    await this.broadcastService.notifyOperationAdminDisputeCleared(updatedOperation as Operation, adminName, reason);
+    return updatedOperation as Operation;
+  }
+
+  async adminFlagFraud(
+    operationId: Types.ObjectId,
+    admin: { telegramId: number; username?: string; firstName?: string },
+    reason?: string
+  ): Promise<Operation> {
+    const operation = await this.getOperationById(operationId);
+    const updatedOperation = await this.operationsRepository.updateOperation(operationId, { status: OperationStatus.FRAUD_REPORTED });
+    if (!updatedOperation) {
+      throw new BadRequestException('Erro ao marcar fraude (admin)');
+    }
+    const adminName = admin.username ? `@${admin.username}` : admin.firstName || 'Administrador';
+    await this.broadcastService.notifyOperationAdminFlagged(updatedOperation as Operation, adminName, reason);
+    return updatedOperation as Operation;
+  }
+
+  async adminPenalizeAccuser(
+    operationId: Types.ObjectId,
+    admin: { telegramId: number; username?: string; firstName?: string },
+    reason?: string
+  ): Promise<void> {
+    const operation = await this.getOperationById(operationId);
+    if (!operation || !operation.disputedBy) return;
+    const accuserUser = await this.usersService.findById(operation.disputedBy.toString());
+    if (!accuserUser) return;
+    try {
+      await this.karmaService.updateKarma(
+        { id: 0, first_name: admin.firstName || 'Admin', username: admin.username },
+        { id: accuserUser.userId, first_name: accuserUser.firstName || 'Usuário', username: accuserUser.userName },
+        { id: (await this.groupsService.getDefaultGroupId()) || 0 },
+        -1
+      );
+    } catch {}
+    await this.broadcastService.notifyAdminPenalizedAccuser(operation, admin.username || admin.firstName || 'Administrador', reason);
   }
 
   async revertOperation(
@@ -242,24 +329,24 @@ export class OperationsService {
     const isAcceptor = operation.acceptor?.toString() === userId.toString();
     
     if (!isCreator && !isAcceptor) {
-      throw new Error('Você só pode reverter operações que criou ou aceitou');
+      throw new ForbiddenException('Você só pode reverter operações que criou ou aceitou');
     }
 
     // Bloquear reversão de operações concluídas
     if (operation.status === OperationStatus.COMPLETED) {
-      throw new Error('Operações concluídas não podem ser revertidas');
+      throw new BadRequestException('Operações concluídas não podem ser revertidas');
     }
     
     // Permitir reversão apenas de operações aceitas
     if (operation.status !== OperationStatus.ACCEPTED) {
-      throw new Error('Apenas operações aceitas podem ser revertidas');
+      throw new BadRequestException('Apenas operações aceitas podem ser revertidas');
     }
 
     // Reverter operação aceita para status pendente e remover o aceitador
     const updatedOperation = await this.operationsRepository.revertAcceptedOperation(operationId);
     
     if (!updatedOperation) {
-      throw new Error('Erro ao reverter operação');
+      throw new BadRequestException('Erro ao reverter operação');
     }
     
     this.logger.log(`Operation ${operationId} reverted to pending by user ${userId}`);
@@ -276,7 +363,7 @@ export class OperationsService {
     }
     
     // Notificar o grupo sobre a reversão usando a operação completa
-    await this.broadcastService.notifyOperationReverted(fullOperation, userId);
+    await this.broadcastService.notifyOperationReverted(fullOperation, userId, operation.acceptor);
 
     return updatedOperation;
   }
@@ -298,34 +385,39 @@ export class OperationsService {
       operation.acceptor?.toString() !== userId.toString()
     ) {
       this.logger.error(`Validação falhou - Creator: ${operation.creator.toString()}, Acceptor: ${operation.acceptor?.toString()}, UserId: ${userId.toString()}`);
-      throw new Error(
+      throw new ForbiddenException(
         'Apenas os participantes da operação podem marcá-la como concluída',
       );
     }
 
     if (operation.status === OperationStatus.COMPLETED) {
-      throw new Error('Esta operação já foi concluída anteriormente');
+      throw new BadRequestException('Esta operação já foi concluída anteriormente');
     }
     
     if (operation.status !== OperationStatus.ACCEPTED && operation.status !== OperationStatus.PENDING_COMPLETION) {
-      throw new Error('Esta operação não pode ser concluída. Status atual: ' + operation.status);
+      throw new BadRequestException('Esta operação não pode ser concluída. Status atual: ' + operation.status);
     }
 
     // Se já há uma solicitação de conclusão pendente
     if (operation.status === OperationStatus.PENDING_COMPLETION) {
       // Verificar se é a outra parte confirmando
       if (operation.completionRequestedBy?.toString() === userId.toString()) {
-        throw new Error('Você já solicitou a conclusão. Aguarde a confirmação da outra parte.');
+        throw new BadRequestException('Você já solicitou a conclusão. Aguarde a confirmação da outra parte.');
       }
       
       // A outra parte está confirmando - concluir definitivamente
       const updatedOperation = await this.operationsRepository.completeOperation(operationId);
       
       if (!updatedOperation) {
-        throw new Error('Erro ao concluir operação');
+        throw new BadRequestException('Erro ao concluir operação');
       }
 
       this.logger.log(`Operation ${operationId} completed by confirmation from user ${userId}`);
+      
+      // Notify the original requester that their completion request was accepted
+      if (operation.completionRequestedBy) {
+        await this.broadcastService.notifyCompletionAccepted(updatedOperation, operation.completionRequestedBy);
+      }
       
       // Notify the group about the completion
       await this.broadcastService.notifyOperationCompleted(updatedOperation);
@@ -347,7 +439,7 @@ export class OperationsService {
     });
 
     if (!updatedOperation) {
-      throw new Error('Erro ao solicitar conclusão da operação');
+      throw new BadRequestException('Erro ao solicitar conclusão da operação');
     }
 
     this.logger.log(`Operation ${operationId} completion requested by user ${userId}`);
@@ -366,12 +458,12 @@ export class OperationsService {
 
     // Verificar se o usuário é o criador da operação
     if (operation.creator.toString() !== userId.toString()) {
-      throw new Error('Apenas o criador da operação pode fechá-la');
+      throw new ForbiddenException('Apenas o criador da operação pode fechá-la');
     }
 
     // Verificar se a operação está em status válido para fechamento
     if (operation.status !== OperationStatus.PENDING) {
-      throw new Error('Apenas operações pendentes podem ser fechadas');
+      throw new BadRequestException('Apenas operações pendentes podem ser fechadas');
     }
 
     const updatedOperation = await this.operationsRepository.closeOperation(
@@ -379,7 +471,7 @@ export class OperationsService {
     );
 
     if (!updatedOperation) {
-      throw new Error('Erro ao fechar operação');
+      throw new BadRequestException('Erro ao fechar operação');
     }
 
     this.logger.log(`Operation ${operationId} closed by creator ${userId}`);

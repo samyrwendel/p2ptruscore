@@ -39,24 +39,36 @@ O TrustP2PBot implementa um sistema robusto de proteção contra fraudes e resol
 - `UNDER_REVIEW` - Sob análise de administrador
 - `FRAUD_REPORTED` - Fraude reportada (operação suspensa)
 
-### 3. **Comando `/contestar`**
+### 3. **Sistema de Contestação**
 
-#### Sintaxe:
+#### **Método 1: Comando de Texto**
 ```
 /contestar [ID_DA_OPERACAO] [MOTIVO_DETALHADO]
 ```
 
-#### Exemplo:
+**Exemplo:**
 ```
 /contestar 507f1f77bcf86cd799439011 Não recebi o pagamento conforme combinado no valor de R$ 1.500
 ```
 
-#### Validações:
+#### **Método 2: Botão Interativo (NOVO)**
+1. **Clique no botão** "⚠️ Contestar" na mensagem da operação
+2. **Selecione o motivo** na interface gráfica:
+   - 💰 Não efetuou pagamento
+   - 📦 Não entregou ativos/serviços
+   - 💸 Valor incorreto
+   - 🚨 Tentativa de fraude
+   - 💬 Problema de comunicação
+   - 📋 Violação dos termos
+3. **Confirmação automática** com processamento imediato
+
+#### **Validações (Ambos os Métodos):**
 - ✅ Apenas participantes da operação podem contestar
 - ✅ Operação deve estar em status `ACCEPTED` ou `PENDING_COMPLETION`
-- ✅ Motivo deve ter entre 10-500 caracteres
+- ✅ Usuário deve ter aceitado os termos de uso
 - ✅ Não permite contestações duplicadas
 - ✅ Categorização automática do tipo de disputa
+- ✅ Validação de motivo (comando) ou seleção guiada (botão)
 
 ## 🔒 Medidas de Proteção
 

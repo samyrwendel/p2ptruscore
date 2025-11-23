@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf } from 'telegraf';
 import { Types } from 'mongoose';
@@ -8,6 +9,7 @@ import { UsersService } from '../users/users.service';
 import { KarmaService } from '../karma/karma.service';
 import { OperationsRepository } from './operations.repository';
 import { PendingEvaluationRepository } from './pending-evaluation.repository';
+import { PendingEvaluationService } from './pending-evaluation.service';
 import { getReputationInfo } from '../shared/reputation.utils';
 
 @Injectable()
@@ -21,36 +23,171 @@ export class OperationsBroadcastService {
     private readonly karmaService: KarmaService,
     private readonly operationsRepository: OperationsRepository,
     private readonly pendingEvaluationRepository: PendingEvaluationRepository,
+    private readonly pendingEvaluationService: PendingEvaluationService,
+    private readonly configService: ConfigService,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
     try {
-      // Primeiro tentar buscar karma no grupo atual
-      const groupKarma = await this.karmaService.getKarmaForUser(user.userId, chatId);
-      
-      if (groupKarma && groupKarma.karma !== undefined) {
-        return groupKarma;
-      }
-      
-      // Se não encontrar no grupo atual, buscar karma total
+      // Buscar karma total consolidado (única fonte para exibição)
       const totalKarma = await this.karmaService.getTotalKarmaForUser(user.userName || user.firstName);
-      
       if (totalKarma) {
-        // Simular estrutura de karma do grupo para compatibilidade
         return {
           karma: totalKarma.totalKarma,
           givenKarma: totalKarma.totalGiven,
           givenHate: totalKarma.totalHate,
           user: totalKarma.user,
-          history: [] // Histórico vazio para karma total
+          history: []
         };
       }
-      
+      // Fallback para karma do grupo se não houver consolidado
+      const groupKarma = await this.karmaService.getKarmaForUser(user.userId, chatId);
+      if (groupKarma && groupKarma.karma !== undefined) {
+        return groupKarma;
+      }
       return null;
     } catch (error) {
       this.logger.error('Erro ao buscar karma com fallback:', error);
       return null;
     }
+  }
+
+  private getThreadOptions(groupId: number): any {
+    const configuredGroupId = parseInt(this.configService.get<string>('TELEGRAM_GROUP_ID') || '0');
+    const threadId = parseInt(this.configService.get<string>('TELEGRAM_THREAD_ID') || '0');
+    const opt: any = {};
+    if (groupId === configuredGroupId && threadId > 0) {
+      opt.message_thread_id = threadId;
+    }
+    return opt;
+  }
+
+  private getBotUsername(): string {
+    return this.configService.get<string>('TELEGRAM_BOT_USERNAME') || 'p2pscorebot';
+  }
+
+  private getReputationUrlForUser(user: any): string {
+    const idRef = user?.userName || user?.firstName || user?.userId;
+    return `https://t.me/${this.getBotUsername()}?start=reputacao_${idRef}`;
+  }
+
+  private async sendWithBackoff<T>(fn: () => Promise<T>, maxRetries?: number): Promise<T> {
+    let attempt = 0;
+    const configuredMax = parseInt(this.configService.get<string>('TELEGRAM_BACKOFF_RETRIES') || '3');
+    const retries = typeof maxRetries === 'number' ? maxRetries : configuredMax;
+    let delay = parseInt(this.configService.get<string>('TELEGRAM_BACKOFF_INITIAL_MS') || '500');
+    while (true) {
+      try {
+        return await fn();
+      } catch (error: any) {
+        const is429 = (error?.response?.error_code === 429) || (error?.code === 429);
+        if (!is429 || attempt >= retries) {
+          throw error;
+        }
+        this.logger.warn(`429 rate limited. Backing off ${delay}ms (attempt ${attempt + 1}/${retries})`);
+        await new Promise(r => setTimeout(r, delay));
+        attempt++;
+        const factor = parseFloat(this.configService.get<string>('TELEGRAM_BACKOFF_FACTOR') || '2');
+        delay = Math.max(delay, 0) * factor;
+      }
+    }
+  }
+
+  private buildBroadcastInlineKeyboard(operation: Operation, creator: any, acceptText: string, acceptData: string): any {
+    return {
+      inline_keyboard: [
+        [
+          { text: acceptText, callback_data: acceptData },
+          { text: '📊 Ver Reputação', url: this.getReputationUrlForUser(creator) }
+        ]
+      ]
+    };
+  }
+
+  private buildContactButtons(creator: any, acceptor: any): any[] {
+    return [
+      { text: '💬 Criador', url: `https://t.me/${creator.userName || creator.firstName}` },
+      { text: '💬 Negociador', url: `https://t.me/${acceptor.userName || acceptor.firstName}` }
+    ];
+  }
+
+  private buildInlineKeyboardByStatus(operation: Operation, creator: any, acceptor: any): any {
+    if (operation.status === 'pending_completion') {
+      return {
+        inline_keyboard: [
+          this.buildContactButtons(creator, acceptor),
+          [{ text: '🔙 Desistir da Operação', callback_data: `revert_operation_${operation._id}` }]
+        ]
+      };
+    }
+    if (operation.status === 'accepted') {
+      return {
+        inline_keyboard: [
+          this.buildContactButtons(creator, acceptor)
+        ]
+      };
+    }
+    return {
+      inline_keyboard: [
+        this.buildContactButtons(creator, acceptor),
+        [{ text: '🔙 Desistir da Negociação', callback_data: `revert_operation_${operation._id}` }],
+        [{ text: '✅ Solicitar Conclusão', callback_data: `complete_operation_${operation._id}` }],
+        [{ text: '⚠️ Contestar Operação', callback_data: `dispute_operation_${operation._id}` }]
+      ]
+    };
+  }
+  private isEuroOperation(operation: Operation): boolean {
+    return operation.assets.includes('EURO' as any);
+  }
+
+  private formatPriceAndQuotation(operation: Operation): { priceFormatted: string; quotationFormatted: string } {
+    if (this.isEuroOperation(operation)) {
+      const priceFormatted = (operation.quotationType === 'google' || operation.quotationType === 'binance') ? 'Calculado na Transação' : `€ ${(operation.amount * operation.price).toFixed(4)}`;
+      const quotationFormatted = (operation.quotationType === 'google') ? 'Google' : (operation.quotationType === 'binance') ? 'Binance' : `€ ${operation.price.toFixed(4)}`;
+      return { priceFormatted, quotationFormatted };
+    }
+    const priceFormatted = (operation.quotationType === 'google' || operation.quotationType === 'binance') ? 'Calculado na Transação' : `R$ ${(operation.amount * operation.price).toFixed(2)}`;
+    const quotationFormatted = (operation.quotationType === 'google') ? 'Google' : (operation.quotationType === 'binance') ? 'Binance' : `R$ ${operation.price.toFixed(2)}`;
+    return { priceFormatted, quotationFormatted };
+  }
+
+  private formatCompletionValues(operation: Operation, total: number): { priceFormatted: string; totalFormatted: string } {
+    if (this.isEuroOperation(operation)) {
+      const priceFormatted = operation.quotationType === 'google' ? 'Google (calculada na transação)' : `€ ${operation.price.toFixed(4)}`;
+      const totalFormatted = `€ ${total.toFixed(2)}`;
+      return { priceFormatted, totalFormatted };
+    }
+    const priceFormatted = (operation.quotationType === 'google') ? 'Google (calculada na transação)' : (operation.quotationType === 'binance') ? 'Binance (calculada na transação)' : `R$ ${operation.price.toFixed(2)}`;
+    const totalFormatted = `R$ ${total.toFixed(2)}`;
+    return { priceFormatted, totalFormatted };
+  }
+
+  private getTypeEmojiAndText(type: string): { emoji: string; text: string } {
+    switch (type) {
+      case 'buy':
+        return { emoji: '🟢', text: 'COMPRA' }
+      case 'sell':
+        return { emoji: '🔴', text: 'VENDA' }
+      case 'announcement':
+        return { emoji: '📰', text: 'ANÚNCIO' }
+      case 'exchange':
+        return { emoji: '🔁', text: 'TROCA' }
+      default:
+        return { emoji: '🟢', text: 'COMPRA' }
+    }
+  }
+
+  private getArrowsForType(type: string): { actionArrow: string; paymentArrow: string } {
+    const isBuy = type === 'buy'
+    return { actionArrow: isBuy ? '⬅️' : '➡️', paymentArrow: isBuy ? '➡️' : '⬅️' }
+  }
+
+  private formatAssets(operation: Operation): string {
+    return operation.assets.join(', ')
+  }
+
+  private formatNetworks(operation: Operation): string {
+    return operation.networks.map(n => n.toUpperCase()).join(', ')
   }
 
   async deleteOperationMessage(operation: Operation): Promise<void> {
@@ -70,9 +207,10 @@ export class OperationsBroadcastService {
       
       // Buscar o grupo para obter o groupId
       const group = await this.groupsService.findById(operation.group.toString());
-      if (group) {
+      const msgId = typeof operation.messageId === 'number' ? operation.messageId : undefined;
+      if (group && typeof msgId === 'number') {
         this.logger.log(`Found group ${group.groupId}, attempting to delete message ${operation.messageId}`);
-        await this.bot.telegram.deleteMessage(group.groupId, operation.messageId);
+        await this.sendWithBackoff(() => this.bot.telegram.deleteMessage(group.groupId, msgId));
         this.logger.log(`Successfully deleted operation message ${operation.messageId} from group ${group.groupId}`);
       } else {
         this.logger.warn(`Group ${operation.group} not found - cannot delete message`);
@@ -93,11 +231,23 @@ export class OperationsBroadcastService {
       // Usar apenas os grupos reais do banco de dados
       const allGroupIds = [...new Set(realGroups)];
       
-      for (const groupId of allGroupIds) {
-        await this.broadcastOperationToSpecificGroup(operation, groupId);
-        // Pequeno delay entre envios para evitar rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      const concurrency = parseInt(this.configService.get<string>('BROADCAST_CONCURRENCY') || '3');
+      let index = 0;
+      const worker = async () => {
+        while (index < allGroupIds.length) {
+          const current = index++;
+          const groupId = allGroupIds[current];
+          try {
+            await this.broadcastOperationToSpecificGroup(operation, groupId);
+          } catch (err) {
+            this.logger.warn(`Falha ao enviar para grupo ${groupId}: ${ (err as any)?.message }`);
+            await new Promise(r => setTimeout(r, 500));
+          }
+          const delayMs = parseInt(this.configService.get<string>('BROADCAST_DELAY_MS') || '150');
+          await new Promise(r => setTimeout(r, delayMs));
+        }
+      };
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
       
       this.logger.log(
         `Operation ${operation._id} broadcasted to ${allGroupIds.length} groups`
@@ -169,35 +319,32 @@ export class OperationsBroadcastService {
         this.logger.warn(`Could not fetch karma for user ${creator.userId}:`, error);
       }
 
-      let typeEmoji = '🟢';
-      let typeText = 'COMPRA';
-      
-      switch (operation.type) {
-        case 'buy':
-          typeEmoji = '🟢';
-          typeText = 'COMPRA';
-          break;
-        case 'sell':
-          typeEmoji = '🔴';
-          typeText = 'VENDA';
-          break;
-        case 'announcement':
-          typeEmoji = '📰';
-          typeText = 'ANÚNCIO';
-          break;
-        case 'exchange':
-          typeEmoji = '🔁';
-          typeText = 'TROCA';
-          break;
-      }
+      const { emoji: typeEmoji, text: typeText } = this.getTypeEmojiAndText(operation.type);
+      // Calcular total corretamente baseado no tipo de operação
       const total = operation.amount * operation.price;
       const expiresIn = this.getTimeUntilExpiration(operation.expiresAt);
 
-      const assetsText = operation.assets.join(', ');
-      const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
+      const assetsText = this.formatAssets(operation);
+      const networksText = this.formatNetworks(operation);
       
       // Formatação do nome do usuário
       const userName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
+      
+      // Verificar se o criador tem disputas ativas
+      let disputeWarning = '';
+      try {
+        const analysis = await this.pendingEvaluationService.getDisputeAnalysis(operation.creator);
+        if (analysis.total > 0) {
+          // Usar emoji mais forte para quem está sendo contestado
+          if (analysis.asDefendant > 0) {
+            disputeWarning = ' 🚨';
+          } else {
+            disputeWarning = ' ⚠️';
+          }
+        }
+      } catch (error) {
+        this.logger.error('Erro ao verificar disputas do criador:', error);
+      }
       
       // Informações de reputação usando função centralizada
       const reputationInfo = getReputationInfo(karmaInfo);
@@ -206,19 +353,16 @@ export class OperationsBroadcastService {
       const reputationIcon = reputationInfo.icone;
       
       let message = (
-          `🚀 **Nova Operação P2P Disponível!**\n\n` +
           `${typeEmoji} **${typeText} ${assetsText}**\n` +
           `Redes: ${networksText}\n`
         );
 
-      if (operation.quotationType !== 'google') {
-          const assetsText = operation.assets.join(', ');
-          const buyText = operation.type === 'buy' ? `${operation.amount} ${assetsText}` : `${operation.amount} ${assetsText}`;
-          const payText = operation.type === 'buy' ? `R$ ${total.toFixed(2)}` : `R$ ${total.toFixed(2)}`;
+      if (operation.quotationType === 'manual') {
+          const assetsText = this.formatAssets(operation);
+          const buyText = `${operation.amount} ${assetsText}`;
+          const payText = `R$ ${total.toFixed(2)}`;
           const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
-          
-          const arrowIcon = operation.type === 'buy' ? '⬅️' : '➡️';
-          const paymentArrow = operation.type === 'buy' ? '➡️' : '⬅️';
+          const { actionArrow: arrowIcon, paymentArrow } = this.getArrowsForType(operation.type);
           const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
           
           message += (
@@ -226,20 +370,27 @@ export class OperationsBroadcastService {
             `${paymentArrow} **${paymentText}:** ${payText}\n` +
             `💱 **Cotação:** R$ ${operation.price.toFixed(2)}\n\n`
           );
-        } else {
-          const assetsText = operation.assets.join(', ');
+        } else if (operation.quotationType === 'google' || operation.quotationType === 'binance') {
+          const assetsText = this.formatAssets(operation);
           const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
+          const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
+          const { actionArrow: arrowIcon, paymentArrow } = this.getArrowsForType(operation.type);
+          const sourceIcon = operation.quotationType === 'google' ? '🌐 Google' : '🟡 Binance';
           
-          const arrowIcon = operation.type === 'buy' ? '⬅️' : '➡️';
           message += (
             `${arrowIcon} **${actionText}:** ${operation.amount} ${assetsText}\n` +
-            `💱 **Cotação:** Google (calculada na transação)\n` +
-            `💰 **Valor:** Conforme cotação atual do Google\n\n`
+            `${paymentArrow} **${paymentText}:** Calculado na hora\n` +
+            `💱 **Cotação:** ${sourceIcon}\n\n`
           );
         }
         
+        // Adicionar métodos de pagamento se disponíveis
+        if (operation.paymentMethods && operation.paymentMethods.length > 0) {
+          message += `💳 **Métodos de Pagamento:** ${operation.paymentMethods.join(', ')}\n\n`;
+        }
+        
         message += (
-          `👤 **Criador:** ${userName}\n` +
+          `👤 **Criador:** ${userName}${disputeWarning}\n` +
           `${reputationIcon} ${nivelConfianca}: ${scoreTotal} pts\n\n`
         );
 
@@ -247,53 +398,57 @@ export class OperationsBroadcastService {
         message += `📝 **Descrição:** ${operation.description}\n\n`;
       }
 
+      // Adicionar aviso de disputa se o criador tiver disputas ativas
+      if (disputeWarning) {
+        const analysis = await this.pendingEvaluationService.getDisputeAnalysis(operation.creator);
+        let disputeMessage = '';
+        
+        if (analysis.asDefendant > 0) {
+          disputeMessage = `🚨 **ATENÇÃO:** O criador está sendo contestado em ${analysis.asDefendant} operação(ões)`;
+          if (analysis.asComplainant > 0) {
+            disputeMessage += ` (e contestou ${analysis.asComplainant})`;
+          }
+          disputeMessage += `\n⚠️ **Cuidado ao aceitar:** Considere os riscos antes de prosseguir\n\n`;
+        } else if (analysis.asComplainant > 0) {
+          disputeMessage = `⚠️ **Aviso:** O criador contestou ${analysis.asComplainant} operação(ões)\n` +
+            `💡 **Pode indicar:** Usuário exigente com qualidade das transações\n\n`;
+        }
+        
+        message += disputeMessage;
+      }
+
       message += (
         `⏰ **Expira em:** ${expiresIn}\n` +
         `🆔 **ID da Operação:** ${operation._id}`
       );
 
-      // Criar botões inline
-      // Criar URL para chat privado com reputação
-      const botUsername = 'p2pscorebot'; // Nome do bot
-      const creatorUserId = creator?.userName || creator?.firstName || creator?.userId;
-       const privateUrl = `https://t.me/${botUsername}?start=reputacao_${creatorUserId}`;
+      // Criar botões inline com confirmação se houver disputas
+      let acceptButtonText = '🚀 Aceitar Operação';
+      let acceptCallbackData = `accept_operation_${operation._id}`;
       
-      // Criar teclado inline apenas com botões apropriados para grupos
-      const inlineKeyboard = {
-        inline_keyboard: [
-          [
-            {
-              text: '🚀 Aceitar Operação',
-              callback_data: `accept_operation_${operation._id}`
-            },
-            {
-              text: '📊 Ver Reputação',
-              url: privateUrl
-            }
-          ]
-          // Removidos botões 'Minhas Operações' e 'Ver Todas' do grupo
-          // Estes botões devem aparecer apenas no chat privado
-        ]
-      };
+      // Se o criador tem disputas ativas, usar botão de confirmação
+      if (disputeWarning) {
+        const analysis = await this.pendingEvaluationService.getDisputeAnalysis(operation.creator);
+        if (analysis.asDefendant > 0) {
+          acceptButtonText = '⚠️ Aceitar (Confirmar Risco)';
+          acceptCallbackData = `confirm_accept_${operation._id}`;
+        }
+      }
+      
+      const inlineKeyboard = this.buildBroadcastInlineKeyboard(operation, creator, acceptButtonText, acceptCallbackData);
 
       // Configurar envio para tópico específico se for o grupo configurado
       const sendOptions: any = { 
         parse_mode: 'Markdown',
-        reply_markup: inlineKeyboard
+        reply_markup: inlineKeyboard,
+        ...this.getThreadOptions(groupId)
       };
-      
-      const configuredGroupId = parseInt(process.env.TELEGRAM_GROUP_ID || '0');
-      const threadId = parseInt(process.env.TELEGRAM_THREAD_ID || '0');
-      
-      if (groupId === configuredGroupId && threadId > 0) {
-        sendOptions.message_thread_id = threadId;
-      }
 
-      const sentMessage = await this.bot.telegram.sendMessage(
+      const sentMessage = await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
         groupId,
         message,
         sendOptions
-      );
+      ));
 
       // Salvar o messageId na operação para poder deletar depois
       if (sentMessage && sentMessage.message_id) {
@@ -375,7 +530,7 @@ export class OperationsBroadcastService {
         // Enviar mensagem privada ao criador informando sobre a aceitação
          const creatorNotificationMessage = `✅ **Operação Aceita!**\n\n` +
            `${acceptorName} aceitou sua operação!\n\n` +
-           `🔁 **QUERO TROCAR**\n` +
+           `🟢 **COMPRA**\n` +
            `Ativos: ${operation.assets.join(', ')}\n` +
            `Redes: ${operation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
            `Quantidade: ${operation.amount} (total)\n\n` +
@@ -386,19 +541,32 @@ export class OperationsBroadcastService {
            `2. Combinem os detalhes da transação\n` +
            `3. Usem o botão "Concluir Operação" quando finalizada`;
 
-        await this.bot.telegram.sendMessage(
+        const sentDm = await this.bot.telegram.sendMessage(
           creator.userId,
           creatorNotificationMessage,
           { 
             parse_mode: 'Markdown',
             reply_markup: {
-              inline_keyboard: [[
-                { text: '✅ Concluir Operação', callback_data: `complete_operation_${operation._id}` },
-                { text: '❌ Cancelar Operação', callback_data: `cancel_operation_${operation._id}` }
-              ]]
+              inline_keyboard: [
+                [{ text: '✅ Solicitar Conclusão', callback_data: `complete_operation_${operation._id}` }],
+                [{ text: '⚠️ Contestar Operação', callback_data: `dispute_operation_${operation._id}` }],
+                [{ text: '🔙 Voltar Operação', callback_data: `revert_operation_${operation._id}` }]
+              ]
             }
           }
         );
+        // Salvar o ID da mensagem privada enviada ao criador para poder remover o teclado depois
+        if (sentDm && sentDm.message_id) {
+          try {
+            await this.operationsRepository.updateOperation(
+              operation._id,
+              { creatorAcceptanceDmMessageId: sentDm.message_id }
+            );
+            this.logger.log(`✅ creatorAcceptanceDmMessageId ${sentDm.message_id} salvo para operação ${operation._id}`);
+          } catch (saveError: any) {
+            this.logger.warn(`⚠️ Falha ao salvar creatorAcceptanceDmMessageId para operação ${operation._id}: ${saveError.message}`);
+          }
+        }
         this.logger.log(`Notificação de aceitação enviada ao criador ${creator.userId} para operação ${operation._id}`);
       } catch (error) {
         this.logger.warn('Erro ao notificar criador sobre aceitação:', error);
@@ -427,25 +595,54 @@ export class OperationsBroadcastService {
       }
       const total = operation.amount * operation.price;
 
-      const assetsText = operation.assets.join(', ');
+          const assetsText = this.formatAssets(operation);
       const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
       
       // Buscar reputação dos usuários
       const creatorName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
       const acceptorName = acceptor.userName ? `@${acceptor.userName}` : acceptor.firstName || 'Usuário';
       
-      // Buscar karma dos usuários com fallback
-      const creatorKarma = await this.getKarmaForUserWithFallback(creator, group._id);
-      const acceptorKarma = await this.getKarmaForUserWithFallback(acceptor, group._id);
+      // Buscar karma dos usuários com fallback usando o groupId real do Telegram
+      const chatId = group.groupId;
+      const creatorKarma = await this.getKarmaForUserWithFallback(creator, chatId);
+      const acceptorKarma = await this.getKarmaForUserWithFallback(acceptor, chatId);
       
       // Calcular níveis de reputação usando função utilitária
       const creatorRep = getReputationInfo(creatorKarma);
       const acceptorRep = getReputationInfo(acceptorKarma);
       
-      // Determinar ordem de transferência (menor reputação transfere primeiro)
+      // Verificar disputas ativas para determinar ordem de transferência
+      const [creatorDisputes, acceptorDisputes] = await Promise.all([
+        this.pendingEvaluationService.getDisputeAnalysis(operation.creator),
+        this.pendingEvaluationService.getDisputeAnalysis(acceptorId)
+      ]);
+      
+      // Determinar ordem de transferência com prioridade para disputas
       const creatorScore = creatorRep.score;
       const acceptorScore = acceptorRep.score;
-      const creatorTransfersFirst = creatorScore <= acceptorScore;
+      
+      let creatorTransfersFirst = creatorScore <= acceptorScore; // Lógica padrão
+      let transferReason = 'menor reputação';
+      
+      // REGRA ESPECIAL: Quem está sendo contestado transfere primeiro (independente da reputação)
+      if (creatorDisputes.asDefendant > 0 && acceptorDisputes.asDefendant === 0) {
+        creatorTransfersFirst = true;
+        transferReason = 'está sendo contestado';
+      } else if (acceptorDisputes.asDefendant > 0 && creatorDisputes.asDefendant === 0) {
+        creatorTransfersFirst = false;
+        transferReason = 'está sendo contestado';
+      } else if (creatorDisputes.asDefendant > 0 && acceptorDisputes.asDefendant > 0) {
+        // Ambos sendo contestados - quem tem mais contestações transfere primeiro
+        if (creatorDisputes.asDefendant > acceptorDisputes.asDefendant) {
+          creatorTransfersFirst = true;
+          transferReason = 'mais contestações ativas';
+        } else if (acceptorDisputes.asDefendant > creatorDisputes.asDefendant) {
+          creatorTransfersFirst = false;
+          transferReason = 'mais contestações ativas';
+        }
+        // Se igual número de contestações, manter lógica de reputação
+      }
+      
       const firstTransferer = creatorTransfersFirst ? creatorName : acceptorName;
       const secondTransferer = creatorTransfersFirst ? acceptorName : creatorName;
       
@@ -458,42 +655,27 @@ export class OperationsBroadcastService {
       
       const assetUnit = formatAssetUnit(operation.assets);
       
-      // Para operações com EUR, ajustar a moeda do preço
-      let priceFormatted = '';
-      let quotationFormatted = '';
-      
-      if (operation.assets.includes('EURO' as any)) {
-        // Para EUR, mostrar valores em EUR
-        priceFormatted = operation.quotationType === 'google' ? 'Calculado na Transação' : `€ ${operation.price.toFixed(4)}`;
-        quotationFormatted = operation.quotationType === 'google' ? 'Google' : `€ ${operation.price.toFixed(4)}`;
-      } else {
-        // Para outros ativos, manter em BRL
-        priceFormatted = operation.quotationType === 'google' ? 'Calculado na Transação' : `R$ ${operation.price.toFixed(2)}`;
-        quotationFormatted = operation.quotationType === 'google' ? 'Google' : `R$ ${operation.price.toFixed(2)}`;
-      }
+      const { priceFormatted, quotationFormatted } = this.formatPriceAndQuotation(operation);
       
       const message = (
         `✅ **Operação Aceita!**\n\n` +
         `${acceptorName} aceitou a operação de ${typeText}\n\n` +
         `**Ativos:** ${assetsText}\n` +
         `**Quantidade:** ${operation.amount} ${assetUnit}\n` +
-        `**Preço:** ${priceFormatted}\n` +
+        `**Preço Total:** ${priceFormatted}\n` +
         `Cotação: ${quotationFormatted}\n` +
-        `Redes: ${networksText}\n\n` +
+        `Redes: ${networksText}\n` +
+        `🆔 **ID:** ${operation._id}\n\n` +
         `👥 **Partes Envolvidas:**\n` +
-        `• **Criador:**\n` +
-        `  ${creatorName}\n` +
-        `  ${creatorRep.icone} ${creatorRep.nivel}: ${creatorRep.score} pts\n\n` +
-        `• **Negociador:**\n` +
-        `  ${acceptorName}\n` +
-        `  ${acceptorRep.icone} ${acceptorRep.nivel}: ${acceptorRep.score} pts\n\n` +
+        `• **Criador:** ${creatorName} — ${creatorRep.icone} ${creatorRep.nivel} (${creatorRep.score} pts)\n` +
+        `• **Negociador:** ${acceptorName} — ${acceptorRep.icone} ${acceptorRep.nivel} (${acceptorRep.score} pts)\n\n` +
         `🔄 **Ordem de Transferência:**\n` +
-        `1️⃣ ${firstTransferer} transfere primeiro\n` +
+        `1️⃣ ${firstTransferer} transfere primeiro (${transferReason})\n` +
         `2️⃣ ${secondTransferer} transfere por último\n\n` +
         `🍀 **Próximos passos:**\n` +
         `1. Entrem em contato via DM\n` +
         `2. Combinem os detalhes da transação\n` +
-        `3. Após concluir, usem o botão concluir operação\n` +
+        `3. Após concluir, registrem a conclusão no bot\n` +
         `4. Faça a avaliação da outra parte\n\n` +
         `⚠️ **Importante:** Sempre verifiquem a reputação antes de prosseguir!`
       );
@@ -501,64 +683,19 @@ export class OperationsBroadcastService {
       // Adicionar botões de ação baseados no status da operação
       let inlineKeyboard;
       
-      if (operation.status === 'pending_completion') {
-        // Operação aguardando confirmação - apenas botão de desistir
-        inlineKeyboard = {
-          inline_keyboard: [
-            [
-              {
-                text: '💬 Criador',
-                url: `https://t.me/${creator.userName || creator.firstName}`
-              },
-              {
-                text: '💬 Negociador',
-                url: `https://t.me/${acceptor.userName || acceptor.firstName}`
-              }
-            ],
-            [
-              {
-                text: '🔙 Desistir da Operação',
-                callback_data: `revert_operation_${operation._id}`
-              }
-            ]
-          ]
-        };
-      } else {
-        // Operação aceita - botões de desistir e concluir
-        inlineKeyboard = {
-          inline_keyboard: [
-            [
-              {
-                text: '💬 Criador',
-                url: `https://t.me/${creator.userName || creator.firstName}`
-              },
-              {
-                text: '💬 Negociador',
-                url: `https://t.me/${acceptor.userName || acceptor.firstName}`
-              }
-            ],
-            [
-              {
-                text: '🔙 Desistir da Operação',
-                callback_data: `revert_operation_${operation._id}`
-              },
-              {
-                text: '✅ Concluir Operação',
-                callback_data: `complete_operation_${operation._id}`
-              }
-            ]
-          ]
-        };
+      inlineKeyboard = this.buildInlineKeyboardByStatus(operation, creator, acceptor);
+      // Garantir botão "Voltar Operação" visível lado a lado com demais quando aceito
+      if (operation.status === 'accepted' && inlineKeyboard && Array.isArray(inlineKeyboard.inline_keyboard)) {
+        inlineKeyboard.inline_keyboard.push([{ text: '🔙 Voltar Operação', callback_data: `revert_operation_${operation._id}` }]);
       }
 
       // Configurar envio para tópico específico se for o grupo P2P configurado
       const sendOptions: any = { 
-        parse_mode: 'Markdown',
-        reply_markup: inlineKeyboard
+        parse_mode: 'Markdown'
       };
       
-      const p2pGroupId = parseInt(process.env.TELEGRAM_P2P_GROUP_ID || '0');
-      const p2pThreadId = parseInt(process.env.TELEGRAM_P2P_THREAD_ID || '0');
+      const p2pGroupId = parseInt(this.configService.get<string>('TELEGRAM_GROUP_ID') || '0');
+      const p2pThreadId = parseInt(this.configService.get<string>('TELEGRAM_THREAD_ID') || '0');
       
       if (group.groupId === p2pGroupId && p2pThreadId > 0) {
         sendOptions.message_thread_id = p2pThreadId;
@@ -568,16 +705,26 @@ export class OperationsBroadcastService {
       if (operation.messageId) {
         try {
           this.logger.log(`🔄 Tentando editar mensagem ${operation.messageId} para operação ${operation._id}`);
-          await this.bot.telegram.editMessageText(
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
             group.groupId,
             operation.messageId,
             undefined,
             message,
             {
-              parse_mode: 'Markdown',
-              reply_markup: inlineKeyboard
+              parse_mode: 'Markdown'
             }
-          );
+          ));
+          // Remover qualquer teclado inline remanescente da mensagem de aceitação
+          try {
+            await this.sendWithBackoff(() => this.bot.telegram.editMessageReplyMarkup(
+              group.groupId,
+              operation.messageId,
+              undefined,
+              { inline_keyboard: [] }
+            ));
+          } catch (rmError: any) {
+            this.logger.warn(`⚠️ Falha ao remover teclado após edição de aceitação: ${rmError.message}`);
+          }
           this.logger.log(`✅ Mensagem ${operation.messageId} editada com sucesso para operação ${operation._id}`);
         } catch (editError: any) {
           this.logger.error(`❌ Falha ao editar mensagem ${operation.messageId} para operação ${operation._id}:`, editError);
@@ -586,11 +733,11 @@ export class OperationsBroadcastService {
           // Se falhar ao editar, deletar e enviar nova
           try {
             await this.deleteOperationMessage(operation);
-            const newMessage = await this.bot.telegram.sendMessage(
+            const newMessage = await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
               group.groupId,
               message,
               sendOptions
-            );
+            ));
             
             // Atualizar messageId da operação
             await this.operationsRepository.updateOperation(operation._id, {
@@ -606,11 +753,11 @@ export class OperationsBroadcastService {
         // Se não tem messageId, enviar nova mensagem
         this.logger.log(`📤 Enviando nova mensagem para operação ${operation._id} (sem messageId)`);
         try {
-          const newMessage = await this.bot.telegram.sendMessage(
+          const newMessage = await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
             group.groupId,
             message,
             sendOptions
-          );
+          ));
           
           // Atualizar messageId da operação
           await this.operationsRepository.updateOperation(operation._id, {
@@ -675,39 +822,26 @@ export class OperationsBroadcastService {
         return;
       }
 
-      const typeEmoji = operation.type === 'buy' ? '🟢' : '🔴';
-      const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+      const { emoji: typeEmoji, text: typeText } = this.getTypeEmojiAndText(operation.type);
       const total = operation.amount * operation.price;
 
-      const assetsText = operation.assets.join(', ');
-      const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
+      const assetsText = this.formatAssets(operation);
+      const networksText = this.formatNetworks(operation);
       
       // Formatar nomes com @ quando disponível
       const creatorName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
       const acceptorName = acceptor?.userName ? `@${acceptor.userName}` : acceptor?.firstName || 'Usuário';
 
       let message = (
-        `✅ **Operação Concluída com Sucesso!**\n\n` +
+        `✅ **Operação Concluída!**\n\n` +
         `${typeEmoji} **${typeText} ${assetsText}**\n` +
         `🌐 **Redes:** ${networksText}\n` +
         `💰 **Quantidade:** ${operation.amount} (total)\n\n`
       );
 
-      // Mostrar detalhes da transação baseado no tipo de cotação
-      let priceFormatted = '';
-      let totalFormatted = '';
+      const { priceFormatted, totalFormatted } = this.formatCompletionValues(operation, total);
       
-      if (operation.assets.includes('EURO' as any)) {
-        // Para EUR, mostrar valores em EUR
-        priceFormatted = operation.quotationType === 'google' ? 'Google (calculada na transação)' : `€ ${operation.price.toFixed(4)}`;
-        totalFormatted = `€ ${total.toFixed(2)}`;
-      } else {
-        // Para outros ativos, manter em BRL
-        priceFormatted = operation.quotationType === 'google' ? 'Google (calculada na transação)' : `R$ ${operation.price.toFixed(2)}`;
-        totalFormatted = `R$ ${total.toFixed(2)}`;
-      }
-      
-      if (operation.quotationType === 'google') {
+      if (operation.quotationType === 'google' || operation.quotationType === 'binance') {
         message += `💵 **Cotação:** ${priceFormatted}\n`;
       } else {
         message += `💵 **Preço:** ${priceFormatted}\n`;
@@ -744,21 +878,20 @@ export class OperationsBroadcastService {
       );
 
       // Para operações concluídas, criar botões de reputação
-      const botUsername = 'p2pscorebot';
       const creatorUserId = creator?.userName || creator?.firstName || creator?.userId;
       const acceptorUserId = acceptor?.userName || acceptor?.firstName || acceptor?.userId;
       
       const buttons = [
         {
           text: `📊 ${creatorName}`,
-          url: `https://t.me/${botUsername}?start=reputacao_${creatorUserId}`
+          url: this.getReputationUrlForUser(creator)
         }
       ];
       
       if (acceptor) {
         buttons.push({
           text: `📊 ${acceptorName}`,
-          url: `https://t.me/${botUsername}?start=reputacao_${acceptorUserId}`
+          url: this.getReputationUrlForUser(acceptor)
         });
       }
       
@@ -773,8 +906,8 @@ export class OperationsBroadcastService {
       };
       
       // Usar as variáveis de ambiente corretas
-      const p2pGroupId = parseInt(process.env.TELEGRAM_GROUP_ID || '0');
-      const p2pThreadId = parseInt(process.env.TELEGRAM_THREAD_ID || '0');
+      const p2pGroupId = parseInt(this.configService.get<string>('TELEGRAM_GROUP_ID') || '0');
+      const p2pThreadId = parseInt(this.configService.get<string>('TELEGRAM_THREAD_ID') || '0');
       
       if (group.groupId === p2pGroupId && p2pThreadId > 0) {
         sendOptions.message_thread_id = p2pThreadId;
@@ -783,45 +916,57 @@ export class OperationsBroadcastService {
       // Editar a mensagem original em vez de criar nova
       if (operation.messageId) {
         try {
-          await this.bot.telegram.editMessageText(
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
             group.groupId,
             operation.messageId,
             undefined,
             message,
             {
               parse_mode: 'Markdown'
-              // Removido reply_markup para operações concluídas - sem botões
             }
-          );
+          ));
           this.logger.log(`Edited original message ${operation.messageId} for completed operation ${operation._id} - buttons removed`);
         } catch (editError) {
           this.logger.warn(`Failed to edit message ${operation.messageId}, sending new message:`, editError);
           // Se falhar ao editar, enviar nova mensagem
-          await this.bot.telegram.sendMessage(
+          await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
             group.groupId,
             message,
             {
               parse_mode: 'Markdown'
-              // Sem botões para operações concluídas
             }
-          );
+          ));
         }
       } else {
         // Se não tem messageId, enviar nova mensagem
-        await this.bot.telegram.sendMessage(
+        await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
           group.groupId,
           message,
           {
             parse_mode: 'Markdown'
-            // Sem botões para operações concluídas
           }
-        );
+        ));
       }
 
       this.logger.log(
         `Operation completion ${operation._id} notified to group ${group.groupId}`
       );
       
+      // Remover o teclado da DM enviada ao criador na aceitação, se existir
+      try {
+        if (operation.creatorAcceptanceDmMessageId && creator) {
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageReplyMarkup(
+            creator.userId,
+            operation.creatorAcceptanceDmMessageId,
+            undefined,
+            { inline_keyboard: [] }
+          ));
+          this.logger.log(`✅ Teclado removido da DM de aceitação do criador para operação ${operation._id}`);
+        }
+      } catch (dmError: any) {
+        this.logger.warn(`⚠️ Não foi possível remover teclado da DM do criador: ${dmError.message}`);
+      }
+
       // Enviar mensagens de avaliação bidirecional
       if (creator && acceptor) {
         await this.sendBidirectionalEvaluationMessages(operation, creator, acceptor);
@@ -834,9 +979,149 @@ export class OperationsBroadcastService {
     }
   }
 
+  async notifyOperationAdminCancelled(operation: Operation, adminName: string, reason?: string): Promise<void> {
+    try {
+      if (operation.group && operation.messageId) {
+        const group = await this.groupsService.findById(operation.group.toString());
+        if (group) {
+          const message = (
+            `🛑 **Operação Cancelada (Admin)**\n\n` +
+            `👤 **Decisão:** ${adminName}\n` +
+            (reason ? `📝 **Motivo:** ${reason}\n` : '') +
+            `🆔 **ID:** \`${operation._id}\``
+          );
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
+            group.groupId,
+            operation.messageId as number,
+            undefined,
+            message,
+            { parse_mode: 'Markdown' }
+          ));
+        }
+      }
+      const creator = await this.usersService.findById(operation.creator.toString());
+      const acceptor = operation.acceptor ? await this.usersService.findById(operation.acceptor.toString()) : null;
+      const notify = async (user: any) => {
+        if (!user) return;
+        const msg = (
+          `🛑 **Operação Cancelada pela Administração**\n\n` +
+          `👤 **Administrador:** ${adminName}\n` +
+          (reason ? `📝 **Motivo:** ${reason}\n` : '') +
+          `🆔 **ID:** \`${operation._id}\``
+        );
+        await this.sendWithBackoff(() => this.bot.telegram.sendMessage(user.userId, msg, { parse_mode: 'Markdown' }));
+      };
+      await Promise.all([notify(creator), notify(acceptor)]);
+    } catch (error) {
+      this.logger.error('Failed to notify admin cancellation:', error);
+    }
+  }
+
+  async notifyOperationAdminDisputeCleared(operation: Operation, adminName: string, reason?: string): Promise<void> {
+    try {
+      if (operation.group && operation.messageId) {
+        const group = await this.groupsService.findById(operation.group.toString());
+        if (group) {
+          const message = (
+            `✅ **Disputa Removida (Admin)**\n\n` +
+            `👤 **Decisão:** ${adminName}\n` +
+            (reason ? `📝 **Motivo:** ${reason}\n` : '') +
+            `🆔 **ID:** \`${operation._id}\`\n\n` +
+            `Status: Aceita`
+          );
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
+            group.groupId,
+            operation.messageId as number,
+            undefined,
+            message,
+            { parse_mode: 'Markdown' }
+          ));
+        }
+      }
+      const creator = await this.usersService.findById(operation.creator.toString());
+      const acceptor = operation.acceptor ? await this.usersService.findById(operation.acceptor.toString()) : null;
+      const notify = async (user: any) => {
+        if (!user) return;
+        const msg = (
+          `✅ **Disputa Removida pela Administração**\n\n` +
+          `👤 **Administrador:** ${adminName}\n` +
+          (reason ? `📝 **Motivo:** ${reason}\n` : '') +
+          `🆔 **ID:** \`${operation._id}\`\n\n` +
+          `A operação volta ao status Aceita.`
+        );
+        await this.sendWithBackoff(() => this.bot.telegram.sendMessage(user.userId, msg, { parse_mode: 'Markdown' }));
+      };
+      await Promise.all([notify(creator), notify(acceptor)]);
+    } catch (error) {
+      this.logger.error('Failed to notify admin dispute cleared:', error);
+    }
+  }
+
+  async notifyOperationAdminFlagged(operation: Operation, adminName: string, reason?: string): Promise<void> {
+    try {
+      if (operation.group && operation.messageId) {
+        const group = await this.groupsService.findById(operation.group.toString());
+        if (group) {
+          const message = (
+            `🚨 **Operação Marcada como Fraude (Admin)**\n\n` +
+            `👤 **Decisão:** ${adminName}\n` +
+            (reason ? `📝 **Motivo:** ${reason}\n` : '') +
+            `🆔 **ID:** \`${operation._id}\`\n\n` +
+            `Status: Em investigação`
+          );
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
+            group.groupId,
+            operation.messageId as number,
+            undefined,
+            message,
+            { parse_mode: 'Markdown' }
+          ));
+        }
+      }
+      const creator = await this.usersService.findById(operation.creator.toString());
+      const acceptor = operation.acceptor ? await this.usersService.findById(operation.acceptor.toString()) : null;
+      const notify = async (user: any) => {
+        if (!user) return;
+        const msg = (
+          `🚨 **Operação Marcada como Fraude pela Administração**\n\n` +
+          `👤 **Administrador:** ${adminName}\n` +
+          (reason ? `📝 **Motivo:** ${reason}\n` : '') +
+          `🆔 **ID:** \`${operation._id}\``
+        );
+        await this.sendWithBackoff(() => this.bot.telegram.sendMessage(user.userId, msg, { parse_mode: 'Markdown' }));
+      };
+      await Promise.all([notify(creator), notify(acceptor)]);
+    } catch (error) {
+      this.logger.error('Failed to notify admin flagged:', error);
+    }
+  }
+
+  async notifyAdminPenalizedAccuser(operation: Operation, adminName: string, reason?: string): Promise<void> {
+    try {
+      const creator = await this.usersService.findById(operation.creator.toString());
+      const acceptor = operation.acceptor ? await this.usersService.findById(operation.acceptor.toString()) : null;
+      const accuser = operation.disputedBy ? await this.usersService.findById(operation.disputedBy.toString()) : null;
+      const notify = async (user: any) => {
+        if (!user) return;
+        const msg = (
+          `⚠️ **Penalidade por Falsa Acusação**\n\n` +
+          `👤 **Administrador:** ${adminName}\n` +
+          (reason ? `📝 **Motivo:** ${reason}\n` : '') +
+          `🆔 **ID:** \`${operation._id}\`\n\n` +
+          `Um ponto de reputação foi removido do acusador por contestação indevida.`
+        );
+        await this.sendWithBackoff(() => this.bot.telegram.sendMessage(user.userId, msg, { parse_mode: 'Markdown' }));
+      };
+      await Promise.all([notify(creator), notify(acceptor), notify(accuser)]);
+    } catch (error) {
+      this.logger.error('Failed to notify penalized accuser:', error);
+    }
+  }
+
   async notifyOperationReverted(
     operation: Operation,
-    userId: Types.ObjectId
+    userId: Types.ObjectId,
+    originalAcceptorId?: Types.ObjectId
   ): Promise<void> {
     try {
       if (!operation.group) {
@@ -845,7 +1130,7 @@ export class OperationsBroadcastService {
       }
       
       // Remover avaliações pendentes e mensagens privadas quando operação é revertida
-      await this.removePendingEvaluationMessages(operation);
+      await this.removePendingEvaluationMessages(operation, originalAcceptorId);
       
       // Tentar encontrar o grupo
       let group;
@@ -885,7 +1170,7 @@ export class OperationsBroadcastService {
       }
       
       const total = operation.amount * operation.price;
-      const assetsText = operation.assets.join(', ');
+      const assetsText = this.formatAssets(operation);
       const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
       const userName = user.userName ? `@${user.userName}` : user.firstName || 'Usuário';
       
@@ -904,96 +1189,43 @@ export class OperationsBroadcastService {
       const expiresAt = new Date(operation.expiresAt);
       const timeLeft = this.getTimeUntilExpiration(expiresAt);
       
-      let message = `🚀 **Nova Operação P2P Disponível!**\n\n`;
+      let message = `🔄 **Operação Revertida**\n\n`;
       message += `${typeEmoji} **${typeText} ${assetsText}**\n`;
-      message += `🌐 **Redes:** ${networksText}\n\n`;
+      message += `Ativos: ${assetsText}\n`;
+      message += `Redes: ${networksText}\n`;
       
       // Formato baseado no tipo de cotação
-      if (operation.quotationType !== 'google') {
-        const arrowIcon = operation.type === 'buy' ? '⬅️' : '➡️';
-        const paymentArrow = operation.type === 'buy' ? '➡️' : '⬅️';
-        const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
-        const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
-        
-        // Para operações com EUR, ajustar a moeda do preço
-         let totalFormatted = '';
-         let priceFormatted = '';
-         
-         if (operation.assets.includes('EURO' as any)) {
-           // Para EUR, mostrar valores em EUR
-           totalFormatted = `€ ${total.toFixed(2)}`;
-           priceFormatted = `€ ${operation.price.toFixed(4)}`;
-         } else {
-           // Para outros ativos, manter em BRL
-           totalFormatted = `R$ ${total.toFixed(2)}`;
-           priceFormatted = `R$ ${operation.price.toFixed(2)}`;
-         }
-        
-        message += (
-          `${arrowIcon} **${actionText}:** ${operation.amount} ${assetsText}\n` +
-          `${paymentArrow} **${paymentText}:** ${totalFormatted}\n` +
-          `💱 **Cotação:** ${priceFormatted}\n\n`
-        );
-      } else {
-        const arrowIcon = operation.type === 'buy' ? '⬅️' : '➡️';
-        const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
-        
-        message += (
-          `${arrowIcon} **${actionText}:** ${operation.amount} ${assetsText}\n` +
-          `💱 **Cotação:** Google (calculada na transação)\n` +
-          `💰 **Valor:** Conforme cotação atual do Google\n\n`
-        );
-      }
+      message += `Quantidade: ${operation.amount} (total)\n\n`;
       
-      message += `👤 **Criador:** ${creatorName}\n`;
-      message += `${creatorRep.icone} ${creatorRep.nivel}: ${creatorRep.score} pts\n\n`;
+      message += `👤 **Negociador:** ${userName}\n`;
       
       if (operation.description) {
         message += `📝 **Descrição:** ${operation.description}\n\n`;
       }
       
       message += (
-        `⏰ **Expira em:** ${timeLeft}\n` +
-        `🆔 **ID da Operação:** ${operation._id}`
+        `⚠️ A operação anteriormente aceita foi revertida pelo negociador.\n\n` +
+        `🆔 **ID:** \`${operation._id}\``
       );
 
       // Criar botões inline EXATAMENTE como no broadcast original
-      // Criar URL para chat privado com reputação
-      const botUsername = 'p2pscorebot'; // Nome do bot
-      const creatorUserId = creator?.userName || creator?.firstName || creator?.userId;
-       const privateUrl = `https://t.me/${botUsername}?start=reputacao_${creatorUserId}`;
-      
-      // Criar teclado inline apenas com botões apropriados para grupos
-      const inlineKeyboard = {
-        inline_keyboard: [
-          [
-            {
-              text: '🚀 Aceitar Operação',
-              callback_data: `accept_operation_${operation._id}`
-            },
-            {
-              text: '📊 Ver Reputação',
-              url: privateUrl
-            }
-          ]
-          // Removidos botões 'Minhas Operações' e 'Ver Todas' do grupo
-          // Estes botões devem aparecer apenas no chat privado
-        ]
-      };
+      const inlineKeyboard = this.buildBroadcastInlineKeyboard(operation, creator, '🚀 Aceitar Operação', `accept_operation_${operation._id}`);
 
       // Configurar envio para tópico específico se for o grupo mencionado
       const sendOptions: any = { 
         parse_mode: 'Markdown',
         reply_markup: inlineKeyboard
       };
-      if (group.groupId === -1002907400287) {
-        sendOptions.message_thread_id = 6; // Tópico específico do grupo
+      const configuredGroupId = parseInt(this.configService.get<string>('TELEGRAM_GROUP_ID') || '0');
+      const threadId = parseInt(this.configService.get<string>('TELEGRAM_THREAD_ID') || '0');
+      if (group.groupId === configuredGroupId && threadId > 0) {
+        sendOptions.message_thread_id = threadId;
       }
 
       // Editar a mensagem original em vez de criar nova
       if (operation.messageId) {
         try {
-          await this.bot.telegram.editMessageText(
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
             group.groupId,
             operation.messageId,
             undefined,
@@ -1002,24 +1234,24 @@ export class OperationsBroadcastService {
               parse_mode: 'Markdown',
               reply_markup: inlineKeyboard
             }
-          );
+          ));
           this.logger.log(`Edited original message ${operation.messageId} for reverted operation ${operation._id}`);
         } catch (editError) {
           this.logger.warn(`Failed to edit message ${operation.messageId}, sending new message:`, editError);
           // Se falhar ao editar, enviar nova mensagem
-          await this.bot.telegram.sendMessage(
+          await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
             group.groupId,
             message,
             sendOptions
-          );
+          ));
         }
       } else {
         // Se não tem messageId, enviar nova mensagem
-        await this.bot.telegram.sendMessage(
+        await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
           group.groupId,
           message,
           sendOptions
-        );
+        ));
       }
 
       this.logger.log(
@@ -1046,15 +1278,19 @@ export class OperationsBroadcastService {
       const creatorName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
       
       const message = (
-        `🎯 **Operação Aceita - Ação Necessária**\n\n` +
-        `Você aceitou uma operação P2P e precisa decidir o próximo passo.\n\n` +
+        `✅ **Operação Aceita!**\n\n` +
+        `Você aceitou uma operação P2P com sucesso.\n\n` +
         `**Detalhes da Operação:**\n` +
         `${typeEmoji} **${typeText} ${assetsText}**\n` +
         `🌐 **Redes:** ${networksText}\n` +
         `💰 **Quantidade:** ${operation.amount} ${assetsText}\n` +
-        `💵 **Preço:** ${operation.quotationType === 'google' ? 'Calculado na Transação' : `R$ ${operation.price.toFixed(2)}`}\n` +
+        `💵 **Preço Total:** ${operation.quotationType === 'google' ? 'Calculado na Transação' : `R$ ${(operation.amount * operation.price).toFixed(2)}`}\n` +
         `👤 **Criador:** ${creatorName}\n\n` +
-        `⚠️ **Importante:** Você não poderá criar ou aceitar novas operações até concluir ou desistir desta transação.\n\n` +
+        `💬 **Próximos Passos:**\n` +
+        `• Entre em contato com o criador via DM\n` +
+        `• Combinem os detalhes da transação\n` +
+        `• Realizem a operação conforme acordado\n\n` +
+        `⚠️ **Problemas?** Use o botão abaixo para contestar se houver algum problema (ex: MED no Pix, não cumprimento do acordo, etc.)\n\n` +
         `🆔 **ID da Operação:** ${operation._id}`
       );
 
@@ -1062,25 +1298,33 @@ export class OperationsBroadcastService {
         inline_keyboard: [
           [
             {
-              text: '❌ Desistir',
-              callback_data: `revert_operation_${operation._id}`
-            },
-            {
-              text: '✅ Concluir',
+              text: '✅ Solicitar Conclusão',
               callback_data: `complete_operation_${operation._id}`
+            }
+          ],
+          [
+            {
+              text: '↩️ Voltar Operação',
+              callback_data: `revert_operation_${operation._id}`
+            }
+          ],
+          [
+            {
+              text: '⚠️ Contestar Operação',
+              callback_data: `dispute_operation_${operation._id}`
             }
           ]
         ]
       };
 
-      const sentMessage = await this.bot.telegram.sendMessage(
+      const sentMessage = await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
         acceptor.userId,
         message,
         {
           parse_mode: 'Markdown',
           reply_markup: inlineKeyboard
         }
-      );
+      ));
 
       // Salvar o ID da mensagem privada para poder removê-la depois
       if (sentMessage && sentMessage.message_id) {
@@ -1112,21 +1356,29 @@ export class OperationsBroadcastService {
       const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
       const assetsText = operation.assets.join(', ');
       
+      // Obter o groupId real do Telegram a partir do ObjectId salvo na operação
+      let chatIdForReputation = 0;
+      try {
+        if (operation.group) {
+          const groupDoc = await this.groupsService.findById(operation.group.toString());
+          if (groupDoc && typeof groupDoc.groupId === 'number') {
+            chatIdForReputation = groupDoc.groupId;
+          }
+        }
+      } catch (error) {
+        this.logger.warn('Não foi possível obter groupId para avaliação bidirecional:', error);
+      }
+      
       // Mensagem para o criador avaliar o aceitador
        const acceptorName = acceptor.userName ? `@${acceptor.userName}` : acceptor.firstName;
        
        // Buscar reputação do aceitador para o cabeçalho
          let acceptorReputationInfo = '';
          try {
-           if (operation.group) {
-             const groupId = typeof operation.group === 'string' ? parseInt(operation.group) : Number(operation.group);
-             if (!isNaN(groupId)) {
-               const acceptorKarma = await this.getKarmaForUserWithFallback(acceptor, groupId);
-               if (acceptorKarma && acceptorKarma.karma !== undefined) {
-                 const reputation = getReputationInfo(acceptorKarma.karma);
-                 acceptorReputationInfo = `\n📊 **Reputação Atual:** ${reputation.icone} ${reputation.nivel} (${acceptorKarma.karma} pts)\n`;
-               }
-             }
+           const acceptorKarma = await this.getKarmaForUserWithFallback(acceptor, chatIdForReputation);
+           if (acceptorKarma && acceptorKarma.karma !== undefined) {
+             const reputation = getReputationInfo(acceptorKarma.karma);
+             acceptorReputationInfo = `\n📊 **Reputação Atual:** ${reputation.icone} ${reputation.nivel} (${acceptorKarma.karma} pts)\n`;
            }
          } catch (error) {
            this.logger.warn('Erro ao buscar reputação do aceitador:', error);
@@ -1151,15 +1403,10 @@ export class OperationsBroadcastService {
        // Buscar reputação do criador para o cabeçalho
          let creatorReputationInfo = '';
          try {
-           if (operation.group) {
-             const groupId = typeof operation.group === 'string' ? parseInt(operation.group) : Number(operation.group);
-             if (!isNaN(groupId)) {
-               const creatorKarma = await this.getKarmaForUserWithFallback(creator, groupId);
-               if (creatorKarma && creatorKarma.karma !== undefined) {
-                 const reputation = getReputationInfo(creatorKarma.karma);
-                 creatorReputationInfo = `\n📊 **Reputação Atual:** ${reputation.icone} ${reputation.nivel} (${creatorKarma.karma} pts)\n`;
-               }
-             }
+           const creatorKarma = await this.getKarmaForUserWithFallback(creator, chatIdForReputation);
+           if (creatorKarma && creatorKarma.karma !== undefined) {
+             const reputation = getReputationInfo(creatorKarma.karma);
+             creatorReputationInfo = `\n📊 **Reputação Atual:** ${reputation.icone} ${reputation.nivel} (${creatorKarma.karma} pts)\n`;
            }
          } catch (error) {
            this.logger.warn('Erro ao buscar reputação do criador:', error);
@@ -1208,24 +1455,24 @@ export class OperationsBroadcastService {
       };
       
       // Enviar para o criador
-      await this.bot.telegram.sendMessage(
+      await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
         creator.userId,
         creatorMessage,
         {
           parse_mode: 'Markdown',
           reply_markup: evaluationKeyboard
         }
-      );
+      ));
       
       // Enviar para o aceitador
-      await this.bot.telegram.sendMessage(
+      await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
         acceptor.userId,
         acceptorMessage,
         {
           parse_mode: 'Markdown',
           reply_markup: evaluationKeyboard
         }
-      );
+      ));
       
       // Criar avaliações pendentes bidirecionais no banco de dados
       try {
@@ -1254,7 +1501,7 @@ export class OperationsBroadcastService {
     }
   }
 
-  private async removePendingEvaluationMessages(operation: Operation): Promise<void> {
+  private async removePendingEvaluationMessages(operation: Operation, originalAcceptorId?: Types.ObjectId): Promise<void> {
     try {
       this.logger.log(`🔍 [DEBUG] removePendingEvaluationMessages called for operation ${operation._id}`);
       this.logger.log(`🔍 [DEBUG] Operation acceptor: ${operation.acceptor}`);
@@ -1264,8 +1511,9 @@ export class OperationsBroadcastService {
       await this.pendingEvaluationRepository.deletePendingEvaluationsByOperation(operation._id);
       
       // Tentar remover mensagens privadas de avaliação se existirem
-      if (operation.acceptor) {
-        const acceptor = await this.usersService.findById(operation.acceptor.toString());
+      const acceptorRef = operation.acceptor || originalAcceptorId;
+      if (acceptorRef) {
+        const acceptor = await this.usersService.findById(acceptorRef.toString());
         if (acceptor) {
           this.logger.log(`🔍 [DEBUG] Found acceptor: ${acceptor.userId}`);
           try {
@@ -1282,14 +1530,24 @@ export class OperationsBroadcastService {
               this.logger.warn(`⚠️ No privateEvaluationMessageId found for operation ${operation._id}`);
             }
             
-            // Enviar mensagem informando que a operação foi revertida
-            await this.bot.telegram.sendMessage(
-              acceptor.userId,
+            // Enviar mensagem detalhada informando que a operação foi revertida (para o negociador)
+            const tEmoji = operation.type === 'buy' ? '🟢' : operation.type === 'sell' ? '🔴' : operation.type === 'announcement' ? '📰' : '🔁';
+            const tText = operation.type === 'buy' ? 'COMPRA' : operation.type === 'sell' ? 'VENDA' : operation.type === 'announcement' ? 'ANÚNCIO' : 'TROCA';
+            const aText = operation.assets.join(', ');
+            const nText = operation.networks.map(n => n.toUpperCase()).join(', ');
+            const creatorDoc = await this.usersService.findById(operation.creator.toString());
+            const creatorName = creatorDoc?.userName ? `@${creatorDoc.userName}` : creatorDoc?.firstName || 'Usuário';
+            const detailedAcceptorText = (
               `🔄 **Operação Revertida**\n\n` +
-              `A operação que você aceitou foi revertida e não precisa mais ser avaliada.\n\n` +
-              `🆔 **ID:** \`${operation._id}\``,
-              { parse_mode: 'Markdown' }
+              `${tEmoji} **${tText} ${aText}**\n` +
+              `Ativos: ${aText}\n` +
+              `Redes: ${nText}\n` +
+              `Quantidade: ${operation.amount} (total)\n\n` +
+              `👤 Criador: ${creatorName}\n` +
+              `🆔 **ID:** \`${operation._id}\`\n\n` +
+              `⚠️ Você reverteu esta operação. Ela voltará a ficar disponível no grupo.`
             );
+            await this.bot.telegram.sendMessage(acceptor.userId, detailedAcceptorText, { parse_mode: 'Markdown' });
           } catch (error) {
             this.logger.warn(`Could not notify acceptor about operation revert: ${error.message}`);
           }
@@ -1298,6 +1556,53 @@ export class OperationsBroadcastService {
         }
       } else {
         this.logger.warn(`⚠️ No acceptor found for operation ${operation._id}`);
+      }
+
+      // Remover teclado/botões da DM enviada ao criador na aceitação, se existir, e detalhar reversão
+      try {
+        if (operation.creator && operation.creatorAcceptanceDmMessageId) {
+          const creator = await this.usersService.findById(operation.creator.toString());
+          if (creator) {
+            const tEmoji = operation.type === 'buy' ? '🟢' : operation.type === 'sell' ? '🔴' : operation.type === 'announcement' ? '📰' : '🔁';
+            const tText = operation.type === 'buy' ? 'COMPRA' : operation.type === 'sell' ? 'VENDA' : operation.type === 'announcement' ? 'ANÚNCIO' : 'TROCA';
+            const aText = operation.assets.join(', ');
+            const nText = operation.networks.map(n => n.toUpperCase()).join(', ');
+            const acceptorRef2 = operation.acceptor || originalAcceptorId;
+            let negotiatorName = 'Usuário';
+            if (acceptorRef2) {
+              try {
+                const acc2 = await this.usersService.findById(acceptorRef2.toString());
+                if (acc2) negotiatorName = acc2.userName ? `@${acc2.userName}` : acc2.firstName || 'Usuário';
+              } catch {}
+            }
+            const detailedText = (
+              `🔄 **Operação Revertida**\n\n` +
+              `${tEmoji} **${tText} ${aText}**\n` +
+              `Ativos: ${aText}\n` +
+              `Redes: ${nText}\n` +
+              `Quantidade: ${operation.amount} (total)\n\n` +
+              `👤 Negociador: ${negotiatorName}\n` +
+              `⚠️ A operação anteriormente aceita foi revertida pelo negociador.\n\n` +
+              `🆔 **ID:** \`${operation._id}\``
+            );
+            await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
+              creator.userId,
+              operation.creatorAcceptanceDmMessageId as number,
+              undefined,
+              detailedText,
+              { parse_mode: 'Markdown' }
+            ));
+            await this.sendWithBackoff(() => this.bot.telegram.editMessageReplyMarkup(
+              creator.userId,
+              operation.creatorAcceptanceDmMessageId as number,
+              undefined,
+              { inline_keyboard: [] }
+            ));
+            this.logger.log(`✅ Detailed revert DM updated for creator in operation ${operation._id}`);
+          }
+        }
+      } catch (e: any) {
+        this.logger.warn(`⚠️ Could not update creator revert DM: ${e.message}`);
       }
       
       this.logger.log(`Pending evaluation messages removed for operation ${operation._id}`);
@@ -1358,7 +1663,7 @@ export class OperationsBroadcastService {
       );
 
       // Enviar notificação privada para a outra parte
-      await this.bot.telegram.sendMessage(
+      const sentMessage = await this.bot.telegram.sendMessage(
         otherParty.userId,
         message,
         { 
@@ -1371,10 +1676,309 @@ export class OperationsBroadcastService {
         }
       );
 
+      // Salvar o ID da DM de solicitação de conclusão para remover teclado após aceitação
+      if (sentMessage && sentMessage.message_id) {
+        try {
+          await this.operationsRepository.updateOperation(
+            operation._id,
+            { completionRequestDmMessageId: sentMessage.message_id }
+          );
+          this.logger.log(`✅ completionRequestDmMessageId ${sentMessage.message_id} salvo para operação ${operation._id}`);
+        } catch (saveError: any) {
+          this.logger.warn(`⚠️ Falha ao salvar completionRequestDmMessageId para operação ${operation._id}: ${saveError.message}`);
+        }
+      }
+
       this.logger.log(`Completion request notification sent to user ${otherParty.userId} for operation ${operation._id}`);
       
     } catch (error) {
       this.logger.error('Error sending completion request notification:', error);
+    }
+  }
+
+  async notifyCompletionAccepted(operation: Operation, requesterId: Types.ObjectId): Promise<void> {
+    try {
+      const requester = await this.usersService.findById(requesterId.toString());
+      
+      if (!requester) {
+        this.logger.warn('Missing requester data for completion acceptance notification');
+        return;
+      }
+
+      // Identificar a outra parte (quem recebeu a DM com "Aceitar Conclusão")
+      const creator = await this.usersService.findById(operation.creator.toString());
+      const acceptor = operation.acceptor ? await this.usersService.findById(operation.acceptor.toString()) : null;
+      // Garantir que o criador exista antes de acessar propriedades
+      if (!creator) {
+        this.logger.warn('Creator not found for completion acceptance notification');
+        return;
+      }
+      const otherParty = requesterId.toString() === creator._id.toString() ? acceptor : creator;
+
+      const typeEmoji = operation.type === 'buy' ? '🟢' : '🔴';
+      const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+      const assetsText = operation.assets.join(', ');
+
+      const message = (
+        `✅ **Solicitação de Conclusão Aceita!**\n\n` +
+        `${typeEmoji} **${typeText} ${assetsText}**\n\n` +
+        `🎉 **Sua solicitação de conclusão foi aceita!**\n\n` +
+        `🆔 **ID:** \`${operation._id}\`\n\n` +
+        `✅ **A operação foi finalizada com sucesso.**\n\n` +
+        `💡 **Não esqueçam de se avaliarem mutuamente!**`
+      );
+
+      // Enviar notificação privada para o solicitante original
+      await this.bot.telegram.sendMessage(
+        requester.userId,
+        message,
+        { 
+          parse_mode: 'Markdown'
+          // Sem botões pois a operação já foi concluída
+        }
+      );
+
+      this.logger.log(`Completion acceptance notification sent to user ${requester.userId} for operation ${operation._id}`);
+      
+      // Remover o teclado da DM enviada à outra parte na solicitação de conclusão
+      try {
+        if (otherParty && operation.completionRequestDmMessageId) {
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageReplyMarkup(
+            otherParty.userId,
+            operation.completionRequestDmMessageId,
+            undefined,
+            { inline_keyboard: [] }
+          ));
+          this.logger.log(`✅ Teclado removido da DM de solicitação de conclusão para operação ${operation._id}`);
+        }
+      } catch (dmError: any) {
+        this.logger.warn(`⚠️ Não foi possível remover teclado da DM de solicitação: ${dmError.message}`);
+      }
+      
+    } catch (error) {
+      this.logger.error('Error sending completion acceptance notification:', error);
+    }
+  }
+
+  async notifyOperationDisputed(
+    operation: Operation, 
+    complainantId: Types.ObjectId, 
+    defendantId: Types.ObjectId, 
+    disputeReason: string
+  ): Promise<void> {
+    try {
+      this.logger.log(`🚨 [DEBUG] notifyOperationDisputed iniciado para operação ${operation._id}`);
+      
+      const complainant = await this.usersService.findById(complainantId.toString());
+      const defendant = await this.usersService.findById(defendantId.toString());
+
+      if (!complainant || !defendant) {
+        this.logger.warn('Missing user data for dispute notification');
+        return;
+      }
+
+      const complainantName = complainant.userName ? `@${complainant.userName}` : complainant.firstName || 'Usuário';
+      const defendantName = defendant.userName ? `@${defendant.userName}` : defendant.firstName || 'Usuário';
+
+      // 1. Notificar a outra parte (defendente) via DM
+      try {
+        const defendantMessage = (
+          `🚨 **Operação Contestada**\n\n` +
+          `Sua operação foi contestada por ${complainantName}\n\n` +
+          `**Motivo:** ${disputeReason}\n` +
+          `**ID da Operação:** \`${operation._id}\`\n\n` +
+          `📊 **Detalhes da Operação:**\n` +
+          `• **Tipo:** ${operation.type === 'buy' ? 'Compra' : 'Venda'}\n` +
+          `• **Ativos:** ${operation.assets.join(', ')}\n` +
+          `• **Quantidade:** ${operation.amount}\n` +
+          `• **Valor:** R$ ${operation.price.toFixed(2)}\n\n` +
+          `⚠️ **A operação está suspensa** até resolução administrativa.\n\n` +
+          `📞 **Próximos Passos:**\n` +
+          `• Os administradores irão analisar a disputa\n` +
+          `• Você pode ser contatado para esclarecimentos\n` +
+          `• Aguarde a resolução oficial\n\n` +
+          `🛡️ **Importante:** Mantenha evidências da transação (prints, comprovantes, etc.)`
+        );
+
+        await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
+          defendant.userId,
+          defendantMessage,
+          { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: '📋 Ver Detalhes da Operação',
+                    callback_data: `view_operation_${operation._id}`
+                  }
+                ]
+              ]
+            }
+          }
+        ));
+
+        this.logger.log(`Defendant notification sent to user ${defendant.userId} for disputed operation ${operation._id}`);
+      } catch (defendantError: any) {
+        this.logger.error(`Failed to notify defendant ${defendant.userId}:`, defendantError);
+      }
+
+      // 2. Atualizar mensagem no grupo (se existir messageId)
+      if (operation.group && operation.messageId) {
+        try {
+          const group = await this.groupsService.findById(operation.group.toString());
+          if (group) {
+            // Gerar mensagem consolidada com status de disputa
+            const disputedMessage = await this.generateDisputedOperationMessage(operation, complainantName, disputeReason);
+            
+            await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
+              group.groupId,
+              operation.messageId,
+              undefined,
+              disputedMessage,
+              {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text: '⚖️ Operação em Disputa',
+                        callback_data: `dispute_info_${operation._id}`
+                      }
+                    ],
+                    [
+                      {
+                        text: '🛠️ Painel Admin',
+                        callback_data: `admin_analyze_dispute_${operation._id}`
+                      }
+                    ]
+                  ]
+                }
+              }
+            ));
+
+            this.logger.log(`Group message updated for disputed operation ${operation._id}`);
+          }
+        } catch (groupError: any) {
+          this.logger.error(`Failed to update group message for disputed operation ${operation._id}:`, groupError);
+        }
+      }
+
+      // 3. Notificar administradores (se configurado)
+      await this.notifyAdministratorsAboutDispute(operation, complainant, defendant, disputeReason);
+
+      this.logger.log(`✅ Dispute notifications completed for operation ${operation._id}`);
+      
+    } catch (error) {
+      this.logger.error(`Error sending dispute notifications for operation ${operation._id}:`, error);
+    }
+  }
+
+  private async generateDisputedOperationMessage(
+    operation: Operation, 
+    complainantName: string, 
+    disputeReason: string
+  ): Promise<string> {
+    const typeEmoji = operation.type === 'buy' ? '🟢' : '🔴';
+    const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+    const total = operation.amount * operation.price;
+    
+    return (
+      `🚨 **OPERAÇÃO EM DISPUTA**\n\n` +
+      `${typeEmoji} **${typeText}** - ${operation.assets.join(', ')}\n` +
+      `🌐 ${operation.networks.map(n => n.toUpperCase()).join(', ')} | ` +
+      `📊 ${operation.amount} | ` +
+      `💵 R$ ${operation.price.toFixed(2)} | ` +
+      `💸 Total: R$ ${total.toFixed(2)}\n` +
+      `🆔 \`${operation._id}\`\n\n` +
+      `🚨 **Status:** Em Disputa\n` +
+      `⚖️ **Contestada por:** ${complainantName}\n` +
+      `📝 **Motivo:** ${disputeReason}\n` +
+      `🕐 **Contestada em:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
+      `⏸️ **Operação suspensa** até resolução administrativa.\n\n` +
+      `👥 **Administradores foram notificados** e irão analisar a disputa.`
+    );
+  }
+
+  private async notifyAdministratorsAboutDispute(
+    operation: Operation,
+    complainant: any,
+    defendant: any,
+    disputeReason: string
+  ): Promise<void> {
+    try {
+      // Verificar se há canal de administradores configurado
+      const adminChannelId = this.configService.get<string>('TELEGRAM_ADMIN_CHANNEL_ID');
+      const adminsEnv = this.configService.get<string>('TELEGRAM_ADMINS') || '';
+      const adminUserIds = adminsEnv
+        .split(',')
+        .map(v => v.trim())
+        .filter(v => v.length > 0)
+        .map(v => parseInt(v))
+        .filter(v => !isNaN(v));
+      if (!adminChannelId && adminUserIds.length === 0) {
+        this.logger.warn('TELEGRAM_ADMIN_CHANNEL_ID and TELEGRAM_ADMINS not configured - skipping admin notification');
+        return;
+      }
+
+      const complainantName = complainant.userName ? `@${complainant.userName}` : complainant.firstName || 'Usuário';
+      const defendantName = defendant.userName ? `@${defendant.userName}` : defendant.firstName || 'Usuário';
+
+      const adminMessage = (
+        `⚖️ **NOVA DISPUTA REGISTRADA**\n\n` +
+        `🆔 **Operação:** \`${operation._id}\`\n` +
+        `📊 **Tipo:** ${operation.type === 'buy' ? 'Compra' : 'Venda'} de ${operation.assets.join(', ')}\n` +
+        `💰 **Valor:** ${operation.amount} por R$ ${operation.price.toFixed(2)}\n\n` +
+        `👤 **Contestante:** ${complainantName} (ID: ${complainant.userId})\n` +
+        `👤 **Contestado:** ${defendantName} (ID: ${defendant.userId})\n\n` +
+        `📝 **Motivo:** ${disputeReason}\n` +
+        `🕐 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
+        `⚠️ **Ação Necessária:** Análise administrativa requerida\n\n` +
+        `🔗 Abra o PV do bot e envie: /start admin_dispute_${operation._id}`
+      );
+
+      if (adminChannelId) {
+        await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
+          parseInt(adminChannelId),
+          adminMessage,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '🔍 Analisar Disputa', callback_data: `admin_analyze_dispute_${operation._id}` },
+                  { text: '📊 Ver Histórico', callback_data: `admin_dispute_history_${operation._id}` }
+                ]
+              ]
+            }
+          }
+        ));
+      }
+      for (const adminId of adminUserIds) {
+        try {
+          await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
+            adminId,
+            adminMessage,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: '🔍 Analisar Disputa', callback_data: `admin_analyze_dispute_${operation._id}` },
+                    { text: '📊 Ver Histórico', callback_data: `admin_dispute_history_${operation._id}` }
+                  ]
+                ]
+              }
+            }
+          ));
+        } catch (dmErr: any) {
+          this.logger.warn(`Could not DM admin ${adminId}: ${dmErr.message}`);
+        }
+      }
+
+      this.logger.log(`Admin notification sent for disputed operation ${operation._id}`);
+    } catch (error) {
+      this.logger.error('Failed to notify administrators about dispute:', error);
     }
   }
 }

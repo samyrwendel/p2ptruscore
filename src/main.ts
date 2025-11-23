@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
-import { ValidationPipe } from '@nestjs/common'
+import { ValidationPipe, Logger } from '@nestjs/common'
 import { config } from 'dotenv'
 import * as path from 'path'
 import { NestExpressApplication } from '@nestjs/platform-express'
@@ -15,35 +15,32 @@ process.on('unhandledRejection', (reason: any) => {
   const code = (reason as any)?.response?.error_code
   const description = (reason as any)?.response?.description || (reason as any)?.description
   if (code === 409 || (typeof description === 'string' && description.includes('getUpdates'))) {
-    // eslint-disable-next-line no-console
-    console.warn('⚠️ Ignorando TelegramError 409 (getUpdates em outra instância). API seguirá ativa em modo degradado.')
+    Logger.warn('⚠️ Ignorando TelegramError 409 (getUpdates em outra instância). API seguirá ativa em modo degradado.')
     return
   }
-  // eslint-disable-next-line no-console
-  console.error('Unhandled Rejection:', reason)
+  Logger.error('Unhandled Rejection:', reason as any)
 })
 
 process.on('uncaughtException', (err: any) => {
   const code = (err as any)?.response?.error_code
   const description = (err as any)?.response?.description || (err as any)?.description
   if (code === 409 || (typeof description === 'string' && description.includes('getUpdates'))) {
-    // eslint-disable-next-line no-console
-    console.warn('⚠️ Ignorando TelegramError 409 (getUpdates em outra instância) em uncaughtException. Mantendo API ativa.')
+    Logger.warn('⚠️ Ignorando TelegramError 409 (getUpdates em outra instância) em uncaughtException. Mantendo API ativa.')
     return
   }
-  // eslint-disable-next-line no-console
-  console.error('Uncaught Exception:', err)
+  Logger.error('Uncaught Exception:', err as any)
 })
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
 
   // Configurar Handlebars como engine de template
-  app.setBaseViewsDir(join(__dirname, 'views'))
+  // Em produção, __dirname aponta para dist/src; as views estão em dist/views
+  app.setBaseViewsDir(join(__dirname, '..', 'views'))
   app.setViewEngine('hbs')
   
   // Registrar helpers do Handlebars
-  hbs.registerPartials(join(__dirname, 'views', 'partials'))
+  hbs.registerPartials(join(__dirname, '..', 'views', 'partials'))
   
   // Registrar helper 'eq' para comparações
   hbs.registerHelper('eq', function(a, b) {
@@ -68,6 +65,9 @@ async function bootstrap() {
   // app.setGlobalPrefix('api') // Removido para acesso direto
   app.useGlobalPipes(new ValidationPipe())
 
-  await app.listen(process.env.PORT ?? 3000)
+  const port = Number(process.env.PORT ?? 3031)
+  await app.listen(port)
+  // Logar URL de preview para inspeção visual
+  Logger.log(`📡 Preview disponível em: http://localhost:${port}/`)
 }
 void bootstrap()

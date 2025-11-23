@@ -56,7 +56,7 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
       const userMention = `@${ctx.from.username || ctx.from.first_name}`;
       
       await ctx.reply(
-        `✅ **Operação Concluída!**\n\n` +
+        `✅ **Operação Criada!**\n\n` +
         `${userMention} marcou a operação como concluída:\n\n` +
         `${typeText}\n` +
         `Ativos: ${completedOperation.assets.join(', ')}\n` +
@@ -163,7 +163,7 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
         } else {
           // Confirmação final - operação concluída
           await ctx.editMessageText(
-            `✅ **Operação Concluída com Sucesso!**\n\n` +
+            `✅ **Operação Concluída!**\n\n` +
             `${typeText}\n` +
             `💰 **Ativos:** ${completedOperation.assets.join(', ')}\n` +
             `📊 **Quantidade:** ${completedOperation.amount}\n` +
@@ -215,7 +215,7 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
         
         // Responder ao callback com sucesso
         try {
-          await ctx.answerCbQuery('✅ Operação concluída com sucesso!');
+          await ctx.answerCbQuery('✅ Operação criada com sucesso!');
         } catch (cbError: any) {
           if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
             this.logger.warn('Callback query expirado após conclusão bem-sucedida:', cbError.description);

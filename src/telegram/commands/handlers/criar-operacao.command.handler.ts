@@ -7,38 +7,46 @@ import { Update } from 'telegraf/types';
 import { OperationsService } from '../../../operations/operations.service';
 import { OperationsBroadcastService } from '../../../operations/operations-broadcast.service';
 import { CurrencyApiService } from '../../../operations/currency-api.service';
+import { BinancePriceService } from '../../../integrations/binance-price.service';
+import { PendingEvaluationService } from '../../../operations/pending-evaluation.service';
 import { UsersService } from '../../../users/users.service';
 import { GroupsService } from '../../../groups/groups.service';
 import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
+import { PopupStateService } from '../../shared/popup-state.service';
 import { validateUserTermsForOperation } from '../../../shared/terms-validation.utils';
 import { validateActiveMembership } from '../../../shared/group-membership.utils';
+import { getOrCreateUserFromCtx } from '../../shared/user.utils';
+import { pendingEvaluationGuard } from '../../shared/pending-eval.guard';
+import { safeAnswerCbQuery } from '../../shared/callback.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
 } from 'src/telegram/telegram.types';
-import {
-  OperationType,
-  NetworkType,
-  AssetType,
-  QuotationType,
-  OperationStatus,
-} from '../../../operations/schemas/operation.schema';
+  import {
+    OperationType,
+    NetworkType,
+    AssetType,
+    QuotationType,
+    QuotationSource,
+    OperationStatus,
+  } from '../../../operations/schemas/operation.schema';
 
-interface OperationSession {
-  step: 'type' | 'assets_networks' | 'amount_quotation' | 'price' | 'payment' | 'description' | 'description_payment' | 'confirmation';
-  messageId?: number;
-  data: {
-    type?: OperationType;
-    assets?: AssetType[];
-    networks?: NetworkType[];
-    amount?: number;
-    quotationType?: QuotationType;
-    price?: number | null;
-    paymentMethods?: string[];
-    description?: string;
-  };
-}
+  interface OperationSession {
+    step: 'type' | 'assets_networks' | 'amount_quotation' | 'price' | 'payment' | 'description' | 'description_payment' | 'confirmation';
+    messageId?: number;
+    data: {
+      type?: OperationType;
+      assets?: AssetType[];
+      networks?: NetworkType[];
+      amount?: number;
+      quotationType?: QuotationType;
+      price?: number | null;
+      quotationSource?: QuotationSource;
+      paymentMethods?: string[];
+      description?: string;
+    };
+  }
 
 @Injectable()
 export class CriarOperacaoCommandHandler implements ITextCommandHandler {
@@ -50,10 +58,13 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     private readonly operationsService: OperationsService,
     private readonly broadcastService: OperationsBroadcastService,
     private readonly currencyApiService: CurrencyApiService,
+    private readonly binancePriceService: BinancePriceService,
+    private readonly pendingEvaluationService: PendingEvaluationService,
     private readonly usersService: UsersService,
     private readonly groupsService: GroupsService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly keyboardService: TelegramKeyboardService,
+    private readonly popupStateService: PopupStateService,
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
@@ -65,15 +76,6 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       );
       return;
     }
-
-    // VALIDAÇÃO CRÍTICA: Verificar se usuário é membro ativo do grupo
-    const isActiveMember = await validateActiveMembership(ctx, this.bot, 'criar');
-    if (!isActiveMember) {
-      return; // Mensagem de erro já foi enviada pela função de validação
-    }
-
-    // A validação de termos é feita globalmente no TelegramService
-    // Não precisa validar aqui novamente
 
     const sessionKey = `${ctx.from.id}_${ctx.chat.id}`;
     
@@ -181,7 +183,6 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         Markup.button.callback('🟪 SOLANA', 'op_network_solana'),
       ],
       [
-        Markup.button.callback('🟨 BTC', 'op_network_btc'),
         Markup.button.callback('⬜ ETH', 'op_network_eth'),
       ],
       [
@@ -226,7 +227,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       [],
       [
         Markup.button.callback('✋ Manual', 'op_quote_manual'),
-        Markup.button.callback('Google', 'op_quote_google'),
+        Markup.button.callback('🌐 Google', 'op_quote_google'),
+        Markup.button.callback('🟡 Binance', 'op_quote_binance'),
       ],
       [],
       [
@@ -254,7 +256,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       `━━━━━━━━ COTAÇÃO ━━━━━━━━\n\n` +
       `Escolha o tipo de cotação:\n` +
       `• **Manual:** Você define o preço\n` +
-      `• **Google:** Cotação automática`,
+      `• **Google:** Cotação automática (forex)\n` +
+      `• **Binance:** Cotação crypto em tempo real`,
       { parse_mode: 'Markdown', ...keyboard }
     );
     
@@ -272,17 +275,25 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       return false; // Não é um callback deste handler
     }
 
+    // Bloqueio por avaliação pendente APENAS para callbacks deste fluxo
+    try {
+      const isCancel = data === 'op_cancel';
+      if (!isCancel) {
+        const user = await getOrCreateUserFromCtx(ctx, this.usersService);
+        if (user) {
+          const res = await pendingEvaluationGuard(ctx, user._id, 'criar', 'callback', this.pendingEvaluationService);
+          if (res.blocked) return true;
+        }
+      }
+    } catch (error) {
+      this.logger.error('Erro ao checar avaliações pendentes no callback de criação:', error);
+    }
+
     // Processar callbacks de operações criadas
     if (data.startsWith('view_operation_details_')) {
       const operationId = data.replace('view_operation_details_', '');
       
-      try {
-        await ctx.answerCbQuery();
-      } catch (cbError: any) {
-        if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
-          this.logger.warn('Callback query expirado - ver detalhes:', cbError.description);
-        }
-      }
+      await safeAnswerCbQuery(ctx);
       
       try {
         const operation = await this.operationsService.getOperationById(new Types.ObjectId(operationId));
@@ -355,7 +366,9 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         // Calcular total e formatação
         const total = operation.amount * operation.price;
         const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
-        const quotationText = operation.quotationType === 'google' ? '🔍GOOGLE' : operation.quotationType.toUpperCase();
+        const quotationText = operation.quotationType === 'google' ? '🌐 GOOGLE' : 
+                           operation.quotationType === 'binance' ? '🟡 BINANCE' : 
+                           operation.quotationType.toUpperCase();
         
         // Formatação da data de expiração
         const expirationDate = new Date(operation.expiresAt);
@@ -371,22 +384,29 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
           `Redes: ${networksText}\n`
         );
         
-        // Só mostrar cotação se for Google
-        if (operation.quotationType === 'google') {
-          confirmationMessage += `**Cotação:** ${quotationText}\n`;
+        // Exibir cotação e fonte quando for Google ou Binance
+        if (operation.quotationType === 'google' || operation.quotationType === 'binance') {
+          confirmationMessage += `**Cotação:** (calculada na transação)\n`;
+          const fonte = operation.quotationType === 'google' ? '🌐 Google' : '🟡 Binance';
+          confirmationMessage += `**Fonte:** ${fonte}\n`;
         }
         
         confirmationMessage += `**Quantidade:** ${operation.amount} (total)\n\n`;
         
-        if (operation.quotationType !== 'google') {
+        if (operation.quotationType !== 'google' && operation.quotationType !== 'binance') {
           const assetsText = operation.assets.join(', ');
           const buyText = operation.type === 'buy' ? `${operation.amount} ${assetsText}` : `${operation.amount} ${assetsText}`;
           const payText = operation.type === 'buy' ? `R$ ${total.toFixed(2)}` : `R$ ${total.toFixed(2)}`;
           const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
           
+          // Setas corrigidas: ⬅️ para receber (entrada), ➡️ para pagar (saída)
+          const arrowIcon = operation.type === 'buy' ? '⬅️' : '➡️';
+          const paymentArrow = operation.type === 'buy' ? '➡️' : '⬅️';
+          const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
+          
           confirmationMessage += (
-            `⬅️ **${actionText}:** ${buyText}\n` +
-            `➡️ **Quero pagar:** ${payText}\n` +
+            `${arrowIcon} **${actionText}:** ${buyText}\n` +
+            `${paymentArrow} **${paymentText}:** ${payText}\n` +
             `💱 **Cotação:** ${operation.price.toFixed(2)}\n\n`
           );
         }
@@ -398,20 +418,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
           `Use os botões abaixo para gerenciar sua operação:`
         );
         
-        const controlKeyboard = {
-          inline_keyboard: [
-            [
-              {
-                text: '❌ Cancelar Operação',
-                callback_data: `cancel_operation_${operation._id}`
-              },
-              {
-                text: '✅ Concluir Operação',
-                callback_data: `complete_operation_${operation._id}`
-              }
-            ]
-          ]
-        };
+        // Usar o método que verifica o status da operação para mostrar botões apropriados
+        const controlKeyboard = this.createOperationControlKeyboard(operation);
         
         await ctx.editMessageText(confirmationMessage, {
           parse_mode: 'Markdown',
@@ -470,11 +478,15 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       if (session && !isNaN(suggestedPrice)) {
         // Definir o preço sugerido na sessão
         session.data.price = suggestedPrice;
+        // Registrar fonte utilizada para cotação manual sugerida
+        session.data.quotationSource = QuotationSource.GOOGLE;
         
         // Responder ao callback
         try {
+          const currency = session.data.type === OperationType.EXCHANGE ? 
+            (session.data.assets?.[0] === AssetType.EURO ? '$' : '€') : 'R$';
           await ctx.answerCbQuery(
-            `💡 Cotação atual aplicada: R$ ${suggestedPrice.toFixed(2)}`,
+            `🌐 Cotação AwesomeAPI aplicada: ${currency} ${suggestedPrice.toFixed(session.data.type === OperationType.EXCHANGE ? 4 : 2)}`,
             { show_alert: false }
           );
         } catch (cbError: any) {
@@ -487,8 +499,42 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         
         // Avançar para próxima etapa (descrição)
         await this.showDescriptionInput(ctx);
-        return true;
       }
+      
+      return true;
+    }
+
+    // Tratar callback de cotação Binance
+    if (data.startsWith('op_use_binance_price_')) {
+      const session = this.sessions.get(sessionKey);
+      const priceStr = data.replace('op_use_binance_price_', '');
+      const binancePrice = parseFloat(priceStr);
+      
+      if (session && !isNaN(binancePrice)) {
+        // Definir o preço Binance na sessão
+        session.data.price = binancePrice;
+        // Registrar fonte utilizada para cotação manual sugerida
+        session.data.quotationSource = QuotationSource.BINANCE;
+        
+        // Responder ao callback
+        try {
+          await ctx.answerCbQuery(
+            `🟡 Cotação Binance aplicada: R$ ${binancePrice.toFixed(2)}`,
+            { show_alert: false }
+          );
+        } catch (cbError: any) {
+          if (cbError.description?.includes('query is too old') || cbError.description?.includes('query ID is invalid')) {
+            this.logger.warn('Callback query expirado - cotação Binance aplicada:', cbError.description);
+          } else {
+            this.logger.error('Erro ao responder callback - cotação Binance aplicada:', cbError);
+          }
+        }
+        
+        // Avançar para próxima etapa (descrição)
+        await this.showDescriptionInput(ctx);
+      }
+      
+      return true;
     }
 
     if (data.startsWith('op_type_')) {
@@ -614,7 +660,16 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       const session = this.sessions.get(sessionKey);
       if (session) {
         session.data.quotationType = QuotationType.GOOGLE;
-        await ctx.answerCbQuery('Cotação Google selecionada.', { show_alert: false });
+        await ctx.answerCbQuery('🌐 Cotação Google selecionada.', { show_alert: false });
+        // Voltar para a tela de seleção para permitir revisão
+        await this.updateAssetsAndNetworksSelection(ctx, session);
+      }
+    } else if (data === 'op_quote_binance') {
+      const session = this.sessions.get(sessionKey);
+      if (session) {
+        session.data.quotationType = QuotationType.BINANCE;
+        await ctx.answerCbQuery('🟡 Cotação Binance selecionada.', { show_alert: false });
+        // Voltar para a tela de seleção para permitir revisão
         await this.updateAssetsAndNetworksSelection(ctx, session);
       }
     } else if (data.startsWith('op_payment_')) {
@@ -736,7 +791,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         await this.createOperation(ctx, session);
       }
     } else if (data === 'op_back_description') {
-      await this.showDescriptionInput(ctx);
+      await this.updateDescriptionSelectionBack(ctx);
     } else if (data === 'op_back_quotation') {
       await this.updateQuotationSelection(ctx);
     } else if (data === 'op_back_payment') {
@@ -778,7 +833,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
 
     // Definir grupos de ativos
     const stablecoins = [AssetType.USDC, AssetType.USDT, AssetType.USDE];
-    const cryptos = [AssetType.BTC, AssetType.ETH, AssetType.XRP];
+    const cryptos: AssetType[] = [];
     const fiatCurrencies = [AssetType.DOLAR, AssetType.EURO, AssetType.REAL];
 
     // Verificar qual grupo o novo ativo pertence
@@ -802,7 +857,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     }
     
     if (newAssetIsCrypto) {
-      // Cryptos (BTC, ETH, XRP) não podem ser misturadas com nada
+      // Cryptos (ETH) não podem ser misturadas com nada
       return !hasStablecoins && !hasCryptos && !hasFiat;
     }
     
@@ -862,7 +917,6 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       'BASE': NetworkType.BASE,
       'BNB': NetworkType.BNB,
       'SOLANA': NetworkType.SOLANA,
-      'BTC': NetworkType.BTC,
       'ETH': NetworkType.ETH
     };
     
@@ -888,7 +942,11 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     };
 
     const createQuotationButton = (emoji: string, name: string, callback: string) => {
-      const selected = session?.data.quotationType === (callback === 'op_quote_manual' ? QuotationType.MANUAL : QuotationType.GOOGLE);
+      const selected = session?.data.quotationType === (
+        callback === 'op_quote_manual' ? QuotationType.MANUAL : 
+        callback === 'op_quote_google' ? QuotationType.GOOGLE :
+        callback === 'op_quote_binance' ? QuotationType.BINANCE : null
+      );
       const icon = selected ? '✔️' : emoji;
       return Markup.button.callback(`${icon} ${name}`, callback);
     };
@@ -918,9 +976,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         createAssetButton('⚫', 'USDe', 'op_asset_USDe'),
       ],
       [
-        createAssetButton('🟠', 'BTC', 'op_asset_BTC'),
-        createAssetButton('⚪', 'ETH', 'op_asset_ETH'),
-        createAssetButton('🟤', 'XRP', 'op_asset_XRP'),
+        // createAssetButton('⚪', 'ETH', 'op_asset_ETH'),
       ],
       [
         createAssetButton('💵', 'DÓLAR', 'op_asset_DOLAR'),
@@ -941,9 +997,6 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       [
         createNetworkButton('🟡', 'BNB', 'op_network_bnb'),
         createNetworkButton('🟪', 'SOLANA', 'op_network_solana'),
-      ],
-      [
-        createNetworkButton('🟨', 'BTC', 'op_network_btc'),
         createNetworkButton('⬜', 'ETH', 'op_network_eth'),
       ],
 
@@ -970,7 +1023,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       // Seção de Cotação
       [
         createQuotationButton('✋', 'Manual', 'op_quote_manual'),
-        createQuotationButton('', 'Google', 'op_quote_google'),
+        createQuotationButton('🌐', 'Google', 'op_quote_google'),
+        createQuotationButton('🟡', 'Binance', 'op_quote_binance'),
       ],
     ]);
   }
@@ -989,7 +1043,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
   private getQuotationText(quotationType?: QuotationType): string {
     switch (quotationType) {
       case QuotationType.MANUAL: return '👋🏽MANUAL';
-      case QuotationType.GOOGLE: return '🔍GOOGLE';
+      case QuotationType.GOOGLE: return '🌐 GOOGLE';
+      case QuotationType.BINANCE: return '🟡 BINANCE';
       default: return 'Nenhuma';
     }
   }
@@ -1001,7 +1056,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     }
 
     // Verificar se tem BTC ou ETH (8 casas decimais)
-    const hasCrypto = assets.some(asset => [AssetType.BTC, AssetType.ETH].includes(asset));
+    const hasCrypto = false;
     if (hasCrypto) {
       return value.toFixed(8);
     }
@@ -1014,7 +1069,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       return value.toFixed(2);
     }
 
-    // Outros casos (XRP, etc.) - 2 casas decimais por padrão
+    // Outros casos (sem ETH) - 2 casas decimais por padrão
     return value.toFixed(2);
   }
 
@@ -1042,14 +1097,10 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     }
 
     // Verificar se tem BTC
-    if (assets.includes(AssetType.BTC)) {
-      return ' BTC';
-    }
+    
 
     // Verificar se tem ETH
-    if (assets.includes(AssetType.ETH)) {
-      return ' ETH';
-    }
+    
 
     return '';
   }
@@ -1063,9 +1114,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         Markup.button.callback(`${selectedAssets.includes(AssetType.USDE) ? '✔️' : '⚫'} USDe`, 'op_asset_USDe'),
       ],
       [
-        Markup.button.callback(`${selectedAssets.includes(AssetType.BTC) ? '✔️' : '🟠'} BTC`, 'op_asset_BTC'),
         Markup.button.callback(`${selectedAssets.includes(AssetType.ETH) ? '✔️' : '⚪'} ETH`, 'op_asset_ETH'),
-        Markup.button.callback(`${selectedAssets.includes(AssetType.XRP) ? '✔️' : '🟤'} XRP`, 'op_asset_XRP'),
       ],
       [
         Markup.button.callback(`${selectedAssets.includes(AssetType.DOLAR) ? '✔️' : '💵'} DÓLAR`, 'op_asset_DOLAR'),
@@ -1103,19 +1152,14 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       [
         Markup.button.callback(`${selectedNetworks.includes(NetworkType.ARBITRUM) ? '✔️' : '⚪'} ARB`, 'op_network_arbitrum'),
         Markup.button.callback(`${selectedNetworks.includes(NetworkType.POLYGON) ? '✔️' : '🟣'} POL`, 'op_network_polygon'),
-        Markup.button.callback(`${selectedNetworks.includes(NetworkType.BNB) ? '✔️' : '🟡'} BNB`, 'op_network_bnb'),
         Markup.button.callback(`${selectedNetworks.includes(NetworkType.BASE) ? '✔️' : '🔵'} BASE`, 'op_network_base'),
       ],
       [
-        
+        Markup.button.callback(`${selectedNetworks.includes(NetworkType.BNB) ? '✔️' : '🟡'} BNB`, 'op_network_bnb'),
         Markup.button.callback(`${selectedNetworks.includes(NetworkType.SOLANA) ? '✔️' : '🟪'} SOLANA`, 'op_network_solana'),
-      ],
-      [
-        Markup.button.callback(`${selectedNetworks.includes(NetworkType.BTC) ? '✔️' : '🟨'} BTC`, 'op_network_btc'),
         Markup.button.callback(`${selectedNetworks.includes(NetworkType.ETH) ? '✔️' : '⬜'} ETH`, 'op_network_eth'),
       ],
       [
-
       ],
       [
         Markup.button.callback('⬅️ Voltar', 'op_back_assets'),
@@ -1236,9 +1280,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         createAssetButton('⚫', 'USDe', AssetType.USDE),
       ],
       [
-        createAssetButton('🟠', 'BTC', AssetType.BTC),
         createAssetButton('⚪', 'ETH', AssetType.ETH),
-        createAssetButton('🟤', 'XRP', AssetType.XRP),
       ],
       [
         createAssetButton('💵', 'DÓLAR', AssetType.DOLAR),
@@ -1300,7 +1342,6 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         createNetworkButton('🟪', 'SOLANA', NetworkType.SOLANA),
       ],
       [
-        createNetworkButton('🟨', 'BTC', NetworkType.BTC),
         createNetworkButton('⬜', 'ETH', NetworkType.ETH),
       ],
       [
@@ -1340,7 +1381,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     const keyboard = Markup.inlineKeyboard([
       [
         Markup.button.callback('✋ Manual', 'op_quote_manual'),
-        Markup.button.callback('Google', 'op_quote_google'),
+        Markup.button.callback('🌐 Google', 'op_quote_google'),
+        Markup.button.callback('🟡 Binance', 'op_quote_binance'),
       ],
       [Markup.button.callback('❌ Cancelar', 'op_cancel')],
     ]);
@@ -1382,7 +1424,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         session.step = 'price';
         await this.showPriceInput(ctx);
       } else {
-        // Se for cotação Google, voltar para a tela de valor
+        // Se for cotação Google ou Binance, voltar para a tela de valor
         session.step = 'amount_quotation';
         await this.showValueInput(ctx);
       }
@@ -1456,8 +1498,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       session.data.amount = amount;
       
       // Verificar se já foi selecionado um tipo de cotação
-      if (session.data.quotationType === QuotationType.GOOGLE) {
-        // Se cotação Google, pular direto para descrição/pagamento
+      if (session.data.quotationType === QuotationType.GOOGLE || session.data.quotationType === QuotationType.BINANCE) {
+        // Se cotação Google ou Binance, pular direto para descrição/pagamento
         await this.showDescriptionInput(ctx);
       } else if (session.data.quotationType === QuotationType.MANUAL) {
         // Se cotação manual, ir para inserção de preço
@@ -1535,6 +1577,27 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       }
     }
 
+    // Verificar se o usuário tem disputas ativas
+    let disputeWarning = '';
+    try {
+      const userData = {
+        id: ctx.from.id,
+        username: ctx.from.username,
+        first_name: ctx.from.first_name,
+        last_name: ctx.from.last_name
+      };
+      const user = await this.usersService.findOrCreate(userData);
+      const warning = await this.pendingEvaluationService.getUserDisputeWarning(user._id);
+      
+      if (warning) {
+        disputeWarning = `\n\n${warning}\n` +
+          `⚠️ **Aviso:** Outros usuários verão que você tem disputas ativas.\n` +
+          `Resolva suas disputas pendentes para melhorar sua reputação.\n`;
+      }
+    } catch (error) {
+      this.logger.error('Erro ao verificar disputas do usuário:', error);
+    }
+
     const formattedAmount = session?.data.amount ? this.formatValueByAsset(session.data.amount, session.data.assets || []) : '0';
     const currencySuffix = this.getCurrencySuffix(session?.data.assets || []);
     
@@ -1545,8 +1608,14 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       `Quantidade: ${formattedAmount}${currencySuffix}\n`;
     
     if (session?.data.quotationType === QuotationType.GOOGLE) {
-      resumoText += `Cotação: Google (calculada na transação)\n`;
-    } else {
+      resumoText += `Cotação: (calculada na transação)\n`;
+      resumoText += `Fonte: 🌐 Google\n`;
+      // Não adicionar Pagamento aqui para evitar duplicidade; linha global abaixo cobre isso
+    } else if (session?.data.quotationType === QuotationType.BINANCE) {
+      resumoText += `Cotação: (calculada na transação)\n`;
+      resumoText += `Fonte: 🟡 Binance\n`;
+      // Não adicionar Pagamento aqui para evitar duplicidade; linha global abaixo cobre isso
+    } else if (session?.data.quotationType === QuotationType.MANUAL) {
       const total = (session?.data.amount || 0) * (session?.data.price || 0);
       const formattedPrice = session?.data.price ? this.formatValueByAsset(session.data.price, session.data.assets || []) : '0';
       
@@ -1556,13 +1625,105 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       
       if (isPixOrBoleto) {
         resumoText += `Preço: R$ ${total.toFixed(2)}\n` +
-          `Cotação: R$ ${session?.data.price?.toFixed(2)}\n`;
+          `Cotação: R$ ${(session?.data.price || 0).toFixed(2)}\n`;
       } else {
         resumoText += `Preço: ${total.toFixed(2)} USD\n` +
           `Cotação: ${formattedPrice}${currencySuffix}\n`;
       }
+      
+      // Verificar spread para cotação manual
+      if (session?.data.price && session?.data.assets && session.data.assets.length > 0) {
+        try {
+          const firstAsset = session.data.assets[0];
+          let awesomeApiPrice: number | null = null;
+          let binancePrice: number | null = null;
+          
+          // Buscar cotação da AwesomeAPI
+          if (session.data.type === OperationType.EXCHANGE) {
+            if (firstAsset === AssetType.USDT || firstAsset === AssetType.USDC) {
+              const rates = await this.currencyApiService.getCurrentRates();
+              if (rates.USDBRL && rates.EURBRL) {
+                const usdInBrl = parseFloat(rates.USDBRL.bid);
+                const eurInBrl = parseFloat(rates.EURBRL.bid);
+                awesomeApiPrice = usdInBrl / eurInBrl;
+              }
+            } else if (firstAsset === AssetType.EURO) {
+              const rates = await this.currencyApiService.getCurrentRates();
+              if (rates.EURBRL && rates.USDBRL) {
+                const eurInBrl = parseFloat(rates.EURBRL.bid);
+                const usdInBrl = parseFloat(rates.USDBRL.bid);
+                awesomeApiPrice = eurInBrl / usdInBrl;
+              }
+            } else {
+              awesomeApiPrice = await this.currencyApiService.getSuggestedPrice(firstAsset);
+            }
+          } else {
+            awesomeApiPrice = await this.currencyApiService.getSuggestedPrice(firstAsset);
+          }
+          
+          // Buscar cotação da Binance
+          try {
+            const symbolMap = {
+              [AssetType.USDT]: 'USDTBRL',
+              [AssetType.USDC]: 'USDTBRL',
+              [AssetType.BTC]: 'BTCBRL',
+              [AssetType.ETH]: 'ETHBRL',
+              [AssetType.USDE]: 'USDTBRL'
+            };
+            
+            const binanceSymbol = symbolMap[firstAsset];
+            if (binanceSymbol) {
+              const priceData = await this.binancePriceService.getPrice(binanceSymbol);
+              if (priceData) {
+                binancePrice = priceData.price;
+              }
+            }
+          } catch (error) {
+            this.logger.warn('Erro ao obter cotação da Binance para spread:', error);
+          }
+          
+          // Calcular spread se temos pelo menos uma cotação de referência
+          const userPrice = session.data.price;
+          const maxReferencePrice = Math.max(awesomeApiPrice || 0, binancePrice || 0);
+          const minReferencePrice = Math.min(awesomeApiPrice || Infinity, binancePrice || Infinity);
+          
+          if (maxReferencePrice > 0 && userPrice > maxReferencePrice) {
+            // Alerta de Spread - preço acima do mercado
+            const spreadValue = userPrice - maxReferencePrice;
+            const spreadPercentage = ((spreadValue / maxReferencePrice) * 100);
+            
+            if (spreadPercentage > 5) { // Alerta se spread > 5%
+              const currency = session.data.type === OperationType.EXCHANGE ? 
+                (firstAsset === AssetType.EURO ? '$' : '€') : 'R$';
+              resumoText += `🚨 **Alerta de Spread:** ${currency} ${spreadValue.toFixed(session.data.type === OperationType.EXCHANGE ? 4 : 2)} (+${spreadPercentage.toFixed(1)}%)\n`;
+            }
+          } else if (minReferencePrice < Infinity && userPrice < minReferencePrice) {
+            // Alerta de Oportunidade - preço abaixo do mercado
+            const opportunityValue = minReferencePrice - userPrice;
+            const opportunityPercentage = ((opportunityValue / minReferencePrice) * 100);
+            
+            if (opportunityPercentage > 5) { // Alerta se oportunidade > 5%
+              const currency = session.data.type === OperationType.EXCHANGE ? 
+                (firstAsset === AssetType.EURO ? '$' : '€') : 'R$';
+              resumoText += `🎉 **Alerta de Oportunidade:** ${currency} ${opportunityValue.toFixed(session.data.type === OperationType.EXCHANGE ? 4 : 2)} (-${opportunityPercentage.toFixed(1)}%)\n`;
+            }
+          }
+        } catch (error) {
+          this.logger.warn('Erro ao calcular spread:', error);
+        }
+      }
     }
     
+    // Exibir fonte quando preço manual veio de uma origem conhecida
+    if (session?.data.quotationType === QuotationType.MANUAL) {
+      if (session?.data.quotationSource === QuotationSource.GOOGLE) {
+        resumoText += `Fonte: 🌐 Google\n`;
+      } else if (session?.data.quotationSource === QuotationSource.BINANCE) {
+        resumoText += `Fonte: 🟡 Binance\n`;
+      }
+    }
+
+    // Adicionar Pagamento UMA vez, independente do tipo de cotação
     const paymentText = session?.data.paymentMethods && session.data.paymentMethods.length > 0 
       ? session.data.paymentMethods.join(', ')
       : 'Não selecionado';
@@ -1571,6 +1732,9 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     if (session?.data.description && session.data.description !== 'pular') {
       resumoText += `Descrição: ${session.data.description}\n`;
     }
+    
+    // Adicionar aviso de disputa se existir
+    resumoText += disputeWarning;
     
     resumoText += `\n\n✓ Confirme os dados e escolha uma ação:`;
 
@@ -1637,7 +1801,13 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       `**Quantidade:** ${formattedAmount}${currencySuffix}\n`;
     
     if (session?.data.quotationType === QuotationType.GOOGLE) {
-      resumoText += `**Cotação:** Google (calculada na transação)\n`;
+      resumoText += `**Cotação:** (calculada na transação)\n`;
+      resumoText += `**Fonte:** 🌐 Google\n`;
+      // Não adicionar Pagamento aqui para evitar duplicidade; linha global abaixo cobre isso
+    } else if (session?.data.quotationType === QuotationType.BINANCE) {
+      resumoText += `**Cotação:** (calculada na transação)\n`;
+      resumoText += `**Fonte:** 🟡 Binance\n`;
+      // Não adicionar Pagamento aqui para evitar duplicidade; linha global abaixo cobre isso
     } else {
       const total = (session?.data.amount || 0) * (session?.data.price || 0);
       const formattedPrice = session?.data.price ? this.formatValueByAsset(session.data.price, session.data.assets || []) : '0';
@@ -1650,12 +1820,12 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         // Para troca USDT/USDC → EUR, mostrar preço em EUR
         if (session.data.assets?.some(asset => [AssetType.USDT, AssetType.USDC].includes(asset))) {
           formattedTotal = `${total.toFixed(2)} EUR`;
-          priceCurrency = `${session?.data.price?.toFixed(4)} EUR`;
+          priceCurrency = `${(session?.data.price || 0).toFixed(4)} EUR`;
         }
         // Para troca EUR → USD, mostrar preço em USD
         else if (session.data.assets?.includes(AssetType.EURO)) {
           formattedTotal = `${total.toFixed(2)} USD`;
-          priceCurrency = `${session?.data.price?.toFixed(4)} USD`;
+          priceCurrency = `${(session?.data.price || 0).toFixed(4)} USD`;
         }
         // Para outras trocas, usar formatação padrão
         else {
@@ -1676,10 +1846,17 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       
       if (isPixOrBoleto && session?.data.type !== OperationType.EXCHANGE) {
         resumoText += `Preço: R$ ${total.toFixed(2)}\n` +
-          `Cotação: R$ ${session?.data.price?.toFixed(2)}\n`;
+          `Cotação: R$ ${(session?.data.price || 0).toFixed(2)}\n`;
       } else {
         resumoText += `Preço: ${formattedTotal}\n` +
           `Cotação: ${priceCurrency}\n`;
+      }
+
+      // Exibir fonte quando preço manual veio de uma origem conhecida
+      if (session?.data.quotationSource === QuotationSource.GOOGLE) {
+        resumoText += `**Fonte:** 🌐 Google\n`;
+      } else if (session?.data.quotationSource === QuotationSource.BINANCE) {
+        resumoText += `**Fonte:** 🟡 Binance\n`;
       }
     }
     
@@ -1701,6 +1878,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       }
     }
     
+    // Adicionar pagamento UMA vez aqui, cobrindo todas as modalidades
     resumoText += `**Pagamento:** ${selectedMethods.join(', ') || 'Nenhum'}\n\n` +
       '📝 **Descrição (opcional):**\n' +
       'Digite uma descrição para sua operação ou clique em "Pular Descrição" para continuar.\n\n' +
@@ -1802,77 +1980,100 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       }
     }
 
-    // Tentar obter cotação sugerida para o primeiro ativo
-    let suggestedPriceButton: any = null;
+    // Obter cotações de ambas as fontes para o primeiro ativo
+    let apiCurrentPrice: number | null = null;
+    let binancePrice: number | null = null;
     let suggestedPriceText = '';
     
     if (session?.data.assets && session.data.assets.length > 0) {
       try {
         const firstAsset = session.data.assets[0];
         
-        // Para operações de troca, calcular cotação entre as moedas
-         if (session.data.type === OperationType.EXCHANGE) {
-           // Para troca USDT/EUR, mostrar cotação USDT em EUR
-           if (firstAsset === AssetType.USDT || firstAsset === AssetType.USDC) {
-             const rates = await this.currencyApiService.getCurrentRates();
-             if (rates.USDBRL && rates.EURBRL) {
-               const usdInBrl = parseFloat(rates.USDBRL.bid);
-               const eurInBrl = parseFloat(rates.EURBRL.bid);
-               const usdInEur = usdInBrl / eurInBrl; // USD para EUR
-               
-               suggestedPriceButton = Markup.button.callback(
-                 `💡 Usar Cotação Atual: € ${usdInEur.toFixed(4)}`,
-                 `op_use_suggested_price_${usdInEur.toFixed(4)}`
-               );
-               suggestedPriceText = `\n💡 **Sugestão baseada na cotação atual:** € ${usdInEur.toFixed(4)}\n`;
-             }
-           }
-           // Para troca EUR/USD, mostrar cotação EUR em USD
-           else if (firstAsset === AssetType.EURO) {
-             const rates = await this.currencyApiService.getCurrentRates();
-             if (rates.EURBRL && rates.USDBRL) {
-               const eurInBrl = parseFloat(rates.EURBRL.bid);
-               const usdInBrl = parseFloat(rates.USDBRL.bid);
-               const eurInUsd = eurInBrl / usdInBrl; // EUR para USD
-               
-               suggestedPriceButton = Markup.button.callback(
-                 `💡 Usar Cotação Atual: $ ${eurInUsd.toFixed(4)}`,
-                 `op_use_suggested_price_${eurInUsd.toFixed(4)}`
-               );
-               suggestedPriceText = `\n💡 **Sugestão baseada na cotação atual:** $ ${eurInUsd.toFixed(4)}\n`;
-             }
-           } else {
-             // Para outros ativos em troca, usar cotação normal
-             const suggestedPrice = await this.currencyApiService.getSuggestedPrice(firstAsset);
-             if (suggestedPrice) {
-               suggestedPriceButton = Markup.button.callback(
-                 `💡 Usar Cotação Atual: R$ ${suggestedPrice.toFixed(2)}`,
-                 `op_use_suggested_price_${suggestedPrice.toFixed(2)}`
-               );
-               suggestedPriceText = `\n💡 **Sugestão baseada na cotação atual:** R$ ${suggestedPrice.toFixed(2)}\n`;
-             }
-           }
-         } else {
-          // Para operações normais (compra/venda), usar cotação em BRL
-          const suggestedPrice = await this.currencyApiService.getSuggestedPrice(firstAsset);
-          if (suggestedPrice) {
-            suggestedPriceButton = Markup.button.callback(
-              `💡 Usar Cotação Atual: R$ ${suggestedPrice.toFixed(2)}`,
-              `op_use_suggested_price_${suggestedPrice.toFixed(2)}`
-            );
-            suggestedPriceText = `\n💡 **Sugestão baseada na cotação atual:** R$ ${suggestedPrice.toFixed(2)}\n`;
+        // Buscar cotação da API atual
+        if (session.data.type === OperationType.EXCHANGE) {
+          // Para operações de troca, calcular cotação entre as moedas
+          if (firstAsset === AssetType.USDT || firstAsset === AssetType.USDC) {
+            const rates = await this.currencyApiService.getCurrentRates();
+            if (rates.USDBRL && rates.EURBRL) {
+              const usdInBrl = parseFloat(rates.USDBRL.bid);
+              const eurInBrl = parseFloat(rates.EURBRL.bid);
+              apiCurrentPrice = usdInBrl / eurInBrl; // USD para EUR
+            }
+          } else if (firstAsset === AssetType.EURO) {
+            const rates = await this.currencyApiService.getCurrentRates();
+            if (rates.EURBRL && rates.USDBRL) {
+              const eurInBrl = parseFloat(rates.EURBRL.bid);
+              const usdInBrl = parseFloat(rates.USDBRL.bid);
+              apiCurrentPrice = eurInBrl / usdInBrl; // EUR para USD
+            }
+          } else {
+            apiCurrentPrice = await this.currencyApiService.getSuggestedPrice(firstAsset);
           }
+        } else {
+          // Para operações normais (compra/venda), usar cotação em BRL
+          apiCurrentPrice = await this.currencyApiService.getSuggestedPrice(firstAsset);
         }
+
+        // Buscar cotação da Binance
+        try {
+          const symbolMap = {
+            [AssetType.USDT]: 'USDTBRL',
+            [AssetType.USDC]: 'USDTBRL', // Fallback para USDT
+            [AssetType.BTC]: 'BTCBRL',
+            [AssetType.ETH]: 'ETHBRL',
+            [AssetType.USDE]: 'USDTBRL' // Fallback para USDT
+          };
+
+          const binanceSymbol = symbolMap[firstAsset];
+          if (binanceSymbol) {
+            const priceData = await this.binancePriceService.getPrice(binanceSymbol);
+            if (priceData) {
+              binancePrice = priceData.price;
+            }
+          }
+        } catch (error) {
+          this.logger.warn('Erro ao obter cotação da Binance:', error);
+        }
+
+        // Criar texto informativo sobre as cotações
+         if (apiCurrentPrice || binancePrice) {
+           suggestedPriceText = `\n💡 **Cotações Disponíveis:**\n`;
+           
+           if (apiCurrentPrice) {
+             const currency = session.data.type === OperationType.EXCHANGE ? 
+               (firstAsset === AssetType.EURO ? '$' : '€') : 'R$';
+             suggestedPriceText += `🌐 **AwesomeAPI:** ${currency} ${apiCurrentPrice.toFixed(session.data.type === OperationType.EXCHANGE ? 4 : 2)}\n`;
+           }
+           
+           if (binancePrice) {
+             suggestedPriceText += `🟡 **Binance:** R$ ${binancePrice.toFixed(2)}\n`;
+           }
+           
+           suggestedPriceText += `\n`;
+         }
       } catch (error) {
-        this.logger.warn('Erro ao obter cotação sugerida:', error);
+        this.logger.warn('Erro ao obter cotações:', error);
       }
     }
 
-    // Criar teclado com ou sem botão de sugestão
+    // Criar teclado com botões de cotação
     const keyboardButtons: any[] = [];
     
-    if (suggestedPriceButton) {
-      keyboardButtons.push([suggestedPriceButton]);
+    // Adicionar botões de cotação se disponíveis
+     if (apiCurrentPrice) {
+       const currency = session?.data.type === OperationType.EXCHANGE ? 
+         (session.data.assets?.[0] === AssetType.EURO ? '$' : '€') : 'R$';
+       keyboardButtons.push([{
+         text: `🌐 Usar AwesomeAPI: ${currency} ${apiCurrentPrice.toFixed(session?.data.type === OperationType.EXCHANGE ? 4 : 2)}`,
+         callback_data: `op_use_suggested_price_${apiCurrentPrice.toFixed(session?.data.type === OperationType.EXCHANGE ? 4 : 2)}`
+       }]);
+     }
+    
+    if (binancePrice) {
+      keyboardButtons.push([{
+        text: `🟡 Usar Binance: R$ ${binancePrice.toFixed(2)}`,
+        callback_data: `op_use_binance_price_${binancePrice.toFixed(2)}`
+      }]);
     }
     
     keyboardButtons.push([
@@ -1917,7 +2118,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       `QTD: ${formattedAmount}${currencySuffix}\n\n` +
       `💵 **COTAÇÃO MANUAL**\n` +
       suggestedPriceText +
-      `Digite o preço unitário em ${priceCurrency} ou use a sugestão acima:\n\n` +
+      `Digite o preço unitário em ${priceCurrency} ou use uma das opções acima:\n\n` +
       `Exemplo: ${priceExample}`,
       { parse_mode: 'Markdown', ...keyboard }
     );
@@ -1946,7 +2147,9 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     const assetsText = session?.data.assets?.join(', ') || 'Nenhum';
     const networksText = session?.data.networks?.map(n => n.toUpperCase()).join(', ') || 'Nenhuma';
     const paymentText = session?.data.paymentMethods?.join(', ') || 'Nenhum';
-    const quotationText = session?.data.quotationType === QuotationType.MANUAL ? 'Manual' : '🔍GOOGLE';
+    const quotationText = session?.data.quotationType === QuotationType.MANUAL ? 'Manual' : 
+                         session?.data.quotationType === QuotationType.GOOGLE ? '🌐 GOOGLE' :
+                         session?.data.quotationType === QuotationType.BINANCE ? '🟡 BINANCE' : 'Automática';
     
     // Determinar texto baseado no tipo de operação
     const actionText = session?.data.type === OperationType.BUY ? 'comprar' : session?.data.type === OperationType.SELL ? 'vender' : 'negociar';
@@ -2019,8 +2222,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         }
       }
       
-      // Para cotação Google, usar preço 0 pois será calculado na transação
-      const price = session.data.quotationType === QuotationType.GOOGLE ? 0 : (session.data.price || 0);
+      // Para cotação Google ou Binance, usar preço 0 pois será calculado na transação
+      const price = (session.data.quotationType === QuotationType.GOOGLE || session.data.quotationType === QuotationType.BINANCE) ? 0 : (session.data.price || 0);
       
       // Definir grupo específico para operações criadas no privado usando variável de ambiente
       const specificGroupId = parseInt(process.env.TELEGRAM_GROUP_ID || '-1002907400287');
@@ -2050,7 +2253,13 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
         amount: session.data.amount!,
         price: price,
         quotationType: session.data.quotationType!,
+        // Persistir origem da cotação manual quando disponível
+        // (para Google/Binance automáticas, fonte é derivada do tipo)
+        // Apenas setar quando existir na sessão
+        // @ts-ignore - campo será aceito no DTO ajustado
+        quotationSource: session.data.quotationSource,
         description,
+        paymentMethods: session.data.paymentMethods,
       });
 
       // Enviar mensagem de confirmação com botões de controle
@@ -2061,7 +2270,9 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       // Calcular total e formatação
       const total = operation.amount * operation.price;
       const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
-      const quotationText = operation.quotationType === 'google' ? '🔍GOOGLE' : operation.quotationType.toUpperCase();
+      const quotationText = operation.quotationType === 'google' ? '🌐 GOOGLE' : 
+                           operation.quotationType === 'binance' ? '🟡 BINANCE' : 
+                           operation.quotationType.toUpperCase();
       
       // Formatação da data de expiração
       const expirationDate = new Date(operation.expiresAt);
@@ -2072,28 +2283,69 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
       const expiresIn = `${diffHours}h ${diffMinutes}m`;
       
       let confirmationMessage = (
-        `✅ **Operação Concluída!**\n\n` +
+        `✅ **Operação Criada!**\n\n` +
         `${typeEmoji} **${typeText} ${assetsText}**\n` +
         `Redes: ${networksText}\n`
       );
       
-      // Só mostrar cotação se for Google
-      if (operation.quotationType === 'google') {
-        confirmationMessage += `**Cotação:** ${quotationText}\n`;
+      // Exibir cotação e fonte quando for Google ou Binance
+      if (operation.quotationType === 'google' || operation.quotationType === 'binance') {
+        confirmationMessage += `**Cotação:** (calculada na transação)\n`;
+        const fonte = operation.quotationType === 'google' ? '🌐 Google' : '🟡 Binance';
+        confirmationMessage += `**Fonte:** ${fonte}\n`;
       }
       
-      confirmationMessage += `**Quantidade:** ${operation.amount} (total)\n\n`;
+      confirmationMessage += `**Quantidade:** ${operation.amount} (total)\n`;
       
-      if (operation.quotationType !== 'google') {
+      // Adicionar métodos de pagamento se existirem
+      if (operation.paymentMethods && operation.paymentMethods.length > 0) {
+        confirmationMessage += `💳 **Métodos de Pagamento:** ${operation.paymentMethods.join(', ')}\n`;
+      }
+      
+      confirmationMessage += `\n`;
+      
+      if (operation.quotationType === 'manual') {
         const assetsText = operation.assets.join(', ');
         const buyText = operation.type === 'buy' ? `${operation.amount} ${assetsText}` : `${operation.amount} ${assetsText}`;
         const payText = operation.type === 'buy' ? `R$ ${total.toFixed(2)}` : `R$ ${total.toFixed(2)}`;
         const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
         
+        // Setas conforme lógica: pagar >, receber <, vender >, comprar <
+        // CORREÇÃO: Para VENDA, o usuário RECEBE dinheiro (não paga)
+        const arrowIcon = operation.type === 'buy' ? '⬅️' : '➡️'; // comprar ⬅️, vender ➡️
+        const paymentArrow = operation.type === 'buy' ? '➡️' : '⬅️'; // pagar ➡️, receber ⬅️
+        const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
+        
         confirmationMessage += (
-          `⬅️ **${actionText}:** ${buyText}\n` +
-          `➡️ **Quero pagar:** ${payText}\n` +
-          `💱 **Cotação:** ${operation.price.toFixed(2)}\n\n`
+          `${arrowIcon} **${actionText}:** ${buyText}\n` +
+          `${paymentArrow} **${paymentText}:** ${payText}\n` +
+          `💱 **Cotação:** R$ ${operation.price.toFixed(2)}\n\n`
+        );
+      } else if (operation.quotationType === 'google') {
+        const assetsText = operation.assets.join(', ');
+        const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
+        const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
+        
+        const arrowIcon = operation.type === 'buy' ? '⬅️' : '➡️';
+        const paymentArrow = operation.type === 'buy' ? '➡️' : '⬅️';
+        
+        confirmationMessage += (
+          `${arrowIcon} **${actionText}:** ${operation.amount} ${assetsText}\n` +
+          `${paymentArrow} **${paymentText}:** Calculado na hora\n` +
+          `💱 **Cotação:** 🌐 Google\n\n`
+        );
+      } else if (operation.quotationType === 'binance') {
+        const assetsText = operation.assets.join(', ');
+        const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
+        const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
+        
+        const arrowIcon = operation.type === 'buy' ? '⬅️' : '➡️';
+        const paymentArrow = operation.type === 'buy' ? '➡️' : '⬅️';
+        
+        confirmationMessage += (
+          `${arrowIcon} **${actionText}:** ${operation.amount} ${assetsText}\n` +
+          `${paymentArrow} **${paymentText}:** Calculado na hora\n` +
+          `💱 **Cotação:** 🟡 Binance\n\n`
         );
       }
       
