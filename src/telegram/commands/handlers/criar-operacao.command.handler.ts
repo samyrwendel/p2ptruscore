@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Markup } from 'telegraf';
 import { Types } from 'mongoose';
 import { InjectBot } from 'nestjs-telegraf';
@@ -35,6 +35,7 @@ import {
   interface OperationSession {
     step: 'type' | 'assets_networks' | 'amount_quotation' | 'price' | 'payment' | 'description' | 'description_payment' | 'confirmation';
     messageId?: number;
+    timestamp: number; // Para cleanup
     data: {
       type?: OperationType;
       assets?: AssetType[];
@@ -49,10 +50,11 @@ import {
   }
 
 @Injectable()
-export class CriarOperacaoCommandHandler implements ITextCommandHandler {
+export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModuleDestroy {
   private readonly logger = new Logger(CriarOperacaoCommandHandler.name);
   command = /^\/(criaroperacao|iniciar)(?:@\w+)?$/;
   private sessions = new Map<string, OperationSession>();
+  private cleanupTimer: NodeJS.Timeout;
 
   constructor(
     private readonly operationsService: OperationsService,
@@ -66,7 +68,36 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     private readonly keyboardService: TelegramKeyboardService,
     private readonly popupStateService: PopupStateService,
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
-  ) {}
+  ) {
+    // Limpar sessões antigas a cada 10 minutos
+    this.cleanupTimer = setInterval(() => this.cleanupExpiredSessions(), 10 * 60 * 1000);
+  }
+
+  onModuleDestroy() {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.logger.log('Cleanup timer cleared');
+    }
+    // Limpar todas as sessões
+    this.sessions.clear();
+  }
+
+  private cleanupExpiredSessions(): void {
+    const now = Date.now();
+    const expiryTime = 60 * 60 * 1000; // 1 hora
+    let cleaned = 0;
+
+    for (const [key, session] of this.sessions.entries()) {
+      if (now - session.timestamp > expiryTime) {
+        this.sessions.delete(key);
+        cleaned++;
+      }
+    }
+
+    if (cleaned > 0) {
+      this.logger.log(`Cleaned ${cleaned} expired sessions`);
+    }
+  }
 
   async handle(ctx: TextCommandContext): Promise<void> {
     if (ctx.chat.type !== 'private') {
@@ -82,6 +113,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     // Iniciar nova sessão
     this.sessions.set(sessionKey, {
       step: 'type',
+      timestamp: Date.now(),
       data: {},
     });
 
@@ -119,6 +151,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler {
     const sessionKey = `${ctx.from.id}_${ctx.message?.chat?.id || ctx.chat?.id}`;
     const session: OperationSession = {
       step: 'assets_networks',
+      timestamp: Date.now(),
       data: { type: operationType, assets: [], networks: [] },
     };
     this.sessions.set(sessionKey, session);

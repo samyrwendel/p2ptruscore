@@ -1,27 +1,32 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { OperationsService } from './operations.service';
+import { PendingEvaluationService } from './pending-evaluation.service';
 
 @Injectable()
 export class OperationsSchedulerService {
   private readonly logger = new Logger(OperationsSchedulerService.name);
 
-  constructor(private readonly operationsService: OperationsService) {}
+  constructor(
+    private readonly operationsService: OperationsService,
+    private readonly pendingEvaluationService: PendingEvaluationService,
+  ) {}
 
   // Executa a limpeza de operações expiradas a cada 30 minutos
   @Cron(CronExpression.EVERY_30_MINUTES)
   async handleExpiredOperationsCleanup() {
     this.logger.log('Iniciando limpeza de operações expiradas...');
-    
+
     try {
       await this.operationsService.cleanupExpiredOperations();
+
+      // Limpar avaliações pendentes órfãs
       try {
-        const { PendingEvaluationService } = require('./pending-evaluation.service');
-        const svc: typeof PendingEvaluationService = (global as any).pendingEvalServiceInstance;
-        if (svc && typeof svc.cleanupOrphanPendings === 'function') {
-          await svc.cleanupOrphanPendings();
-        }
-      } catch (_) {}
+        await this.pendingEvaluationService.cleanupOrphanPendings();
+      } catch (error) {
+        this.logger.warn('Erro ao limpar avaliações pendentes órfãs:', error);
+      }
+
       this.logger.log('Limpeza de operações expiradas concluída com sucesso');
     } catch (error) {
       this.logger.error('Erro durante a limpeza de operações expiradas:', error);

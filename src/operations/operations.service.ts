@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { OperationsRepository } from './operations.repository';
 import { OperationsBroadcastService } from './operations-broadcast.service';
@@ -149,7 +149,10 @@ export class OperationsService {
     );
 
     if (!updatedOperation) {
-      throw new BadRequestException('Erro ao aceitar operação');
+      throw new ConflictException(
+        '❌ Esta operação já foi aceita por outro usuário ou não está mais disponível.\n\n' +
+        '💡 **Dica:** Use `/operacoes-disponiveis` para ver operações abertas.'
+      );
     }
 
     this.logger.log(

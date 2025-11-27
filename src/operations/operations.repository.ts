@@ -46,12 +46,26 @@ export class OperationsRepository extends AbstractRepository<Operation> {
     operationId: Types.ObjectId,
     acceptorId: Types.ObjectId,
   ): Promise<Operation | null> {
+    // Atomic update com condições para prevenir race conditions
+    // Só atualiza se:
+    // 1. Status é PENDING
+    // 2. acceptor não existe ou é null
+    // 3. Operação não expirou
     return this.model
-      .findByIdAndUpdate(
-        operationId,
+      .findOneAndUpdate(
+        {
+          _id: operationId,
+          status: OperationStatus.PENDING,
+          $or: [
+            { acceptor: { $exists: false } },
+            { acceptor: null }
+          ],
+          expiresAt: { $gt: new Date() } // Garantir que não expirou
+        },
         {
           acceptor: acceptorId,
           status: OperationStatus.ACCEPTED,
+          acceptedAt: new Date(),
         },
         { new: true },
       )

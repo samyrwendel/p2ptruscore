@@ -183,7 +183,13 @@ export class Operation extends AbstractDocument {
 
 export const OperationSchema = SchemaFactory.createForClass(Operation);
 
+// Índices simples
 OperationSchema.index({ creator: 1 });
-OperationSchema.index({ group: 1, status: 1 });
-OperationSchema.index({ status: 1, expiresAt: 1 });
 OperationSchema.index({ acceptor: 1 });
+
+// Índices compostos para queries frequentes
+OperationSchema.index({ creator: 1, status: 1 }); // Minhas operações por status
+OperationSchema.index({ acceptor: 1, status: 1 }); // Operações aceitas por status
+OperationSchema.index({ group: 1, status: 1, createdAt: -1 }); // Operações do grupo ordenadas
+OperationSchema.index({ status: 1, expiresAt: 1 }); // Cleanup de expiradas
+OperationSchema.index({ status: 1, createdAt: -1 }); // Operações por status e data

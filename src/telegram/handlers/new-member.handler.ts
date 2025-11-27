@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf, Context } from 'telegraf';
 import { Update } from 'telegraf/types';
@@ -8,7 +8,7 @@ import { GroupsService } from '../../groups/groups.service';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class NewMemberHandler {
+export class NewMemberHandler implements OnModuleDestroy {
   private readonly logger = new Logger(NewMemberHandler.name);
   private readonly pendingAcceptances = new Map<string, {
     userId: number;
@@ -16,6 +16,8 @@ export class NewMemberHandler {
     messageId: number;
     timestamp: number;
   }>();
+  private cleanupTimer: NodeJS.Timeout;
+  private readonly removalTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
@@ -25,7 +27,22 @@ export class NewMemberHandler {
     private readonly configService: ConfigService,
   ) {
     // Limpar pendências antigas a cada 5 minutos
-    setInterval(() => this.cleanupExpiredPendencies(), 5 * 60 * 1000);
+    this.cleanupTimer = setInterval(() => this.cleanupExpiredPendencies(), 5 * 60 * 1000);
+  }
+
+  onModuleDestroy() {
+    // Limpar interval de cleanup
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.logger.log('Cleanup timer cleared');
+    }
+
+    // Limpar todos os timeouts de remoção pendentes
+    for (const [key, timeout] of this.removalTimers.entries()) {
+      clearTimeout(timeout);
+      this.logger.log(`Removal timer cleared for ${key}`);
+    }
+    this.removalTimers.clear();
   }
 
   private async notifyAdminChannel(message: string): Promise<void> {
@@ -218,9 +235,14 @@ export class NewMemberHandler {
       }
 
       // Agendar remoção automática após 5 minutos
-      setTimeout(() => {
+      const timerKey = `${userId}_${chatId}`;
+      const removalTimer = setTimeout(() => {
         this.checkAndRemoveUser(userId, chatId);
+        this.removalTimers.delete(timerKey); // Remover timer após execução
       }, 5 * 60 * 1000); // 5 minutos
+
+      // Armazenar referência do timer para cleanup
+      this.removalTimers.set(timerKey, removalTimer);
 
     } catch (error) {
       this.logger.error(`Erro ao apresentar termos para usuário ${userId}:`, error);
@@ -389,6 +411,13 @@ export class NewMemberHandler {
         // Usuário aceitou, remover da lista de pendências e limpar mensagem
         this.pendingAcceptances.delete(pendingKey);
         await this.cleanupTermsMessage(userId, pending.messageId);
+
+        // Limpar timer de remoção já que usuário aceitou
+        const timer = this.removalTimers.get(pendingKey);
+        if (timer) {
+          clearTimeout(timer);
+          this.removalTimers.delete(pendingKey);
+        }
         return;
       }
 
