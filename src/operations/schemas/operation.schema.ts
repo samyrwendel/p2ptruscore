@@ -79,9 +79,6 @@ export class Operation extends AbstractDocument {
   @Prop({ type: Types.ObjectId, ref: User.name })
   acceptor?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: User.name })
-  acceptedBy?: Types.ObjectId;
-
   @Prop({ type: Types.ObjectId, ref: Group.name, required: false })
   group?: Types.ObjectId;
 
@@ -137,13 +134,19 @@ export class Operation extends AbstractDocument {
   transactionDetails?: string; // Detalhes da transação fornecidos pelo solicitante
 
   @Prop({ type: Types.ObjectId, ref: User.name })
-  disputedBy?: Types.ObjectId; // Quem contestou a operação
+  disputedBy?: Types.ObjectId;
 
   @Prop()
-  disputedAt?: Date; // Quando foi contestada
+  disputedAt?: Date;
 
   @Prop({ maxlength: 500 })
-  disputeReason?: string; // Motivo da contestação
+  disputeReason?: string;
+
+  @Prop({ enum: OperationStatus })
+  previousStatus?: OperationStatus;
+
+  @Prop({ default: false })
+  wasReverted?: boolean;
 
   @Prop({ maxlength: 200 })
   transactionHash?: string; // Hash da transação blockchain

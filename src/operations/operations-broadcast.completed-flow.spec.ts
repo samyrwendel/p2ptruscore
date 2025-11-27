@@ -31,7 +31,7 @@ describe('OperationsBroadcastService completed flow', () => {
       quotationType: 'manual',
       group: 'g1',
       creator: 'u1',
-      acceptedBy: 'u2',
+      acceptor: 'u2',
       messageId: 55
     }
 

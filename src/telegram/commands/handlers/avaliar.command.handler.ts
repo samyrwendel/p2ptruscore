@@ -11,6 +11,7 @@ import { Telegraf, Context } from 'telegraf';
 import { Update } from 'telegraf/types';
 import { getReputationInfo } from '../../../shared/reputation.utils';
 import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
+import { convertStarsToKarma } from '../../../shared/karma-config.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -737,7 +738,7 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
       const comentario = 'Avaliação via sistema P2P';
       
       // Calcular pontos baseado na conversão correta de estrelas
-      const pontos = this.convertStarsToKarma(starRating);
+      const pontos = convertStarsToKarma(starRating);
       
       // Buscar usuário avaliado
       const evaluatedUser = await this.usersService.findById(pendingEvaluation.target.toString());
@@ -1057,11 +1058,5 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
   hasActiveSession(sessionKey: string): boolean {
     const userId = sessionKey.split('_')[0];
     return this.pendingCustomComments.has(userId);
-  }
-
-  private convertStarsToKarma(stars: number): number {
-    // Usar configuração centralizada para conversão de estrelas
-    const { convertStarsToKarma } = require('../../../shared/karma-config.utils');
-    return convertStarsToKarma(stars);
   }
 }

@@ -807,15 +807,12 @@ export class OperationsBroadcastService {
       
       const creator = await this.usersService.findById(operation.creator.toString());
       
-      // Verificar tanto acceptedBy quanto acceptor
       let acceptor: any = null;
-      if (operation.acceptedBy) {
-        acceptor = await this.usersService.findById(operation.acceptedBy.toString());
-      } else if (operation.acceptor) {
+      if (operation.acceptor) {
         acceptor = await this.usersService.findById(operation.acceptor.toString());
       }
       
-      this.logger.log(`Operation completion - Creator: ${creator?._id}, Acceptor: ${acceptor?._id}, AcceptedBy: ${operation.acceptedBy}, AcceptorField: ${operation.acceptor}`);
+      this.logger.log(`Operation completion - Creator: ${creator?._id}, Acceptor: ${acceptor?._id}`);
 
       if (!group || !creator) {
         this.logger.warn('Missing data for operation completion notification');

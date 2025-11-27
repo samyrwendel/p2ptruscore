@@ -274,7 +274,14 @@ export class OperationsService {
     reason?: string
   ): Promise<Operation> {
     const operation = await this.getOperationById(operationId);
-    const updatedOperation = await this.operationsRepository.updateOperation(operationId, { status: OperationStatus.ACCEPTED });
+    const statusToRestore = operation.previousStatus || OperationStatus.ACCEPTED;
+    const updatedOperation = await this.operationsRepository.updateOperation(operationId, { 
+      status: statusToRestore,
+      previousStatus: undefined,
+      disputedBy: undefined,
+      disputedAt: undefined,
+      disputeReason: undefined
+    });
     if (!updatedOperation) {
       throw new BadRequestException('Erro ao remover disputa (admin)');
     }

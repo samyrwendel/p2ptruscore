@@ -74,6 +74,7 @@ export class OperationsRepository extends AbstractRepository<Operation> {
         operationId,
         { 
           status: OperationStatus.PENDING,
+          wasReverted: true,
           $unset: { acceptor: 1 } // Remove o campo acceptor
         },
         { new: true },
@@ -86,10 +87,16 @@ export class OperationsRepository extends AbstractRepository<Operation> {
     complainantId: Types.ObjectId,
     reason: string,
   ): Promise<Operation | null> {
+    const operation = await this.model.findById(operationId).exec();
+    if (!operation) {
+      return null;
+    }
+
     return this.model
       .findByIdAndUpdate(
         operationId,
         {
+          previousStatus: operation.status,
           status: OperationStatus.DISPUTED,
           disputedBy: complainantId,
           disputedAt: new Date(),

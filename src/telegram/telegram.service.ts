@@ -264,11 +264,12 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
       // VALIDAÇÃO GLOBAL 2: Verificar se usuário aceitou termos (exceto comandos permitidos)
       if (await this.shouldValidateTerms(ctx, text)) {
-        const hasAccepted = await this.validateUserTermsGlobally(ctx);
+        const { validateUserTermsForOperation } = await import('../shared/terms-validation.utils');
+        const hasAccepted = await validateUserTermsForOperation(ctx, this.termsAcceptanceService, 'participar');
         this.logger.log(`🔍 Resultado validação de termos para ${ctx.from.id}: ${hasAccepted ? 'APROVADO' : 'NEGADO'}`);
         if (!hasAccepted) {
           this.logger.warn(`❌ COMANDO BLOQUEADO - Usuário ${ctx.from.id} (@${ctx.from.username || 'sem_username'}) não aceitou termos - Comando: ${text}`);
-          return; // Bloquear execução do comando
+          return;
         }
       }
 
@@ -433,40 +434,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     return !isAllowedCommand;
   }
 
-  private async validateUserTermsGlobally(ctx: TextCommandContext): Promise<boolean> {
-    try {
-      // Para chat privado, usar o grupo configurado para verificar termos
-      let groupIdToCheck = ctx.chat.id;
-      
-      if (ctx.chat.type === 'private') {
-        const configuredGroupId = parseInt(process.env.TELEGRAM_GROUP_ID || '0');
-        if (configuredGroupId !== 0) {
-          groupIdToCheck = configuredGroupId;
-        }
-      }
-      
-      const hasAccepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(
-        ctx.from.id,
-        groupIdToCheck
-      );
 
-      if (!hasAccepted) {
-        // Verificar se é um usuário existente (tem karma/histórico no sistema)
-        const isLegacyUser = await this.isLegacyUser(ctx.from.id);
-        
-        // Apresentar notificação visual de termos para aceite
-        await this.sendTermsNotification(ctx, isLegacyUser);
-        
-        this.logger.log(`🚫 Comando bloqueado para usuário ${ctx.from.id} - termos não aceitos`);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      this.logger.error(`Erro na validação global de termos para usuário ${ctx.from.id}:`, error);
-      return false;
-    }
-  }
 
   private async isLegacyUser(userId: number): Promise<boolean> {
     try {
@@ -663,9 +631,10 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
       // Validar termos apenas para callbacks que não são de notificação
       if (await this.shouldValidateTermsForCallback(ctx)) {
-        const hasAccepted = await this.validateUserTermsForCallback(ctx);
+        const { validateUserTermsForCallback } = await import('../shared/terms-validation.utils');
+        const hasAccepted = await validateUserTermsForCallback(ctx, this.termsAcceptanceService, 'participar');
         if (!hasAccepted) {
-          return; // Bloquear execução do callback
+          return;
         }
       }
 
@@ -756,64 +725,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     return !isAllowedCallback && ctx.callbackQuery?.message?.chat?.type !== 'private';
   }
 
-  private async validateUserTermsForCallback(ctx: any): Promise<boolean> {
-    try {
-      const hasAccepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(
-        ctx.from.id,
-        ctx.callbackQuery.message.chat.id
-      );
 
-      if (!hasAccepted) {
-        await ctx.answerCbQuery(
-          `🚫 Você precisa aceitar os termos de responsabilidade primeiro!\n\n` +
-          `📋 PARA CONTINUAR:\n` +
-          `1️⃣ Use o comando /termos\n` +
-          `2️⃣ Aceite os termos`,
-          { show_alert: true }
-        );
-        
-        // Enviar mensagem com botão para aceitar termos
-        const keyboard = {
-          inline_keyboard: [
-            [
-              {
-                text: '✅ Aceitar Termos',
-                callback_data: `accept_terms_${ctx.from.id}_${ctx.callbackQuery.message.chat.id}`
-              }
-            ]
-          ]
-        };
-        
-        await ctx.reply(
-          `🚫 **ACESSO NEGADO**\n\n` +
-          `❌ Você precisa aceitar os termos de responsabilidade primeiro!\n\n` +
-          `👇 Clique no botão abaixo para aceitar:`,
-          { 
-            parse_mode: 'Markdown',
-            reply_markup: keyboard
-          }
-        );
-        
-        // Apresentar termos diretamente
-        const fakeTextCtx = {
-          ...ctx,
-          message: { text: '/termos', chat: ctx.callbackQuery.message.chat },
-          chat: ctx.callbackQuery.message.chat
-        } as TextCommandContext;
-        
-        await this.presentTermsForAcceptance(fakeTextCtx, await this.isLegacyUser(ctx.from.id));
-        
-        this.logger.log(`🚫 Callback bloqueado para usuário ${ctx.from.id} - apresentando termos`);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      this.logger.error(`Erro na validação de termos (callback) para usuário ${ctx.from.id}:`, error);
-      await ctx.answerCbQuery('❌ Erro na validação. Tente novamente.', { show_alert: true });
-      return false;
-    }
-  }
 
   private async deleteCommandMessage(ctx: TextCommandContext): Promise<void> {
     try {

@@ -14,6 +14,7 @@ import { AbstractRepository } from '../database/abstract.repository';
 import { User } from '../users/schemas/user.schema';
 import { Karma } from './schemas/karma.schema';
 import { TopReceivedKarmaDto } from './dto/top-received-karma.dto';
+import { convertStarsToKarma } from '../shared/karma-config.utils';
 
 type PopulatedKarma = Karma & { user: User };
 export type KarmaDocument = Document<unknown, object, Karma> & Karma;
@@ -91,7 +92,7 @@ export class KarmaRepository extends AbstractRepository<Karma> {
     evaluatorName: string,
   ) {
     // Converter estrelas para pontos de karma
-    const karmaPoints = this.convertStarsToKarma(starRating);
+    const karmaPoints = convertStarsToKarma(starRating);
     
     const filterQuery: FilterQuery<Karma> = {
       user: receiverId,
@@ -116,12 +117,6 @@ export class KarmaRepository extends AbstractRepository<Karma> {
       },
     };
     return this.upsert(filterQuery, updateQuery);
-  }
-
-  private convertStarsToKarma(stars: number): number {
-    // Usar configuração centralizada para conversão de estrelas
-    const { convertStarsToKarma } = require('../shared/karma-config.utils');
-    return convertStarsToKarma(stars);
   }
 
   async updateSenderKarmaWithComment(

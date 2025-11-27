@@ -28,6 +28,37 @@ export class NewMemberHandler {
     setInterval(() => this.cleanupExpiredPendencies(), 5 * 60 * 1000);
   }
 
+  private async notifyAdminChannel(message: string): Promise<void> {
+    try {
+      const adminChannelId = this.configService.get<string>('TELEGRAM_ADMIN_CHANNEL_ID');
+      if (!adminChannelId) {
+        this.logger.warn('TELEGRAM_ADMIN_CHANNEL_ID não configurado, notificação não enviada');
+        return;
+      }
+
+      await this.bot.telegram.sendMessage(
+        adminChannelId,
+        message,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      this.logger.error('Erro ao notificar canal admin:', error);
+    }
+  }
+
+  private async getGroupInfo(chatId: number): Promise<string> {
+    try {
+      const chat = await this.bot.telegram.getChat(chatId);
+      if ('title' in chat && chat.title) {
+        return `${chat.title} (\`${chatId}\`)`;
+      }
+      return `\`${chatId}\``;
+    } catch (error) {
+      this.logger.warn(`Não foi possível obter info do grupo ${chatId}:`, error);
+      return `\`${chatId}\``;
+    }
+  }
+
   async handleNewChatMembers(ctx: Context & { update: Update.MessageUpdate }): Promise<void> {
     try {
       const message = ctx.update.message;
@@ -85,8 +116,11 @@ export class NewMemberHandler {
   private async presentTermsToUser(userId: number, member: any, chatId: number): Promise<void> {
     try {
       const userName = member.username ? `@${member.username}` : member.first_name;
+      const botUsername = this.configService.get<string>('TELEGRAM_BOT_USERNAME') || 'p2pscorebot';
+      const deepLink = `https://t.me/${botUsername}?start=terms_${chatId}`;
+
       const termsText = this.termsAcceptanceService.getTermsText();
-      
+
       const message = (
         `🎉 **Bem-vindo(a) ao grupo, ${userName}!**\n\n` +
         `🔒 **POLÍTICA DE SEGURANÇA:** Todos os membros (incluindo quem retorna) devem aceitar os termos atuais.\n\n` +
@@ -115,7 +149,7 @@ export class NewMemberHandler {
         ]
       };
 
-      // Enviar mensagem privada primeiro (se possível)
+      // SEMPRE tentar enviar no privado
       try {
         const privateMessage = await this.bot.telegram.sendMessage(
           userId,
@@ -134,34 +168,53 @@ export class NewMemberHandler {
           timestamp: Date.now()
         });
 
-        // Log da ação sem poluir o grupo
-        this.logger.log(`Termos enviados no privado para ${userName} (${userId}) no grupo ${chatId}`);
+        // Log da ação
+        this.logger.log(`✅ Termos enviados no privado para ${userName} (${userId}) no grupo ${chatId}`);
+
+        // Notificar canal admin
+        const groupInfo = await this.getGroupInfo(chatId);
+        await this.notifyAdminChannel(
+          `📋 **Termos Enviados**\n\n` +
+          `👤 **Usuário:** ${userName}\n` +
+          `🆔 **ID:** \`${userId}\`\n` +
+          `🏢 **Grupo:** ${groupInfo}\n` +
+          `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n` +
+          `✅ **Status:** Enviado no privado com sucesso`
+        );
 
       } catch (privateError) {
-        // Se não conseguir enviar no privado, orientar a abrir PV do bot e usar /termos
-        this.logger.warn(`Não foi possível enviar mensagem privada para ${userId}, orientando abrir PV`);
-        const botUsername = this.configService.get<string>('TELEGRAM_BOT_USERNAME') || 'p2pscorebot';
-        const deepLink = `https://t.me/${botUsername}?start=terms_${chatId}`;
-        const instruction = (
-          `🔒 **Aceite de Termos no Privado**\n\n` +
-          `Não foi possível enviar os termos no seu privado.\n` +
-          `Por favor, abra o chat com o bot e envie o comando \`/termos\` para aceitar.\n\n` +
-          `📩 Clique no botão abaixo para abrir o PV do bot.`
+        // Se não conseguir enviar no privado, apenas logar e registrar pendência
+        // O usuário precisará usar /termos ou /start no privado do bot
+        this.logger.warn(
+          `⚠️ Não foi possível enviar termos no privado para ${userId}. ` +
+          `Usuário deve abrir PV do bot e usar /termos ou /start. ` +
+          `Deep link: ${deepLink}`
         );
-        const groupMessage = await this.bot.telegram.sendMessage(
-          chatId,
-          instruction,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: { inline_keyboard: [[{ text: '📩 Abrir PV do Bot', url: deepLink }]] }
-          }
-        );
+
+        // Registrar pendência mesmo sem enviar mensagem
+        // Isso garante que o usuário será removido se não aceitar os termos
         this.pendingAcceptances.set(`${userId}_${chatId}`, {
           userId,
           groupId: chatId,
-          messageId: groupMessage.message_id,
+          messageId: 0, // Sem mensagem enviada
           timestamp: Date.now()
         });
+
+        // Notificar canal admin sobre falha
+        const groupInfo = await this.getGroupInfo(chatId);
+        await this.notifyAdminChannel(
+          `⚠️ **Termos NÃO Enviados**\n\n` +
+          `👤 **Usuário:** ${userName}\n` +
+          `🆔 **ID:** \`${userId}\`\n` +
+          `🏢 **Grupo:** ${groupInfo}\n` +
+          `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n` +
+          `❌ **Status:** Usuário bloqueou o bot ou não iniciou conversa\n` +
+          `⏰ **Ação:** Será removido em 5 minutos se não aceitar\n\n` +
+          `🔗 **Deep Link:** ${deepLink}`
+        );
+
+        // NÃO enviar nenhuma mensagem no grupo
+        // O usuário deve descobrir por si mesmo que precisa aceitar termos
       }
 
       // Agendar remoção automática após 5 minutos
@@ -240,6 +293,9 @@ export class NewMemberHandler {
       // Remover da lista de pendências
       this.pendingAcceptances.delete(`${userId}_${groupId}`);
 
+      // Obter informações do usuário
+      const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+
       // Atualizar mensagem
       await ctx.editMessageText(
         `✅ **Termos Aceitos com Sucesso!**\n\n` +
@@ -251,6 +307,17 @@ export class NewMemberHandler {
       );
 
       await ctx.answerCbQuery('✅ Termos aceitos! Bem-vindo(a) ao grupo!');
+
+      // Notificar canal admin sobre aceitação
+      const groupInfo = await this.getGroupInfo(groupId);
+      await this.notifyAdminChannel(
+        `✅ **Termos Aceitos**\n\n` +
+        `👤 **Usuário:** ${userName}\n` +
+        `🆔 **ID:** \`${userId}\`\n` +
+        `🏢 **Grupo:** ${groupInfo}\n` +
+        `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n` +
+        `🎉 **Status:** Usuário aceitou os termos e pode participar do grupo`
+      );
 
       // Enviar mensagem de boas-vindas no privado
       try {
@@ -268,6 +335,9 @@ export class NewMemberHandler {
 
   private async processTermsRejection(ctx: any, userId: number, groupId: number): Promise<void> {
     try {
+      // Obter informações do usuário
+      const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+
       // Atualizar mensagem
       await ctx.editMessageText(
         `❌ **Termos Não Aceitos**\n\n` +
@@ -278,6 +348,17 @@ export class NewMemberHandler {
       );
 
       await ctx.answerCbQuery('❌ Termos rejeitados. Você será removido do grupo.');
+
+      // Notificar canal admin sobre rejeição
+      const groupInfo = await this.getGroupInfo(groupId);
+      await this.notifyAdminChannel(
+        `❌ **Termos Rejeitados**\n\n` +
+        `👤 **Usuário:** ${userName}\n` +
+        `🆔 **ID:** \`${userId}\`\n` +
+        `🏢 **Grupo:** ${groupInfo}\n` +
+        `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n` +
+        `🚫 **Status:** Usuário rejeitou os termos e será removido do grupo`
+      );
 
       // Remover usuário do grupo
       await this.removeUserFromGroup(userId, groupId, 'Termos de responsabilidade rejeitados');
@@ -313,10 +394,21 @@ export class NewMemberHandler {
 
       // Usuário não respondeu no tempo limite, remover do grupo
       await this.removeUserFromGroup(userId, groupId, 'Tempo limite para aceitar os termos expirado');
-      
+
+      // Notificar canal admin sobre remoção por timeout
+      const groupInfo = await this.getGroupInfo(groupId);
+      await this.notifyAdminChannel(
+        `⏰ **Usuário Removido por Timeout**\n\n` +
+        `🆔 **ID:** \`${userId}\`\n` +
+        `🏢 **Grupo:** ${groupInfo}\n` +
+        `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n` +
+        `⚠️ **Motivo:** Não aceitou os termos em 5 minutos\n` +
+        `🚫 **Status:** Removido automaticamente do grupo`
+      );
+
       // Limpar mensagem de termos do privado
       await this.cleanupTermsMessage(userId, pending.messageId);
-      
+
       // Remover da lista de pendências
       this.pendingAcceptances.delete(pendingKey);
 
@@ -327,6 +419,12 @@ export class NewMemberHandler {
 
   private async cleanupTermsMessage(userId: number, messageId: number): Promise<void> {
     try {
+      // Se messageId é 0, significa que não foi enviada mensagem (usuário bloqueou bot)
+      if (messageId === 0) {
+        this.logger.log(`Sem mensagem para limpar do usuário ${userId} (não foi enviada)`);
+        return;
+      }
+
       // Tentar apagar a mensagem de termos do privado
       await this.bot.telegram.deleteMessage(userId, messageId);
       this.logger.log(`Mensagem de termos removida do privado do usuário ${userId}`);
