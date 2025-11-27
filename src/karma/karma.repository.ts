@@ -34,17 +34,19 @@ export class KarmaRepository extends AbstractRepository<Karma> {
     senderId: Types.ObjectId,
     groupId: Types.ObjectId,
     incValue: number,
+    options?: { session?: ClientSession },
   ) {
     const filterQuery: FilterQuery<Karma> = { user: senderId, group: groupId };
     const updateQuery: UpdateQuery<Karma> =
       incValue === 1 ? { $inc: { givenKarma: 1 } } : { $inc: { givenHate: 1 } };
-    return this.upsert(filterQuery, updateQuery);
+    return this.upsert(filterQuery, updateQuery, options);
   }
 
   async updateReceiverKarma(
     receiverId: Types.ObjectId,
     groupId: Types.ObjectId,
     incValue: number,
+    options?: { session?: ClientSession },
   ) {
     const filterQuery: FilterQuery<Karma> = {
       user: receiverId,
@@ -54,7 +56,7 @@ export class KarmaRepository extends AbstractRepository<Karma> {
       $inc: { karma: incValue },
       $push: { history: { karmaChange: incValue } as any },
     };
-    return this.upsert(filterQuery, updateQuery);
+    return this.upsert(filterQuery, updateQuery, options);
   }
 
   async updateReceiverKarmaWithComment(

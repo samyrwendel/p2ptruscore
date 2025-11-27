@@ -64,11 +64,13 @@ export abstract class AbstractRepository<TDocument extends AbstractDocument> {
   async upsert(
     filterQuery: FilterQuery<TDocument>,
     document: UpdateQuery<TDocument>,
+    options?: { session?: ClientSession },
   ): Promise<TDocument> {
     return this.model.findOneAndUpdate(filterQuery, document, {
       lean: true,
       upsert: true,
       new: true,
+      ...(options?.session && { session: options.session })
     }) as Promise<TDocument>;
   }
 

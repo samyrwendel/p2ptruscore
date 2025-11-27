@@ -416,24 +416,34 @@ export class OperationsService {
       if (operation.completionRequestedBy?.toString() === userId.toString()) {
         throw new BadRequestException('Você já solicitou a conclusão. Aguarde a confirmação da outra parte.');
       }
-      
-      // A outra parte está confirmando - concluir definitivamente
-      const updatedOperation = await this.operationsRepository.completeOperation(operationId);
-      
-      if (!updatedOperation) {
-        throw new BadRequestException('Erro ao concluir operação');
-      }
 
-      this.logger.log(`Operation ${operationId} completed by confirmation from user ${userId}`);
-      
-      // Notify the original requester that their completion request was accepted
+      // A outra parte está confirmando - concluir definitivamente com transação
+      const updatedOperation = await this.transactionService.withTransaction(async (session) => {
+        // 1. Atualizar status da operação para COMPLETED
+        const completed = await this.operationsRepository.completeOperation(
+          operationId,
+          session ? { session } : undefined
+        );
+
+        if (!completed) {
+          throw new BadRequestException('Erro ao concluir operação');
+        }
+
+        this.logger.log(`Operation ${operationId} completed by confirmation from user ${userId}`);
+
+        // As notificações são enviadas fora da transação para não bloquear
+        // Se falharem, a operação já está marcada como completa no banco
+
+        return completed;
+      });
+
+      // Notificações enviadas após commit da transação
       if (operation.completionRequestedBy) {
         await this.broadcastService.notifyCompletionAccepted(updatedOperation, operation.completionRequestedBy);
       }
-      
-      // Notify the group about the completion
+
       await this.broadcastService.notifyOperationCompleted(updatedOperation);
-      
+
       return updatedOperation;
     }
 

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
-import { Model, Types, Connection } from 'mongoose';
+import { Model, Types, Connection, ClientSession } from 'mongoose';
 import { AbstractRepository } from '../database/abstract.repository';
 import { Operation, OperationStatus } from './schemas/operation.schema';
 
@@ -124,24 +124,32 @@ export class OperationsRepository extends AbstractRepository<Operation> {
   async updateOperation(
     operationId: Types.ObjectId,
     updateData: Partial<Operation>,
+    options?: { session?: ClientSession },
   ): Promise<Operation | null> {
     return this.model
-      .findByIdAndUpdate(operationId, updateData, { new: true })
+      .findByIdAndUpdate(operationId, updateData, {
+        new: true,
+        ...(options?.session && { session: options.session })
+      })
       .exec();
   }
 
   async completeOperation(
     operationId: Types.ObjectId,
+    options?: { session?: ClientSession },
   ): Promise<Operation | null> {
     return this.model
       .findByIdAndUpdate(
         operationId,
-        { 
+        {
           status: OperationStatus.COMPLETED,
           completionRequestedBy: null,
           completionRequestedAt: null
         },
-        { new: true },
+        {
+          new: true,
+          ...(options?.session && { session: options.session })
+        },
       )
       .exec();
   }

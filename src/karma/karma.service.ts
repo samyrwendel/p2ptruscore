@@ -44,28 +44,35 @@ export class KarmaService {
       this.usersService.findOrCreate(receiverData),
     ]);
 
-    const [, receiverKarma] = await Promise.all([
-      this.karmaRepository.updateSenderKarma(
-        senderUserDoc._id,
-        groupDoc._id,
-        incValue,
-      ),
-      this.karmaRepository.updateReceiverKarma(
-        receiverUserDoc._id,
-        groupDoc._id,
-        incValue,
-      ),
-    ]);
+    // Usar transação para garantir que sender e receiver karma sejam atualizados atomicamente
+    const result = await this.transactionService.withTransaction(async (session) => {
+      const [, receiverKarma] = await Promise.all([
+        this.karmaRepository.updateSenderKarma(
+          senderUserDoc._id,
+          groupDoc._id,
+          incValue,
+          session ? { session } : undefined,
+        ),
+        this.karmaRepository.updateReceiverKarma(
+          receiverUserDoc._id,
+          groupDoc._id,
+          incValue,
+          session ? { session } : undefined,
+        ),
+      ]);
 
-    if (!receiverKarma) {
-      throw new Error('Failed to update receiver karma.');
-    }
+      if (!receiverKarma) {
+        throw new Error('Failed to update receiver karma.');
+      }
+
+      return receiverKarma;
+    });
 
     const receiverName = receiverUserDoc.userName
       ? `@${receiverUserDoc.userName}`
       : receiverUserDoc.firstName;
 
-    return { receiverName, newKarma: receiverKarma.karma };
+    return { receiverName, newKarma: result.karma };
   }
 
   public async transferKarma(
