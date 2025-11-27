@@ -5,6 +5,7 @@ import { UsersService } from '../../../users/users.service';
 import { PendingEvaluationService } from '../../../operations/pending-evaluation.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
+import { RateLimiterService } from '../../../shared/rate-limiter.service';
 import { ExtraReplyMessage } from 'telegraf/typings/telegram-types';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf, Context } from 'telegraf';
@@ -30,6 +31,7 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
     private readonly pendingEvaluationService: PendingEvaluationService,
     private readonly keyboardService: TelegramKeyboardService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
+    private readonly rateLimiterService: RateLimiterService,
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
@@ -78,6 +80,24 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
       return;
     }
 
+    // Rate limiting: 10 avaliações por hora
+    const rateLimit = this.rateLimiterService.checkLimit(ctx.from.id, 'evaluate_user', {
+      maxRequests: 10,
+      windowMs: 60 * 60 * 1000, // 1 hora
+    });
+
+    if (!rateLimit.allowed) {
+      const resetTime = this.rateLimiterService.formatResetTime(rateLimit.resetIn);
+      await ctx.reply(
+        `⏰ **Limite de Avaliações Atingido**\n\n` +
+        `Você pode fazer no máximo **10 avaliações por hora**.\n\n` +
+        `⏱️ **Tente novamente em:** ${resetTime}\n\n` +
+        `💡 **Dica:** Avaliações de qualidade são mais importantes que quantidade!`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
     try {
       await this.karmaService.registerEvaluation(
         ctx.from,
@@ -87,8 +107,15 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
         comentario
       );
 
+      // Mostrar quantas avaliações restam
+      const remaining = rateLimit.remaining;
+      const limitInfo = remaining > 0
+        ? `\n💫 **Você ainda pode fazer ${remaining} avaliação${remaining !== 1 ? 'ões' : ''} nesta hora.**`
+        : '';
+
       await ctx.reply(
-        `✅ Avaliação registrada: ${pontos} estrelas para @${targetUser.username || targetUser.first_name}`
+        `✅ Avaliação registrada: ${pontos} estrelas para @${targetUser.username || targetUser.first_name}${limitInfo}`,
+        { parse_mode: 'Markdown' }
       );
     } catch (error) {
       this.logger.error('Erro ao registrar avaliação:', error);
