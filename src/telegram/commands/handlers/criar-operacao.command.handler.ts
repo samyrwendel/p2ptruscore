@@ -14,6 +14,7 @@ import { GroupsService } from '../../../groups/groups.service';
 import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { PopupStateService } from '../../shared/popup-state.service';
+import { RateLimiterService } from '../../../shared/rate-limiter.service';
 import { validateUserTermsForOperation } from '../../../shared/terms-validation.utils';
 import { validateActiveMembership } from '../../../shared/group-membership.utils';
 import { getOrCreateUserFromCtx } from '../../shared/user.utils';
@@ -67,6 +68,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
     private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly keyboardService: TelegramKeyboardService,
     private readonly popupStateService: PopupStateService,
+    private readonly rateLimiterService: RateLimiterService,
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {
     // Limpar sessões antigas a cada 10 minutos
@@ -108,8 +110,29 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
       return;
     }
 
+    // Rate limiting: 5 operações por hora
+    const rateLimit = this.rateLimiterService.checkLimit(ctx.from.id, 'create_operation', {
+      maxRequests: 5,
+      windowMs: 60 * 60 * 1000, // 1 hora
+    });
+
+    if (!rateLimit.allowed) {
+      const resetTime = this.rateLimiterService.formatResetTime(rateLimit.resetIn);
+      await ctx.reply(
+        `⏰ **Limite de Operações Atingido**\n\n` +
+        `Você pode criar no máximo **5 operações por hora**.\n\n` +
+        `⏱️ **Tente novamente em:** ${resetTime}\n\n` +
+        `💡 **Dica:** Enquanto isso, você pode:\n` +
+        `• Ver operações disponíveis: /operacoes-disponiveis\n` +
+        `• Consultar suas operações: /minhas-operacoes\n` +
+        `• Ver cotações: /cotacoes`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
+
     const sessionKey = `${ctx.from.id}_${ctx.chat.id}`;
-    
+
     // Iniciar nova sessão
     this.sessions.set(sessionKey, {
       step: 'type',

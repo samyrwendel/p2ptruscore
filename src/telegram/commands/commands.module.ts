@@ -39,6 +39,7 @@ import { GroupsModule } from '../../groups/groups.module';
 import { KarmaModule } from '../../karma/karma.module';
 import { TelegramSharedModule } from '../shared/telegram-shared.module';
 import { IntegrationsModule } from '../../integrations/integrations.module';
+import { SharedModule } from '../../shared/shared.module';
 
 const commandHandlers = [
   StartCommandHandler,
@@ -78,7 +79,7 @@ const commandHandlers = [
 ];
 
 @Module({
-  imports: [OperationsModule, UsersModule, GroupsModule, KarmaModule, TelegramSharedModule, IntegrationsModule],
+  imports: [OperationsModule, UsersModule, GroupsModule, KarmaModule, TelegramSharedModule, IntegrationsModule, SharedModule],
   providers: commandHandlers,
   exports: commandHandlers,
 })
