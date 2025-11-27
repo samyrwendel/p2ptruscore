@@ -15,6 +15,7 @@ import {
 import { UsersService } from '../users/users.service';
 import { GroupsService } from '../groups/groups.service';
 import { KarmaService } from '../karma/karma.service';
+import { TransactionService } from '../shared/transaction.service';
 
 export interface CreateOperationDto {
   creatorId: Types.ObjectId;
@@ -43,6 +44,7 @@ export class OperationsService {
     private readonly groupsService: GroupsService,
     private readonly pendingEvaluationRepository: PendingEvaluationRepository,
     private readonly karmaService: KarmaService,
+    private readonly transactionService: TransactionService,
   ) {}
 
   async createOperation(dto: CreateOperationDto): Promise<Operation> {

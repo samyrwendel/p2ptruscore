@@ -5,12 +5,14 @@ import { KarmaRepository } from './karma.repository';
 import { KarmaService } from './karma.service';
 import { UsersModule } from '../users/users.module';
 import { GroupsModule } from '../groups/groups.module';
+import { SharedModule } from '../shared/shared.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Karma.name, schema: KarmaSchema }]),
     UsersModule,
     GroupsModule,
+    SharedModule,
   ],
   providers: [KarmaService, KarmaRepository],
   exports: [KarmaService],

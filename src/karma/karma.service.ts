@@ -6,6 +6,7 @@ import { User } from '../users/schemas/user.schema';
 import { Group } from '../groups/schemas/group.schema';
 import { Karma } from './schemas/karma.schema';
 import { TopReceivedKarmaDto } from './dto/top-received-karma.dto';
+import { TransactionService } from '../shared/transaction.service';
 
 interface ITelegramUser {
   id: number;
@@ -28,6 +29,7 @@ export class KarmaService {
     private readonly karmaRepository: KarmaRepository,
     private readonly usersService: UsersService,
     private readonly groupsService: GroupsService,
+    private readonly transactionService: TransactionService,
   ) {}
 
   public async updateKarma(
