@@ -15,6 +15,7 @@ import { PendingEvaluation, PendingEvaluationSchema } from './schemas/pending-ev
 import { UsersModule } from '../users/users.module';
 import { GroupsModule } from '../groups/groups.module';
 import { KarmaModule } from '../karma/karma.module';
+import { SharedModule } from '../shared/shared.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { KarmaModule } from '../karma/karma.module';
     UsersModule,
     GroupsModule,
     KarmaModule,
+    SharedModule,
   ],
   providers: [OperationsRepository, PendingEvaluationRepository, PendingEvaluationService, OperationsService, OperationsBroadcastService, OperationsSchedulerService, CurrencyApiService, OperationHistoryService],
   exports: [OperationsService, OperationsRepository, PendingEvaluationRepository, PendingEvaluationService, OperationsBroadcastService, CurrencyApiService, OperationHistoryService],

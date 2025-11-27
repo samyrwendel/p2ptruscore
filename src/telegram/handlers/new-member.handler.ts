@@ -6,6 +6,7 @@ import { TermsAcceptanceService } from '../../users/terms-acceptance.service';
 import { UsersService } from '../../users/users.service';
 import { GroupsService } from '../../groups/groups.service';
 import { ConfigService } from '@nestjs/config';
+import { TelegramRetryService } from '../../shared/telegram-retry.service';
 
 @Injectable()
 export class NewMemberHandler implements OnModuleDestroy {
@@ -25,6 +26,7 @@ export class NewMemberHandler implements OnModuleDestroy {
     private readonly usersService: UsersService,
     private readonly groupsService: GroupsService,
     private readonly configService: ConfigService,
+    private readonly retryService: TelegramRetryService,
   ) {
     // Limpar pendências antigas a cada 5 minutos
     this.cleanupTimer = setInterval(() => this.cleanupExpiredPendencies(), 5 * 60 * 1000);
@@ -53,10 +55,12 @@ export class NewMemberHandler implements OnModuleDestroy {
         return;
       }
 
-      await this.bot.telegram.sendMessage(
-        adminChannelId,
-        message,
-        { parse_mode: 'Markdown' }
+      await this.retryService.executeWithRetry(() =>
+        this.bot.telegram.sendMessage(
+          adminChannelId,
+          message,
+          { parse_mode: 'Markdown' }
+        )
       );
     } catch (error) {
       this.logger.error('Erro ao notificar canal admin:', error);
@@ -168,13 +172,15 @@ export class NewMemberHandler implements OnModuleDestroy {
 
       // SEMPRE tentar enviar no privado
       try {
-        const privateMessage = await this.bot.telegram.sendMessage(
-          userId,
-          message,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: keyboard
-          }
+        const privateMessage = await this.retryService.executeWithRetry(() =>
+          this.bot.telegram.sendMessage(
+            userId,
+            message,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: keyboard
+            }
+          )
         );
 
         // Registrar pendência
@@ -455,7 +461,9 @@ export class NewMemberHandler implements OnModuleDestroy {
       }
 
       // Tentar apagar a mensagem de termos do privado
-      await this.bot.telegram.deleteMessage(userId, messageId);
+      await this.retryService.executeWithRetry(() =>
+        this.bot.telegram.deleteMessage(userId, messageId)
+      );
       this.logger.log(`Mensagem de termos removida do privado do usuário ${userId}`);
     } catch (error) {
       // Pode falhar se o usuário bloqueou o bot ou mensagem já foi deletada
@@ -540,13 +548,15 @@ export class NewMemberHandler implements OnModuleDestroy {
       };
 
       // Enviar no privado do usuário com botões
-      await this.bot.telegram.sendMessage(
-        userId,
-        welcomeMessage,
-        { 
-          parse_mode: 'Markdown',
-          reply_markup: mainCommandsKeyboard
-        }
+      await this.retryService.executeWithRetry(() =>
+        this.bot.telegram.sendMessage(
+          userId,
+          welcomeMessage,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: mainCommandsKeyboard
+          }
+        )
       );
 
     } catch (error) {

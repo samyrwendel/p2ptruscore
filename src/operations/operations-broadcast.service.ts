@@ -11,6 +11,7 @@ import { OperationsRepository } from './operations.repository';
 import { PendingEvaluationRepository } from './pending-evaluation.repository';
 import { PendingEvaluationService } from './pending-evaluation.service';
 import { getReputationInfo } from '../shared/reputation.utils';
+import { TelegramRetryService } from '../shared/telegram-retry.service';
 
 @Injectable()
 export class OperationsBroadcastService {
@@ -25,6 +26,7 @@ export class OperationsBroadcastService {
     private readonly pendingEvaluationRepository: PendingEvaluationRepository,
     private readonly pendingEvaluationService: PendingEvaluationService,
     private readonly configService: ConfigService,
+    private readonly retryService: TelegramRetryService,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
@@ -71,26 +73,12 @@ export class OperationsBroadcastService {
     return `https://t.me/${this.getBotUsername()}?start=reputacao_${idRef}`;
   }
 
+  /**
+   * Executa uma chamada da API do Telegram com retry automático
+   * @deprecated Use retryService.executeWithRetry() diretamente para maior flexibilidade
+   */
   private async sendWithBackoff<T>(fn: () => Promise<T>, maxRetries?: number): Promise<T> {
-    let attempt = 0;
-    const configuredMax = parseInt(this.configService.get<string>('TELEGRAM_BACKOFF_RETRIES') || '3');
-    const retries = typeof maxRetries === 'number' ? maxRetries : configuredMax;
-    let delay = parseInt(this.configService.get<string>('TELEGRAM_BACKOFF_INITIAL_MS') || '500');
-    while (true) {
-      try {
-        return await fn();
-      } catch (error: any) {
-        const is429 = (error?.response?.error_code === 429) || (error?.code === 429);
-        if (!is429 || attempt >= retries) {
-          throw error;
-        }
-        this.logger.warn(`429 rate limited. Backing off ${delay}ms (attempt ${attempt + 1}/${retries})`);
-        await new Promise(r => setTimeout(r, delay));
-        attempt++;
-        const factor = parseFloat(this.configService.get<string>('TELEGRAM_BACKOFF_FACTOR') || '2');
-        delay = Math.max(delay, 0) * factor;
-      }
-    }
+    return this.retryService.executeWithRetry(fn, { maxRetries });
   }
 
   private buildBroadcastInlineKeyboard(operation: Operation, creator: any, acceptText: string, acceptData: string): any {

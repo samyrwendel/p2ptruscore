@@ -10,10 +10,11 @@ import { TelegramSharedModule } from './shared/telegram-shared.module';
 import { OperationsModule } from '../operations/operations.module';
 import { UsersModule } from '../users/users.module';
 import { GroupsModule } from '../groups/groups.module';
+import { SharedModule } from '../shared/shared.module';
 import { getBotToken } from 'nestjs-telegraf';
 
 @Module({
-  imports: [KarmaModule, CommandsModule, TelegramSharedModule, OperationsModule, UsersModule, GroupsModule],
+  imports: [KarmaModule, CommandsModule, TelegramSharedModule, OperationsModule, UsersModule, GroupsModule, SharedModule],
   providers: [TelegramService, KarmaMessageHandler, BoraMessageHandler, NewMemberHandler],
   exports: [TelegramService, NewMemberHandler],
 })
