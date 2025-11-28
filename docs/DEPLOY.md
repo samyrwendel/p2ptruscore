@@ -1,35 +1,23 @@
 # 🚀 Deploy para Produção - TrustP2PBot
 
-## ✅ Pré-requisitos Verificados
+## ✅ Pré-requisitos
 
-- ✅ Build passando (100%)
-- ✅ 15 commits prontos para deploy
-- ✅ Zero breaking changes
-- ✅ Backward compatible
-- ✅ Working tree clean
+- Node.js 18+ instalado
+- MongoDB (standalone ou replica set)
+- PM2 instalado globalmente (`npm install -g pm2`)
+- Arquivo `.env` configurado
 
 ---
 
-## 📦 Commits Incluídos Neste Deploy
+## 📦 Versão Atual: 2.1.0
 
-### Melhorias Críticas (8 commits principais)
-1. `16dd82a` - Sistema de notificações admin e correções de UX
-2. `eb6642c` - Correções críticas de memory leaks e race conditions
-3. `92b7bdf` - Sistema de rate limiting por usuário
-4. `10e0a78` - Rate limiting em comando /avaliar
-5. `e2048de` - Sistema robusto de retry para Telegram API
-6. `6c1dbb2` - Serviço de transações MongoDB para operações críticas
-7. `a04d355` - Integração do TransactionService em serviços críticos
-8. `91b2f13` - Aplicação de transações ACID em operações críticas
-
-### Features Adicionais (7 commits)
-9. `4c4425a` - Configurar projeto para usar MongoDB externo
-10. `11e3ec3` - Validação rigorosa de termos e correções de segurança
-11. `dccba18` - Sistema completo anti-fraude e comandos administrativos
-12. `a5a86f2` - Correções definitivas do fluxo de operações
-13. `7c289d8` - Configuração automática de comandos e menu button
-14. `94ad8b8` - Comando /iniciar como alias de /criaroperacao
-15. `767843f` - Checkpoint antes de refatoração
+### Features Incluídas
+- Rate Limiting por usuário (5 ops/hora, 10 avaliações/hora)
+- Retry automático para Telegram API com exponential backoff
+- Transações MongoDB ACID (quando em replica set)
+- PM2 com auto-restart e startup no boot
+- Sistema de notificações admin
+- Correções de memory leaks e race conditions
 
 ---
 
@@ -104,15 +92,31 @@ cat .env | grep -E "(TELEGRAM_|MONGODB_|ADMIN_)"
 node -e "const mongoose = require('mongoose'); mongoose.connect(process.env.MONGODB_URI).then(() => console.log('✅ MongoDB OK')).catch(e => console.error('❌', e))"
 ```
 
-### 5. Restart do Serviço
+### 5. Iniciar com PM2
 ```bash
-# Se usando PM2
-pm2 restart trustp2pbot
+# Primeira vez - iniciar o bot
+pm2 start ecosystem.config.js
+
+# Verificar status
+pm2 status
+
+# Ver logs
 pm2 logs trustp2pbot --lines 100
 
-# Se usando systemd
-sudo systemctl restart trustp2pbot
-sudo journalctl -u trustp2pbot -f
+# Salvar configuração para restart automático
+pm2 save
+
+# Configurar startup no boot (rodar comando gerado)
+pm2 startup
+```
+
+### 6. Restart do Serviço (após atualizações)
+```bash
+# Rebuild
+npm run build
+
+# Restart com PM2
+pm2 restart trustp2pbot
 
 # Se usando docker
 docker-compose restart
@@ -333,7 +337,33 @@ Em caso de problemas:
 
 ---
 
-**Data do Deploy:** $(date)
-**Versão:** 2.1.0 (15 commits ahead)
+**Versão:** 2.1.0
 **Build:** ✅ Passing
 **Status:** 🚀 Ready for Production
+
+---
+
+## 🔧 Arquivos de Configuração
+
+### ecosystem.config.js
+Arquivo de configuração do PM2 com:
+- Parser customizado de `.env` (evita conflitos com variáveis do sistema)
+- Auto-restart em caso de falha
+- Limite de memória (500MB)
+- Logs estruturados
+
+### .env
+Variáveis de ambiente obrigatórias:
+```bash
+TELEGRAM_BOT_TOKEN=seu_token_aqui
+TELEGRAM_BOT_USERNAME=nome_do_bot
+TELEGRAM_GROUP_ID=-100xxxxxxxxxx
+MONGODB_CNN=mongodb://...
+```
+
+Variáveis opcionais:
+```bash
+TELEGRAM_ADMIN_CHANNEL_ID=-100xxxxxxxxxx  # Notificações admin
+PORT=3031
+LOG_LEVEL=info
+```
