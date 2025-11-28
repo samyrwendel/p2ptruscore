@@ -1,3 +1,36 @@
+const fs = require('fs');
+const path = require('path');
+
+// Ler e parsear o arquivo .env manualmente (para ignorar variáveis do sistema)
+function loadEnvFile(filePath) {
+  const envVars = {};
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    content.split('\n').forEach(line => {
+      // Ignorar comentários e linhas vazias
+      if (line.trim() && !line.trim().startsWith('#')) {
+        const match = line.match(/^([^=]+)=(.*)$/);
+        if (match) {
+          const key = match[1].trim();
+          let value = match[2].trim();
+          // Remover aspas se existirem
+          if ((value.startsWith('"') && value.endsWith('"')) ||
+              (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+          }
+          envVars[key] = value;
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Erro ao ler .env:', err.message);
+  }
+  return envVars;
+}
+
+// Carregar variáveis do .env (NÃO do processo atual)
+const envFile = loadEnvFile(path.join(__dirname, '.env'));
+
 module.exports = {
   apps: [
     {
@@ -5,10 +38,27 @@ module.exports = {
       script: 'dist/src/main.js',
       cwd: '/home/umbrel/TrustP2PBot',
 
-      // Ambiente
+      // Ambiente - usar variáveis do .env diretamente
       node_args: '--max-old-space-size=512',
       env: {
         NODE_ENV: 'production',
+        TELEGRAM_BOT_TOKEN: envFile.TELEGRAM_BOT_TOKEN,
+        TELEGRAM_BOT_USERNAME: envFile.TELEGRAM_BOT_USERNAME,
+        TELEGRAM_GROUP_ID: envFile.TELEGRAM_GROUP_ID,
+        TELEGRAM_THREAD_ID: envFile.TELEGRAM_THREAD_ID,
+        MONGODB_CNN: envFile.MONGODB_CNN,
+        PORT: envFile.PORT || '3031',
+        LOG_LEVEL: envFile.LOG_LEVEL || 'info',
+        REQUEST_TIMEOUT: envFile.REQUEST_TIMEOUT,
+        RATE_LIMIT_TTL: envFile.RATE_LIMIT_TTL,
+        RATE_LIMIT_LIMIT: envFile.RATE_LIMIT_LIMIT,
+        BROADCAST_CONCURRENCY: envFile.BROADCAST_CONCURRENCY,
+        BROADCAST_DELAY_MS: envFile.BROADCAST_DELAY_MS,
+        TELEGRAM_BACKOFF_RETRIES: envFile.TELEGRAM_BACKOFF_RETRIES,
+        TELEGRAM_BACKOFF_INITIAL_MS: envFile.TELEGRAM_BACKOFF_INITIAL_MS,
+        TELEGRAM_BACKOFF_FACTOR: envFile.TELEGRAM_BACKOFF_FACTOR,
+        CACHE_TTL: envFile.CACHE_TTL,
+        TELEGRAM_ADMIN_CHANNEL_ID: envFile.TELEGRAM_ADMIN_CHANNEL_ID,
       },
 
       // Auto-restart
