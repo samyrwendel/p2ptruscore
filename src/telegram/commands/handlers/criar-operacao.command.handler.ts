@@ -687,21 +687,32 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
           'btc': NetworkType.BTC,
           'eth': NetworkType.ETH
         };
-        
+
         const networkKey = data.replace('op_network_', '');
         const network = networkMap[networkKey];
-        
+
         if (network) {
           if (!session.data.networks) session.data.networks = [];
-          
+
+          // DEPIX só pode usar rede LIQUID - bloqueia outras redes
+          const hasDepix = session.data.assets?.includes(AssetType.DEPIX);
+          if (hasDepix && network !== NetworkType.LIQUID) {
+            await ctx.answerCbQuery('❌ DEPIX só funciona na rede LIQUID. Não é possível selecionar outras redes.', { show_alert: true });
+            return true;
+          }
+
           if (session.data.networks.includes(network)) {
-            // Remove se já estiver selecionado
+            // Remove se já estiver selecionado (mas não permite remover LIQUID se DEPIX estiver selecionado)
+            if (network === NetworkType.LIQUID && hasDepix) {
+              await ctx.answerCbQuery('❌ Não é possível remover a rede LIQUID enquanto DEPIX estiver selecionado.', { show_alert: true });
+              return true;
+            }
             session.data.networks = session.data.networks.filter(n => n !== network);
           } else {
             // Adiciona se não estiver selecionado
             session.data.networks.push(network);
           }
-          
+
           await this.updateAssetsAndNetworksSelection(ctx, session);
         }
       }
