@@ -1060,7 +1060,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
         createAssetButton('💰', 'REAL', 'op_asset_REAL'),
       ],
       [
-        createAssetButton('🔷', 'DEPIX', 'op_asset_DEPIX'),
+        createAssetButton('🔷', 'DEPIX (Liquid)', 'op_asset_DEPIX'),
       ],
 
       // Divisor visual - REDES
