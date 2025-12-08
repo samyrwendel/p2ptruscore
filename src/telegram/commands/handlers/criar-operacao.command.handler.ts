@@ -1067,17 +1067,23 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
       [
         Markup.button.callback('━━━━━ REDES ━━━━━', 'op_divider'),
       ],
-      // Seção de Redes
-      [
-        createNetworkButton('⚪', 'ARB', 'op_network_arbitrum'),
-        createNetworkButton('🟣', 'POL', 'op_network_polygon'),
-        createNetworkButton('🔵', 'BASE', 'op_network_base'),
-      ],
-      [
-        createNetworkButton('🟡', 'BNB', 'op_network_bnb'),
-        createNetworkButton('🟪', 'SOLANA', 'op_network_solana'),
-        createNetworkButton('⬜', 'ETH', 'op_network_eth'),
-      ],
+      // Seção de Redes - Se DEPIX selecionado, mostra apenas LIQUID fixo
+      ...(session?.data.assets?.includes(AssetType.DEPIX) ? [
+        [
+          Markup.button.callback('✔️ DEPIX (Liquid)', 'op_divider'),
+        ],
+      ] : [
+        [
+          createNetworkButton('⚪', 'ARB', 'op_network_arbitrum'),
+          createNetworkButton('🟣', 'POL', 'op_network_polygon'),
+          createNetworkButton('🔵', 'BASE', 'op_network_base'),
+        ],
+        [
+          createNetworkButton('🟡', 'BNB', 'op_network_bnb'),
+          createNetworkButton('🟪', 'SOLANA', 'op_network_solana'),
+          createNetworkButton('⬜', 'ETH', 'op_network_eth'),
+        ],
+      ]),
 
       // Divisor visual - PAGAMENTO
       [
