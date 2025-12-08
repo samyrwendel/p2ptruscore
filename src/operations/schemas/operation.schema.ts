@@ -19,6 +19,7 @@ export enum NetworkType {
   BNB = 'bnb',
   SOLANA = 'solana',
   POLYGON = 'polygon',
+  LIQUID = 'liquid',
   FIAT = 'fiat',
 }
 
@@ -26,6 +27,7 @@ export enum AssetType {
   USDC = 'USDC',
   USDT = 'USDT',
   USDE = 'USDe',
+  DEPIX = 'DEPIX',
   BTC = 'BTC',
   ETH = 'ETH',
   XRP = 'XRP',

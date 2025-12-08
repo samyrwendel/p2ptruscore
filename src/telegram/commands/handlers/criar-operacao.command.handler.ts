@@ -606,7 +606,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
         if (session.data.assets.includes(asset)) {
           // Remove se já estiver selecionado
           session.data.assets = session.data.assets.filter(a => a !== asset);
-          
+
           // Se removeu uma moeda fiat, remove também a rede fiat se não há outras moedas fiat
           if ([AssetType.DOLAR, AssetType.EURO, AssetType.REAL].includes(asset)) {
             const hasFiatAssets = session.data.assets.some(a => [AssetType.DOLAR, AssetType.EURO, AssetType.REAL].includes(a));
@@ -614,23 +614,35 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
               session.data.networks = session.data.networks.filter(n => n !== NetworkType.FIAT);
             }
           }
+
+          // Se removeu DEPIX, remove também a rede LIQUID
+          if (asset === AssetType.DEPIX) {
+            session.data.networks = session.data.networks.filter(n => n !== NetworkType.LIQUID);
+          }
         } else {
           // Verificar compatibilidade antes de adicionar
           const isCompatible = this.isAssetCompatible(session.data.assets, asset);
-          
+
           if (!isCompatible) {
             // Mostrar mensagem de erro sobre incompatibilidade
             await ctx.answerCbQuery('❌ Não é possível misturar stablecoins com BTC/ETH/XRP ou moedas FIAT. Escolha ativos do mesmo tipo.', { show_alert: true });
             return true;
           }
-          
+
           // Adiciona se não estiver selecionado e for compatível
           session.data.assets.push(asset);
-          
+
           // Se selecionou uma moeda fiat, adiciona automaticamente a rede fiat
           if ([AssetType.DOLAR, AssetType.EURO, AssetType.REAL].includes(asset)) {
             if (!session.data.networks.includes(NetworkType.FIAT)) {
               session.data.networks.push(NetworkType.FIAT);
+            }
+          }
+
+          // Se selecionou DEPIX, adiciona automaticamente a rede LIQUID
+          if (asset === AssetType.DEPIX) {
+            if (!session.data.networks.includes(NetworkType.LIQUID)) {
+              session.data.networks.push(NetworkType.LIQUID);
             }
           }
         }
@@ -1032,12 +1044,12 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
         createAssetButton('⚫', 'USDe', 'op_asset_USDe'),
       ],
       [
-        // createAssetButton('⚪', 'ETH', 'op_asset_ETH'),
-      ],
-      [
         createAssetButton('💵', 'DÓLAR', 'op_asset_DOLAR'),
         createAssetButton('💶', 'EURO', 'op_asset_EURO'),
         createAssetButton('💰', 'REAL', 'op_asset_REAL'),
+      ],
+      [
+        createAssetButton('🔷', 'DEPIX', 'op_asset_DEPIX'),
       ],
 
       // Divisor visual - REDES
