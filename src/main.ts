@@ -46,7 +46,17 @@ async function bootstrap() {
   hbs.registerHelper('eq', function(a, b) {
     return a === b;
   });
-  
+
+  // Registrar helper 'gt' para comparações (greater than)
+  hbs.registerHelper('gt', function(a, b) {
+    return a > b;
+  });
+
+  // Registrar helper 'lt' para comparações (less than)
+  hbs.registerHelper('lt', function(a, b) {
+    return a < b;
+  });
+
   // Registrar helper para formatação de uptime
   hbs.registerHelper('formatUptime', function(uptime: number) {
     const hours = Math.floor(uptime / 3600);
