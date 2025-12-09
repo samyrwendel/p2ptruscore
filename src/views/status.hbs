@@ -3,326 +3,620 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="30">
     <title>{{title}}</title>
     <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--gray-100);
             min-height: 100vh;
-            padding: 20px;
+            color: var(--gray-800);
         }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .header {
-            background: #2c3e50;
+
+        .navbar {
+            background: var(--gray-900);
             color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-        
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1em;
-        }
-        
-        .content {
-            padding: 40px;
-        }
-        
-        {{#if hasError}}
-        .error-status {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-        {{else}}
-        .status-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .status-card {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            border-left: 4px solid #007bff;
-            transition: transform 0.2s;
-        }
-        
-        .status-card:hover {
-            transform: translateY(-2px);
-        }
-        
-        .status-card.healthy {
-            border-left-color: #28a745;
-        }
-        
-        .status-card.warning {
-            border-left-color: #ffc107;
-        }
-        
-        .status-card.error {
-            border-left-color: #dc3545;
-        }
-        
-        .status-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        .status-icon {
-            font-size: 1.5em;
-            margin-right: 10px;
-        }
-        
-        .status-title {
-            font-weight: 600;
-            color: #2c3e50;
-            font-size: 1.1em;
-        }
-        
-        .status-value {
-            font-size: 1.3em;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-        
-        .status-value.healthy {
-            color: #28a745;
-        }
-        
-        .status-value.warning {
-            color: #ffc107;
-        }
-        
-        .status-value.error {
-            color: #dc3545;
-        }
-        
-        .status-details {
-            color: #6c757d;
-            font-size: 0.9em;
-            line-height: 1.4;
-        }
-        
-        .info-section {
-            background: #f8f9fa;
-            padding: 25px;
-            border-radius: 8px;
-            margin: 30px 0;
-            border-left: 4px solid #007bff;
-        }
-        
-        .info-section h3 {
-            margin: 0 0 20px 0;
-            color: #007bff;
-            font-size: 1.2em;
-        }
-        
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-        
-        .info-item {
+            padding: 16px 24px;
             display: flex;
             justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #e1e8ed;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
-        
-        .info-item:last-child {
+
+        .navbar h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .navbar-links {
+            display: flex;
+            gap: 16px;
+        }
+
+        .navbar-links a {
+            color: var(--gray-300);
+            text-decoration: none;
+            font-size: 0.875rem;
+            transition: color 0.2s;
+        }
+
+        .navbar-links a:hover {
+            color: white;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .hero h2 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .hero p {
+            opacity: 0.9;
+            font-size: 1rem;
+        }
+
+        .status-overall {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255,255,255,0.2);
+            padding: 12px 24px;
+            border-radius: 50px;
+            margin-top: 16px;
+            font-weight: 600;
+        }
+
+        .status-overall.healthy {
+            background: rgba(16, 185, 129, 0.3);
+        }
+
+        .status-overall.degraded {
+            background: rgba(245, 158, 11, 0.3);
+        }
+
+        .status-overall.error {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.healthy {
+            background: var(--success);
+        }
+
+        .status-dot.degraded {
+            background: var(--warning);
+        }
+
+        .status-dot.error {
+            background: var(--danger);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid var(--gray-200);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .card-icon.telegram {
+            background: #e3f2fd;
+        }
+
+        .card-icon.mongodb {
+            background: #e8f5e9;
+        }
+
+        .card-icon.memory {
+            background: #fff3e0;
+        }
+
+        .card-icon.system {
+            background: #f3e5f5;
+        }
+
+        .card-title {
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--gray-800);
+        }
+
+        .card-subtitle {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+        }
+
+        .card-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .card-status.connected {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .card-status.disconnected, .card-status.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .card-status.connecting {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .card-body {
+            margin-top: 16px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        .info-row:last-child {
             border-bottom: none;
         }
-        
+
         .info-label {
-            font-weight: 600;
-            color: #2c3e50;
+            color: var(--gray-500);
+            font-size: 0.875rem;
         }
-        
+
         .info-value {
-            color: #6c757d;
+            color: var(--gray-800);
+            font-weight: 500;
+            font-size: 0.875rem;
         }
-        
-        .refresh-section {
+
+        .progress-bar {
+            height: 8px;
+            background: var(--gray-200);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 12px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        .progress-fill.low {
+            background: var(--success);
+        }
+
+        .progress-fill.medium {
+            background: var(--warning);
+        }
+
+        .progress-fill.high {
+            background: var(--danger);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
             text-align: center;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #e1e8ed;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid var(--gray-200);
         }
-        
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 24px;
+        }
+
         .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
             padding: 12px 24px;
             border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 0.875rem;
+            font-weight: 500;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: all 0.2s;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: none;
         }
-        
-        .btn:hover {
-            transform: translateY(-2px);
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
         }
-        
-        .last-update {
-            color: #6c757d;
-            font-size: 0.9em;
-            margin-top: 15px;
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
         }
-        {{/if}}
+
+        .btn-secondary {
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border: 1px solid var(--gray-300);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-200);
+        }
+
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--gray-500);
+            font-size: 0.75rem;
+        }
+
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--gray-500);
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        .error-banner {
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .error-banner h3 {
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .hero {
+                padding: 24px;
+            }
+
+            .hero h2 {
+                font-size: 1.5rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🤖 TrustScore Bot</h1>
-            <p>Status do Sistema</p>
+    <nav class="navbar">
+        <h1>TrustP2P Status</h1>
+        <div class="navbar-links">
+            <a href="/setup">Dashboard</a>
+            <a href="/config/status">Status</a>
         </div>
-        
-        <div class="content">
-            {{#if hasError}}
-            <div class="error-status">
-                <h2>❌ Erro no Sistema</h2>
-                <p><strong>{{message}}</strong></p>
-                {{#if details}}
-                <p><small>{{details}}</small></p>
-                {{/if}}
+    </nav>
+
+    <div class="container">
+        {{#if hasError}}
+        <div class="error-banner">
+            <h3>Erro no Sistema</h3>
+            <p>{{message}}</p>
+            {{#if details}}<small>{{details}}</small>{{/if}}
+        </div>
+        {{else}}
+
+        <!-- Hero Section -->
+        <div class="hero">
+            <h2>TrustP2P Bot</h2>
+            <p>Monitoramento em Tempo Real</p>
+            <div class="status-overall {{status.overall}}">
+                <span class="status-dot {{status.overall}}"></span>
+                {{#if (eq status.overall 'healthy')}}Sistema Operacional{{else}}{{#if (eq status.overall 'degraded')}}Sistema Degradado{{else}}Sistema com Problemas{{/if}}{{/if}}
             </div>
-            {{else}}
-            <div class="status-grid">
-                <div class="status-card {{#if (eq status.overall 'healthy')}}healthy{{else}}{{#if (eq status.overall 'degraded')}}warning{{else}}error{{/if}}{{/if}}">
-                    <div class="status-header">
-                        <span class="status-icon">{{#if (eq status.overall 'healthy')}}✅{{else}}{{#if (eq status.overall 'degraded')}}⚠️{{else}}❌{{/if}}{{/if}}</span>
-                        <span class="status-title">Status Geral</span>
+        </div>
+
+        <!-- Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">{{responseTime}}</div>
+                <div class="metric-label">Latencia (ms)</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{memory.used}}</div>
+                <div class="metric-label">Memoria (MB)</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="uptime-display">-</div>
+                <div class="metric-label">Uptime</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{environment.pid}}</div>
+                <div class="metric-label">PID</div>
+            </div>
+        </div>
+
+        <!-- Status Cards -->
+        <div class="grid">
+            <!-- Telegram Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon telegram">
+                        <span>{{#if (eq status.telegram.status 'connected')}}{{else}}{{/if}}</span>
                     </div>
-                    <div class="status-value {{#if (eq status.overall 'healthy')}}healthy{{else}}{{#if (eq status.overall 'degraded')}}warning{{else}}error{{/if}}{{/if}}">
-                        {{#if (eq status.overall 'healthy')}}Saudável{{else}}{{#if (eq status.overall 'degraded')}}Degradado{{else}}Erro{{/if}}{{/if}}
+                    <div>
+                        <div class="card-title">Telegram Bot</div>
+                        <div class="card-subtitle">Conexao com API do Telegram</div>
                     </div>
-                    <div class="status-details">Sistema {{#if (eq status.overall 'healthy')}}funcionando normalmente{{else}}com problemas{{/if}}</div>
-                </div>
-                
-                <div class="status-card {{#if (eq status.telegram.status 'connected')}}healthy{{else}}error{{/if}}">
-                    <div class="status-header">
-                        <span class="status-icon">{{#if (eq status.telegram.status 'connected')}}✅{{else}}❌{{/if}}</span>
-                        <span class="status-title">Telegram Bot</span>
-                    </div>
-                    <div class="status-value {{#if (eq status.telegram.status 'connected')}}healthy{{else}}error{{/if}}">
-                        {{#if (eq status.telegram.status 'connected')}}Conectado{{else}}Desconectado{{/if}}
-                    </div>
-                    <div class="status-details">
-                        {{#if status.telegram.botInfo}}
-                        @{{status.telegram.botInfo.username}} ({{status.telegram.botInfo.first_name}})
-                        {{else}}
-                        {{#if status.telegram.error}}{{status.telegram.error}}{{else}}Status desconhecido{{/if}}
-                        {{/if}}
-                    </div>
-                </div>
-                
-                <div class="status-card {{#if (eq status.mongodb.status 'connected')}}healthy{{else}}{{#if (eq status.mongodb.status 'connecting')}}warning{{else}}error{{/if}}{{/if}}">
-                    <div class="status-header">
-                        <span class="status-icon">{{#if (eq status.mongodb.status 'connected')}}✅{{else}}{{#if (eq status.mongodb.status 'connecting')}}🔄{{else}}❌{{/if}}{{/if}}</span>
-                        <span class="status-title">MongoDB</span>
-                    </div>
-                    <div class="status-value {{#if (eq status.mongodb.status 'connected')}}healthy{{else}}{{#if (eq status.mongodb.status 'connecting')}}warning{{else}}error{{/if}}{{/if}}">
-                        {{#if (eq status.mongodb.status 'connected')}}Conectado{{else}}{{#if (eq status.mongodb.status 'connecting')}}Conectando{{else}}Desconectado{{/if}}{{/if}}
-                    </div>
-                    <div class="status-details">
-                        {{#if status.mongodb.error}}
-                        {{status.mongodb.error}}
-                        {{else}}
-                        Ready State: {{status.mongodb.readyState}}
-                        {{/if}}
+                    <div style="margin-left: auto;">
+                        <span class="card-status {{status.telegram.status}}">
+                            {{#if (eq status.telegram.status 'connected')}}Conectado{{else}}Desconectado{{/if}}
+                        </span>
                     </div>
                 </div>
-                
-                <div class="status-card healthy">
-                    <div class="status-header">
-                        <span class="status-icon">💾</span>
-                        <span class="status-title">Memória</span>
+                <div class="card-body">
+                    {{#if status.telegram.botInfo}}
+                    <div class="info-row">
+                        <span class="info-label">Username</span>
+                        <span class="info-value">@{{status.telegram.botInfo.username}}</span>
                     </div>
-                    <div class="status-value healthy">{{memory.used}} MB</div>
-                    <div class="status-details">Total: {{memory.total}} MB | RSS: {{memory.rss}} MB</div>
+                    <div class="info-row">
+                        <span class="info-label">Nome</span>
+                        <span class="info-value">{{status.telegram.botInfo.first_name}}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Bot ID</span>
+                        <span class="info-value">{{status.telegram.botInfo.id}}</span>
+                    </div>
+                    {{else}}
+                    <div class="info-row">
+                        <span class="info-label">Erro</span>
+                        <span class="info-value">{{status.telegram.error}}</span>
+                    </div>
+                    {{/if}}
                 </div>
             </div>
-            
-            <div class="info-section">
-                <h3>📊 Informações do Sistema</h3>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <span class="info-label">Uptime:</span>
-                        <span class="info-value">{{formatUptime uptime}}</span>
+
+            <!-- MongoDB Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon mongodb">
+                        <span>{{#if (eq status.mongodb.status 'connected')}}{{else}}{{/if}}</span>
                     </div>
-                    <div class="info-item">
-                        <span class="info-label">Tempo de Resposta:</span>
-                        <span class="info-value">{{responseTime}}ms</span>
+                    <div>
+                        <div class="card-title">MongoDB</div>
+                        <div class="card-subtitle">Banco de Dados</div>
                     </div>
-                    <div class="info-item">
-                        <span class="info-label">Node.js:</span>
+                    <div style="margin-left: auto;">
+                        <span class="card-status {{status.mongodb.status}}">
+                            {{#if (eq status.mongodb.status 'connected')}}Conectado{{else}}{{#if (eq status.mongodb.status 'connecting')}}Conectando{{else}}Desconectado{{/if}}{{/if}}
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <span class="info-label">Ready State</span>
+                        <span class="info-value">{{status.mongodb.readyState}}</span>
+                    </div>
+                    {{#if status.mongodb.error}}
+                    <div class="info-row">
+                        <span class="info-label">Erro</span>
+                        <span class="info-value">{{status.mongodb.error}}</span>
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+
+            <!-- Memory Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon memory">
+                        <span></span>
+                    </div>
+                    <div>
+                        <div class="card-title">Memoria</div>
+                        <div class="card-subtitle">Uso de RAM do processo</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <span class="info-label">Heap Usado</span>
+                        <span class="info-value">{{memory.used}} MB</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Heap Total</span>
+                        <span class="info-value">{{memory.total}} MB</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">RSS</span>
+                        <span class="info-value">{{memory.rss}} MB</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill {{#if (gt memory.used 400)}}high{{else}}{{#if (gt memory.used 250)}}medium{{else}}low{{/if}}{{/if}}"
+                             style="width: {{memoryPercent}}%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon system">
+                        <span></span>
+                    </div>
+                    <div>
+                        <div class="card-title">Sistema</div>
+                        <div class="card-subtitle">Informacoes do ambiente</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <span class="info-label">Node.js</span>
                         <span class="info-value">{{environment.nodeVersion}}</span>
                     </div>
-                    <div class="info-item">
-                        <span class="info-label">Plataforma:</span>
+                    <div class="info-row">
+                        <span class="info-label">Plataforma</span>
                         <span class="info-value">{{environment.platform}}</span>
                     </div>
-                    <div class="info-item">
-                        <span class="info-label">PID:</span>
-                        <span class="info-value">{{environment.pid}}</span>
+                    <div class="info-row">
+                        <span class="info-label">Timestamp</span>
+                        <span class="info-value" id="timestamp">-</span>
                     </div>
-                    <div class="info-item">
-                        <span class="info-label">Timestamp:</span>
-                        <span class="info-value">{{formatTimestamp timestamp}}</span>
-                    </div>
-                </div>
-            </div>
-            {{/if}}
-            
-            <div class="refresh-section">
-                <a href="/setup" class="btn">⚙️ Configurações</a>
-                <button onclick="window.location.reload()" class="btn">🔄 Atualizar</button>
-                <div class="last-update">
-                    Página atualizada automaticamente a cada 30 segundos
                 </div>
             </div>
         </div>
+        {{/if}}
+
+        <!-- Actions -->
+        <div class="actions">
+            <a href="/setup" class="btn btn-primary">
+                <span></span> Dashboard
+            </a>
+            <button onclick="window.location.reload()" class="btn btn-secondary">
+                <span></span> Atualizar
+            </button>
+        </div>
+
+        <div class="footer">
+            <div class="live-indicator">
+                <span class="live-dot"></span>
+                Atualizacao automatica a cada 30 segundos
+            </div>
+            <p style="margin-top: 8px;">TrustP2P Bot v2.1.0</p>
+        </div>
     </div>
-    
+
     <script>
-        // Auto-refresh a cada 30 segundos
-        setTimeout(() => {
-            window.location.reload();
-        }, 30000);
+        // Format uptime
+        const uptimeSeconds = {{uptime}};
+        const days = Math.floor(uptimeSeconds / 86400);
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+
+        let uptimeStr = '';
+        if (days > 0) uptimeStr += days + 'd ';
+        if (hours > 0) uptimeStr += hours + 'h ';
+        uptimeStr += minutes + 'm';
+
+        document.getElementById('uptime-display').textContent = uptimeStr.trim();
+
+        // Format timestamp
+        const timestamp = '{{timestamp}}';
+        if (timestamp) {
+            const date = new Date(timestamp);
+            document.getElementById('timestamp').textContent = date.toLocaleString('pt-BR');
+        }
     </script>
 </body>
 </html>

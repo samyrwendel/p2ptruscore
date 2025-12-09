@@ -102,6 +102,10 @@ export class ConfigController {
 
       const responseTime = Date.now() - startTime;
 
+      const memoryUsed = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+      const memoryTotal = 500; // PM2 memory limit
+      const memoryPercent = Math.min(Math.round((memoryUsed / memoryTotal) * 100), 100);
+
       const statusData = {
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
@@ -125,10 +129,11 @@ export class ConfigController {
           }
         },
         memory: {
-          used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+          used: memoryUsed,
           total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
           rss: Math.round(process.memoryUsage().rss / 1024 / 1024)
         },
+        memoryPercent,
         environment: {
           nodeVersion: process.version,
           platform: process.platform,
