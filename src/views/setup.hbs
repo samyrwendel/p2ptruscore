@@ -10,715 +10,978 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
         }
-        
-        .container {
-            max-width: 800px;
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--gray-100);
+            min-height: 100vh;
+            color: var(--gray-800);
+        }
+
+        .navbar {
+            background: var(--gray-900);
+            color: white;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .navbar h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .navbar-links {
+            display: flex;
+            gap: 16px;
+        }
+
+        .navbar-links a {
+            color: var(--gray-300);
+            text-decoration: none;
+            font-size: 0.875rem;
+            transition: color 0.2s;
+        }
+
+        .navbar-links a:hover {
+            color: white;
+        }
+
+        .main-container {
+            max-width: 1400px;
             margin: 0 auto;
+            padding: 24px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+
+        @media (min-width: 1024px) {
+            .grid {
+                grid-template-columns: 300px 1fr;
+            }
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card {
             background: white;
             border-radius: 12px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             overflow: hidden;
         }
-        
-        .header {
-            background: #2c3e50;
-            color: white;
-            padding: 30px;
-            text-align: center;
+
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--gray-200);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-        
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1em;
-        }
-        
-        .content {
-            padding: 40px;
-        }
-        
-        .status {
+
+        .card-body {
             padding: 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .stat-item {
+            background: var(--gray-50);
+            padding: 16px;
             border-radius: 8px;
-            margin-bottom: 30px;
             text-align: center;
         }
-        
-        .status.configured {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--gray-900);
         }
-        
-        .status.not-configured {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+            text-transform: uppercase;
+            margin-top: 4px;
         }
-        
+
+        .stat-item.success .stat-value { color: var(--success); }
+        .stat-item.warning .stat-value { color: var(--warning); }
+        .stat-item.danger .stat-value { color: var(--danger); }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-badge.configured {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-badge.not-configured {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-secondary {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-300);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.75rem;
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
         .form-group {
-            margin-bottom: 25px;
+            margin-bottom: 16px;
         }
-        
+
         .form-group label {
             display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #2c3e50;
+            margin-bottom: 6px;
+            font-weight: 500;
+            font-size: 0.875rem;
+            color: var(--gray-700);
         }
-        
-        .form-section {
-            background: #f8f9fa;
-            padding: 25px;
-            border-radius: 8px;
-            margin: 30px 0;
-            border-left: 4px solid #007bff;
-        }
-        
-        .form-section h3 {
-            margin: 0 0 20px 0;
-            color: #007bff;
-            font-size: 1.2em;
-        }
-        
-        .form-group input, .form-group textarea {
+
+        .form-control {
             width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e1e8ed;
+            padding: 10px 12px;
+            border: 1px solid var(--gray-300);
             border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s;
+            font-size: 0.875rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        
-        .form-group input:focus, .form-group textarea:focus {
+
+        .form-control:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
-        
-        .form-group small {
-            display: block;
-            margin-top: 5px;
-            color: #6c757d;
-            font-size: 14px;
+
+        .form-hint {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+            margin-top: 4px;
         }
-        
-        .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s;
-            margin-right: 10px;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-        }
-        
+
         .alert {
-            padding: 15px;
+            padding: 12px 16px;
             border-radius: 8px;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
+            display: none;
+            font-size: 0.875rem;
+        }
+
+        .alert.success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+
+        .alert.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .section {
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--gray-600);
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        /* Disputes */
+        .dispute-card {
+            background: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .dispute-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .dispute-id {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--gray-600);
+            background: var(--gray-200);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .dispute-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .dispute-info {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            font-size: 0.875rem;
+        }
+
+        .dispute-info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .dispute-info-label {
+            font-size: 0.7rem;
+            color: var(--gray-600);
+            text-transform: uppercase;
+        }
+
+        .dispute-reason {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--gray-200);
+            font-size: 0.875rem;
+        }
+
+        .dispute-users {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--gray-600);
+        }
+
+        /* Table */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        th {
+            background: var(--gray-50);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--gray-600);
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        tr:hover {
+            background: var(--gray-50);
+        }
+
+        .filters {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-group label {
+            font-size: 0.75rem;
+            color: var(--gray-600);
+        }
+
+        .filter-group select,
+        .filter-group input {
+            padding: 8px 12px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--gray-600);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+        }
+
+        .collapsible {
+            cursor: pointer;
+        }
+
+        .collapsible-content {
+            display: none;
+            padding-top: 16px;
+        }
+
+        .collapsible.open .collapsible-content {
+            display: block;
+        }
+
+        .accordion-icon {
+            transition: transform 0.2s;
+        }
+
+        .collapsible.open .accordion-icon {
+            transform: rotate(180deg);
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--gray-200);
+            margin-bottom: 16px;
+        }
+
+        .tab {
+            padding: 12px 16px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--gray-600);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--gray-900);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
             display: none;
         }
-        
-        .alert.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .alert.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .help-links {
-            text-align: center;
-            margin-top: 30px;
-            padding-top: 30px;
-            border-top: 1px solid #e1e8ed;
-        }
-        
-        .help-links a {
-            color: #667eea;
-            text-decoration: none;
-            margin: 0 15px;
-            font-weight: 500;
-        }
-        
-        .help-links a:hover {
-            text-decoration: underline;
+
+        .tab-content.active {
+            display: block;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🤖 TrustScore Bot</h1>
-            <p>Configuração Inicial do Sistema</p>
+    <nav class="navbar">
+        <h1>TrustP2P Admin</h1>
+        <div class="navbar-links">
+            <a href="/setup">Dashboard</a>
+            <a href="/setup/help">Ajuda</a>
+            <a href="/config/status">Status</a>
         </div>
-        
-        <div class="content">
-            {{#if isConfigured}}
-                <div class="status configured">
-                    ✅ <strong>Bot Configurado!</strong><br>
-                    O sistema está pronto para uso. Você pode ajustar as configurações abaixo se necessário.
-                </div>
-            {{else}}
-                <div class="status not-configured">
-                    ⚠️ <strong>Configuração Necessária</strong><br>
-                    Configure o token do bot e outras informações para começar a usar o sistema.
-                </div>
-            {{/if}}
-            
-            <div id="alert" class="alert"></div>
-            
-            <form id="configForm">
-                <div class="form-group">
-                    <label for="TELEGRAM_BOT_TOKEN">🔑 Token do Bot Telegram</label>
-                    <input type="text" id="TELEGRAM_BOT_TOKEN" name="TELEGRAM_BOT_TOKEN" 
-                           value="{{config.TELEGRAM_BOT_TOKEN}}" 
-                           placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz">
-                    <small>Obtenha em @BotFather no Telegram</small>
-                </div>
-                
-                <div class="form-group">
-                    <label for="TELEGRAM_BOT_USERNAME">👤 Username do Bot</label>
-                    <input type="text" id="TELEGRAM_BOT_USERNAME" name="TELEGRAM_BOT_USERNAME" 
-                           value="{{config.TELEGRAM_BOT_USERNAME}}" 
-                           placeholder="meu_bot">
-                    <small>Username sem @ (exemplo: trustscore_bot)</small>
-                </div>
-                
-                <div class="form-group">
-                    <label for="TELEGRAM_GROUP_ID">👥 ID do Grupo Telegram</label>
-                    <input type="text" id="TELEGRAM_GROUP_ID" name="TELEGRAM_GROUP_ID" 
-                           value="{{config.TELEGRAM_GROUP_ID}}" 
-                           placeholder="-1002907400287">
-                    <small>ID do grupo onde o bot pode enviar mensagens (um por linha). Para obter o ID: adicione o bot ao grupo, use /start e verifique os logs do servidor.</small>
-                </div>
-                
-                <div class="form-group">
-                    <label for="TELEGRAM_THREAD_ID">💬 ID do Tópico (Thread)</label>
-                    <input type="number" id="TELEGRAM_THREAD_ID" name="TELEGRAM_THREAD_ID" 
-                           value="{{config.TELEGRAM_THREAD_ID}}" 
-                           placeholder="250">
-                    <small>ID do tópico específico no grupo (opcional)</small>
-                </div>
-                
-                <div class="form-group">
-                    <label for="MONGODB_CNN">🗄️ MongoDB Connection</label>
-                    <input type="text" id="MONGODB_CNN" name="MONGODB_CNN" 
-                           value="{{config.MONGODB_CNN}}">
-                    <small>String de conexão do MongoDB (já configurada para Docker)</small>
-                </div>
-                
-                <div class="form-group">
-                    <label for="PORT">🌐 Porta da Aplicação</label>
-                    <input type="number" id="PORT" name="PORT" 
-                           value="{{config.PORT}}" min="1000" max="65535">
-                    <small>Porta onde a aplicação será executada</small>
-                </div>
-                
-                <!-- Seção API de Cotação -->
-                <div class="form-section">
-                    <h3>💱 API de Cotação</h3>
-                    
-                    <div class="form-group">
-                        <label for="CURRENCY_API_KEY">🔑 Chave da API de Cotação</label>
-                        <input type="password" id="CURRENCY_API_KEY" name="CURRENCY_API_KEY" 
-                               value="{{config.CURRENCY_API_KEY}}" 
-                               placeholder="sua_api_key_aqui">
-                        <small>Chave da API para cotações automáticas (ex: CoinGecko, CoinMarketCap)</small>
+    </nav>
+
+    <div class="main-container">
+        <div id="alert" class="alert"></div>
+
+        <div class="grid">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Status Card -->
+                <div class="card">
+                    <div class="card-header">
+                        Status do Sistema
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="CURRENCY_API_URL">🌐 URL da API de Cotação</label>
-                        <input type="url" id="CURRENCY_API_URL" name="CURRENCY_API_URL" 
-                               value="{{config.CURRENCY_API_URL}}" 
-                               placeholder="https://api.coingecko.com/api/v3">
-                        <small>URL base da API de cotação</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="DEFAULT_CURRENCY">💰 Moeda Padrão</label>
-                        <select id="DEFAULT_CURRENCY" name="DEFAULT_CURRENCY">
-                            <option value="BRL" {{#if (eq config.DEFAULT_CURRENCY 'BRL')}}selected{{/if}}>BRL - Real Brasileiro</option>
-                            <option value="USD" {{#if (eq config.DEFAULT_CURRENCY 'USD')}}selected{{/if}}>USD - Dólar Americano</option>
-                            <option value="EUR" {{#if (eq config.DEFAULT_CURRENCY 'EUR')}}selected{{/if}}>EUR - Euro</option>
-                        </select>
-                        <small>Moeda padrão para cotações</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <button type="button" class="btn btn-secondary" onclick="testCurrencyAPI()" style="width: 100%;">
-                            💱 Testar API de Cotação (USD/BRL)
-                        </button>
-                        <small>Testa a conexão com a API e busca a cotação atual do dólar</small>
+                    <div class="card-body">
+                        {{#if isConfigured}}
+                            <span class="status-badge configured">Configurado</span>
+                        {{else}}
+                            <span class="status-badge not-configured">Pendente</span>
+                        {{/if}}
                     </div>
                 </div>
 
-                <!-- Seção Rate Limit e Backoff -->
-                <div class="form-section">
-                    <h3>🚦 Rate Limit e Backoff</h3>
-                    <div class="form-group">
-                        <label for="RATE_LIMIT_TTL">⏱️ TTL de Rate Limit (ms)</label>
-                        <input type="number" id="RATE_LIMIT_TTL" name="RATE_LIMIT_TTL" value="{{config.RATE_LIMIT_TTL}}" min="1000" max="600000">
-                        <small>Tempo de janela para rate limiting (ex: 60000 = 60s)</small>
+                <!-- Stats Card -->
+                <div class="card">
+                    <div class="card-header">
+                        Estatisticas
                     </div>
-                    <div class="form-group">
-                        <label for="RATE_LIMIT_LIMIT">🔢 Limite de Requisições</label>
-                        <input type="number" id="RATE_LIMIT_LIMIT" name="RATE_LIMIT_LIMIT" value="{{config.RATE_LIMIT_LIMIT}}" min="10" max="1000">
-                        <small>Número máximo de requisições por janela</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="BROADCAST_CONCURRENCY">📡 Concorrência de Broadcast</label>
-                        <input type="number" id="BROADCAST_CONCURRENCY" name="BROADCAST_CONCURRENCY" value="{{config.BROADCAST_CONCURRENCY}}" min="1" max="10">
-                        <small>Quantas mensagens enviar em paralelo</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="BROADCAST_DELAY_MS">⏳ Delay entre envios (ms)</label>
-                        <input type="number" id="BROADCAST_DELAY_MS" name="BROADCAST_DELAY_MS" value="{{config.BROADCAST_DELAY_MS}}" min="0" max="5000">
-                        <small>Atraso pequeno para evitar 429</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="TELEGRAM_BACKOFF_RETRIES">🔁 Retries de Backoff</label>
-                        <input type="number" id="TELEGRAM_BACKOFF_RETRIES" name="TELEGRAM_BACKOFF_RETRIES" value="{{config.TELEGRAM_BACKOFF_RETRIES}}" min="0" max="10">
-                        <small>Tentativas ao receber 429</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="TELEGRAM_BACKOFF_INITIAL_MS">⏳ Delay Inicial (ms)</label>
-                        <input type="number" id="TELEGRAM_BACKOFF_INITIAL_MS" name="TELEGRAM_BACKOFF_INITIAL_MS" value="{{config.TELEGRAM_BACKOFF_INITIAL_MS}}" min="0" max="10000">
-                        <small>Tempo inicial antes do retry</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="TELEGRAM_BACKOFF_FACTOR">📈 Fator de Backoff</label>
-                        <input type="number" step="0.1" id="TELEGRAM_BACKOFF_FACTOR" name="TELEGRAM_BACKOFF_FACTOR" value="{{config.TELEGRAM_BACKOFF_FACTOR}}" min="1" max="5">
-                        <small>Multiplicador do delay a cada retry</small>
-                    </div>
-                </div>
-
-                <!-- Seção Admin e Cache -->
-                <div class="form-section">
-                    <h3>🛠️ Admin e Cache</h3>
-                    <div class="form-group">
-                        <label for="TELEGRAM_ADMIN_CHANNEL_ID">🛡️ Canal de Admin</label>
-                        <input type="text" id="TELEGRAM_ADMIN_CHANNEL_ID" name="TELEGRAM_ADMIN_CHANNEL_ID" value="{{config.TELEGRAM_ADMIN_CHANNEL_ID}}" placeholder="-1001234567890">
-                        <small>ID do canal para notificações administrativas</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="CACHE_TTL">🧠 TTL de Cache (s)</label>
-                        <input type="number" id="CACHE_TTL" name="CACHE_TTL" value="{{config.CACHE_TTL}}" min="1" max="3600">
-                        <small>Tempo de vida do cache de cotações</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="REQUEST_TIMEOUT">⏱️ Timeout de Requisições (ms)</label>
-                        <input type="number" id="REQUEST_TIMEOUT" name="REQUEST_TIMEOUT" value="{{config.REQUEST_TIMEOUT}}" min="1000" max="60000">
-                        <small>Timeout para integrações externas</small>
-                    </div>
-                </div>
-
-                <!-- Seção Admins adicionais -->
-                <div class="form-section">
-                    <h3>👑 Admins</h3>
-                    <div class="form-group">
-                        <label for="TELEGRAM_ADMINS">IDs de Administradores (PV habilitado)</label>
-                        <input type="text" id="TELEGRAM_ADMINS" name="TELEGRAM_ADMINS" value="{{config.TELEGRAM_ADMINS}}" placeholder="30289486,7844787567">
-                        <small>Lista de IDs separados por vírgula para receber DM de disputas</small>
-                    </div>
-                </div>
-
-                <!-- Seção Operações e Disputas -->
-                <div class="form-section">
-                    <h3>📊 Operações e Disputas</h3>
-                    <div class="form-group">
-                        <label>Resumo</label>
-                        <div style="background:#fff;border:1px solid #e1e8ed;border-radius:8px;padding:12px;">
-                            <div><strong>Total:</strong> {{stats.total}}</div>
-                            <div><strong>Concluídas:</strong> {{stats.completed}}</div>
-                            <div><strong>Em Disputa:</strong> {{stats.disputed}}</div>
-                            <div><strong>Revertidas:</strong> {{stats.reverted}}</div>
-                            <div><strong>Canceladas:</strong> {{stats.cancelled}}</div>
+                    <div class="card-body">
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value">{{stats.total}}</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                            <div class="stat-item success">
+                                <div class="stat-value">{{stats.completed}}</div>
+                                <div class="stat-label">Concluidas</div>
+                            </div>
+                            <div class="stat-item warning">
+                                <div class="stat-value">{{stats.disputed}}</div>
+                                <div class="stat-label">Disputas</div>
+                            </div>
+                            <div class="stat-item danger">
+                                <div class="stat-value">{{stats.cancelled}}</div>
+                                <div class="stat-label">Canceladas</div>
+                            </div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <button type="button" class="btn btn-secondary" onclick="loadDisputes()" style="width: 100%;">⚖️ Ver Disputas</button>
-                    </div>
-                    <div id="disputesContainer" style="display:none;background:#fff;border:1px solid #e1e8ed;border-radius:8px;padding:12px;margin-top:10px;"></div>
                 </div>
 
-                <!-- Seção Todas Operações -->
-                <div class="form-section">
-                    <h3>📁 Todas as Operações</h3>
-                    <div class="form-group" style="display:flex;gap:10px;align-items:center;">
-                        <label for="opsStatus">Status:</label>
-                        <select id="opsStatus" name="opsStatus">
-                            <option value="">Todos</option>
-                            <option value="pending">Pendente</option>
-                            <option value="accepted">Aceita</option>
-                            <option value="pending_completion">Aguardando Conclusão</option>
-                            <option value="completed">Concluída</option>
-                            <option value="disputed">Em Disputa</option>
-                            <option value="cancelled">Cancelada</option>
-                          </select>
-                          <label for="opsPage">Página:</label>
-                          <input type="number" id="opsPage" min="1" value="1" style="width:80px;">
-                          <label for="opsLimit">Limite:</label>
-                          <input type="number" id="opsLimit" min="5" value="20" style="width:80px;">
-                          <button type="button" class="btn btn-secondary" onclick="loadOperations()">🔍 Buscar</button>
+                <!-- Quick Actions -->
+                <div class="card">
+                    <div class="card-header">
+                        Acoes Rapidas
                     </div>
-                    <div id="operationsContainer" style="display:none;background:#fff;border:1px solid #e1e8ed;border-radius:8px;padding:0;margin-top:10px;">
-                        <table style="width:100%; border-collapse:collapse;">
-                            <thead>
-                            <tr style="background:#f8f9fa;">
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">ID</th>
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Status</th>
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Tipo</th>
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Ativos</th>
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Redes</th>
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:right;">Qtde</th>
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:right;">Preço</th>
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Criador</th>
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Negociador</th>
-                                <th style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:left;">Criado</th>
-                                </tr>
-                            </thead>
-                            <tbody id="opsTableBody"></tbody>
-                        </table>
-                    <div id="opsTableFooter" style="padding:8px; border-top:1px solid #e1e8ed; display:flex; gap:10px; align-items:center;">
-                        <button class="btn btn-secondary" onclick="exportOpsCsv()">📄 Exportar CSV</button>
-                    </div>
+                    <div class="card-body">
+                        <button class="btn btn-secondary btn-block" onclick="testConnection()" style="margin-bottom: 8px;">
+                            Testar Conexao
+                        </button>
+                        <button class="btn btn-secondary btn-block" onclick="testCurrencyAPI()">
+                            Testar Cotacao
+                        </button>
                     </div>
                 </div>
-                
-                <button type="submit" class="btn">💾 Salvar Configuração</button>
-                <button type="button" class="btn btn-secondary" onclick="testConnection()">🔍 Testar Conexão</button>
-            </form>
-            
-            <div class="help-links">
-                <a href="/setup/help">📚 Ajuda</a>
-                <a href="/config/status">📊 Status do Sistema</a>
-                <a href="http://localhost:8081" target="_blank">🗄️ MongoDB Express</a>
+            </div>
+
+            <!-- Main Content -->
+            <div class="main-content">
+                <!-- Tabs -->
+                <div class="card">
+                    <div class="tabs">
+                        <div class="tab active" onclick="showTab('disputes')">Disputas</div>
+                        <div class="tab" onclick="showTab('operations')">Operacoes</div>
+                        <div class="tab" onclick="showTab('config')">Configuracoes</div>
+                    </div>
+
+                    <!-- Disputes Tab -->
+                    <div id="tab-disputes" class="tab-content active">
+                        <div class="card-body">
+                            <button class="btn btn-primary" onclick="loadDisputes()" style="margin-bottom: 16px;">
+                                Carregar Disputas
+                            </button>
+                            <div id="disputesContainer">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">⚖️</div>
+                                    <p>Clique em "Carregar Disputas" para ver disputas abertas</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Operations Tab -->
+                    <div id="tab-operations" class="tab-content">
+                        <div class="card-body">
+                            <div class="filters">
+                                <div class="filter-group">
+                                    <label>Status:</label>
+                                    <select id="opsStatus">
+                                        <option value="">Todos</option>
+                                        <option value="pending">Pendente</option>
+                                        <option value="accepted">Aceita</option>
+                                        <option value="pending_completion">Aguardando</option>
+                                        <option value="completed">Concluida</option>
+                                        <option value="disputed">Disputa</option>
+                                        <option value="cancelled">Cancelada</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group">
+                                    <label>Pagina:</label>
+                                    <input type="number" id="opsPage" min="1" value="1" style="width: 70px;">
+                                </div>
+                                <div class="filter-group">
+                                    <label>Limite:</label>
+                                    <input type="number" id="opsLimit" min="5" value="20" style="width: 70px;">
+                                </div>
+                                <button class="btn btn-primary" onclick="loadOperations()">Buscar</button>
+                                <button class="btn btn-secondary" onclick="exportOpsCsv()">Exportar CSV</button>
+                            </div>
+
+                            <div id="operationsContainer">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">📋</div>
+                                    <p>Use os filtros acima para buscar operacoes</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Config Tab -->
+                    <div id="tab-config" class="tab-content">
+                        <div class="card-body">
+                            <form id="configForm">
+                                <div class="section">
+                                    <div class="section-title">Telegram</div>
+
+                                    <div class="form-group">
+                                        <label>Token do Bot</label>
+                                        <input type="password" class="form-control" id="TELEGRAM_BOT_TOKEN" name="TELEGRAM_BOT_TOKEN" value="{{config.TELEGRAM_BOT_TOKEN}}">
+                                        <div class="form-hint">Obtenha em @BotFather</div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Username do Bot</label>
+                                        <input type="text" class="form-control" id="TELEGRAM_BOT_USERNAME" name="TELEGRAM_BOT_USERNAME" value="{{config.TELEGRAM_BOT_USERNAME}}">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>ID do Grupo</label>
+                                        <input type="text" class="form-control" id="TELEGRAM_GROUP_ID" name="TELEGRAM_GROUP_ID" value="{{config.TELEGRAM_GROUP_ID}}">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>ID do Topico (Thread)</label>
+                                        <input type="number" class="form-control" id="TELEGRAM_THREAD_ID" name="TELEGRAM_THREAD_ID" value="{{config.TELEGRAM_THREAD_ID}}">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Canal de Admin</label>
+                                        <input type="text" class="form-control" id="TELEGRAM_ADMIN_CHANNEL_ID" name="TELEGRAM_ADMIN_CHANNEL_ID" value="{{config.TELEGRAM_ADMIN_CHANNEL_ID}}">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>IDs dos Admins</label>
+                                        <input type="text" class="form-control" id="TELEGRAM_ADMINS" name="TELEGRAM_ADMINS" value="{{config.TELEGRAM_ADMINS}}" placeholder="123456789,987654321">
+                                        <div class="form-hint">Separados por virgula</div>
+                                    </div>
+                                </div>
+
+                                <div class="section">
+                                    <div class="section-title">Banco de Dados</div>
+
+                                    <div class="form-group">
+                                        <label>MongoDB Connection</label>
+                                        <input type="text" class="form-control" id="MONGODB_CNN" name="MONGODB_CNN" value="{{config.MONGODB_CNN}}">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Porta</label>
+                                        <input type="number" class="form-control" id="PORT" name="PORT" value="{{config.PORT}}">
+                                    </div>
+                                </div>
+
+                                <div class="section">
+                                    <div class="section-title">Rate Limit</div>
+
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                        <div class="form-group">
+                                            <label>TTL (ms)</label>
+                                            <input type="number" class="form-control" id="RATE_LIMIT_TTL" name="RATE_LIMIT_TTL" value="{{config.RATE_LIMIT_TTL}}">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Limite</label>
+                                            <input type="number" class="form-control" id="RATE_LIMIT_LIMIT" name="RATE_LIMIT_LIMIT" value="{{config.RATE_LIMIT_LIMIT}}">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Retries Backoff</label>
+                                            <input type="number" class="form-control" id="TELEGRAM_BACKOFF_RETRIES" name="TELEGRAM_BACKOFF_RETRIES" value="{{config.TELEGRAM_BACKOFF_RETRIES}}">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Delay Inicial (ms)</label>
+                                            <input type="number" class="form-control" id="TELEGRAM_BACKOFF_INITIAL_MS" name="TELEGRAM_BACKOFF_INITIAL_MS" value="{{config.TELEGRAM_BACKOFF_INITIAL_MS}}">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary">Salvar Configuracoes</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    
+
     <script>
-        document.getElementById('configForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const formData = new FormData(e.target);
-            const config = Object.fromEntries(formData.entries());
-            
-            try {
-                const response = await fetch('/setup/save', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(config)
-                });
-                
-                const result = await response.json();
-                
-                const alert = document.getElementById('alert');
-                alert.style.display = 'block';
-                
-                if (result.success) {
-                    alert.className = 'alert success';
-                    alert.innerHTML = '✅ ' + result.message;
-                    
-                    if (result.restart_required) {
-                        setTimeout(() => {
-                            alert.innerHTML += '<br><br>🔄 <strong>Reinicie o container Docker para aplicar as mudanças.</strong>';
-                        }, 2000);
-                    }
-                } else {
-                    alert.className = 'alert error';
-                    alert.innerHTML = '❌ ' + result.message;
-                }
-            } catch (error) {
-                const alert = document.getElementById('alert');
-                alert.style.display = 'block';
-                alert.className = 'alert error';
-                alert.innerHTML = '❌ Erro ao salvar: ' + error.message;
-            }
-        });
-        
-        async function testConnection() {
+        // Tab Navigation
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById('tab-' + tabName).classList.add('active');
+        }
+
+        // Alert Helper
+        function showAlert(message, type) {
             const alert = document.getElementById('alert');
             alert.style.display = 'block';
-            alert.className = 'alert';
-            alert.innerHTML = '📤 Enviando mensagem de teste...';
-            
+            alert.className = 'alert ' + type;
+            alert.innerHTML = message;
+            setTimeout(() => alert.style.display = 'none', 5000);
+        }
+
+        // Load Disputes
+        async function loadDisputes() {
+            const container = document.getElementById('disputesContainer');
+            container.innerHTML = '<div class="empty-state">Carregando...</div>';
+
             try {
-                const response = await fetch('/config/test-message', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: '🤖 Teste de conexão do TrustScore Bot - ' + new Date().toLocaleString('pt-BR')
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert.className = 'alert success';
-                    let message = '✅ Mensagem de teste enviada com sucesso!<br>';
-                    
-                    if (result.results && result.results.botInfo) {
-                        message += '<small>Bot: ' + result.results.botInfo.first_name + ' (@' + result.results.botInfo.username + ')</small><br>';
-                    }
-                    
-                    if (result.results && result.results.sent) {
-                        const groupMessages = result.results.sent.filter(s => s.type === 'group');
-                        const simulations = result.results.sent.filter(s => s.type === 'simulation');
-                        
-                        if (groupMessages.length > 0) {
-                            message += '<small>Enviado para ' + groupMessages.length + ' grupo(s)</small>';
-                        } else if (simulations.length > 0) {
-                            message += '<small>⚠️ ' + simulations[0].message + '</small>';
-                        }
-                    }
-                    
-                    alert.innerHTML = message;
-                } else {
-                    alert.className = 'alert error';
-                    alert.innerHTML = '❌ Erro ao enviar mensagem: ' + (result.message || 'Erro desconhecido');
+                const resp = await fetch('/setup/disputes');
+                const result = await resp.json();
+
+                if (!result.success || !result.items || result.items.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✅</div><p>Nenhuma disputa aberta</p></div>';
+                    return;
                 }
-            } catch (error) {
-                alert.className = 'alert error';
-                alert.innerHTML = '❌ Erro ao testar conexão: ' + error.message;
+
+                let html = '';
+                result.items.forEach(d => {
+                    const assets = Array.isArray(d.assets) ? d.assets.join(', ') : d.assets;
+                    const networks = Array.isArray(d.networks) ? d.networks.map(n => n.toUpperCase()).join(', ') : d.networks;
+
+                    html += `
+                        <div class="dispute-card">
+                            <div class="dispute-header">
+                                <span class="dispute-id">${d._id}</span>
+                                <div class="dispute-actions">
+                                    <button class="btn btn-success btn-sm" onclick="adminDisputeAction('${d._id}','clear')">Resolver</button>
+                                    <button class="btn btn-danger btn-sm" onclick="adminDisputeAction('${d._id}','penalize-accused')">Penalizar Acusado</button>
+                                    <button class="btn btn-warning btn-sm" onclick="adminDisputeAction('${d._id}','penalize-accuser')">Penalizar Acusador</button>
+                                </div>
+                            </div>
+                            <div class="dispute-info">
+                                <div class="dispute-info-item">
+                                    <span class="dispute-info-label">Tipo</span>
+                                    <span>${d.type === 'buy' ? 'Compra' : 'Venda'}</span>
+                                </div>
+                                <div class="dispute-info-item">
+                                    <span class="dispute-info-label">Ativos</span>
+                                    <span>${assets}</span>
+                                </div>
+                                <div class="dispute-info-item">
+                                    <span class="dispute-info-label">Redes</span>
+                                    <span>${networks}</span>
+                                </div>
+                                <div class="dispute-info-item">
+                                    <span class="dispute-info-label">Quantidade</span>
+                                    <span>${d.amount}</span>
+                                </div>
+                            </div>
+                            ${d.reason ? `<div class="dispute-reason"><strong>Motivo:</strong> ${d.reason}</div>` : ''}
+                            <div class="dispute-users">
+                                <strong>Criador:</strong> ${d.creator || '-'} |
+                                <strong>Contestante:</strong> ${d.complainant || '-'} |
+                                <strong>Contestado:</strong> ${d.defendant || '-'}
+                            </div>
+                            <div style="margin-top: 8px; font-size: 0.75rem; color: var(--gray-600);">
+                                ${new Date(d.createdAt).toLocaleString('pt-BR')}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = '<div class="empty-state">Erro ao carregar disputas</div>';
             }
         }
 
+        // Admin Dispute Action
+        async function adminDisputeAction(opId, action) {
+            const reason = prompt('Motivo (opcional):');
+
+            try {
+                const resp = await fetch('/setup/admin/disputes/' + opId + '/' + action, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                });
+                const result = await resp.json();
+
+                if (result.success) {
+                    showAlert('Acao aplicada com sucesso!', 'success');
+                    loadDisputes();
+                } else {
+                    showAlert('Erro: ' + (result.message || 'Falha'), 'error');
+                }
+            } catch (e) {
+                showAlert('Erro: ' + e.message, 'error');
+            }
+        }
+
+        // Load Operations
+        async function loadOperations() {
+            const container = document.getElementById('operationsContainer');
+            container.innerHTML = '<div class="empty-state">Carregando...</div>';
+
+            const status = document.getElementById('opsStatus').value;
+            const page = document.getElementById('opsPage').value;
+            const limit = document.getElementById('opsLimit').value;
+
+            const params = new URLSearchParams();
+            if (status) params.set('status', status);
+            params.set('page', page);
+            params.set('limit', limit);
+
+            try {
+                const resp = await fetch('/setup/operations?' + params.toString());
+                const result = await resp.json();
+
+                if (!result.success || !result.items || result.items.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><p>Nenhuma operacao encontrada</p></div>';
+                    return;
+                }
+
+                let html = '<div class="table-container"><table><thead><tr>';
+                html += '<th>ID</th><th>Status</th><th>Tipo</th><th>Ativos</th><th>Redes</th><th>Qtde</th><th>Criador</th><th>Data</th><th>Acoes</th>';
+                html += '</tr></thead><tbody>';
+
+                result.items.forEach(op => {
+                    const assets = Array.isArray(op.assets) ? op.assets.join(', ') : op.assets;
+                    const networks = Array.isArray(op.networks) ? op.networks.map(n => n.toUpperCase()).join(', ') : op.networks;
+                    const creator = op.creator ? (op.creator.userName ? '@' + op.creator.userName : op.creator.firstName || '-') : '-';
+
+                    html += `<tr>
+                        <td style="font-family: monospace; font-size: 0.7rem;">${op._id.slice(-8)}</td>
+                        <td><span class="status-badge ${op.status === 'completed' ? 'configured' : 'not-configured'}">${op.status}</span></td>
+                        <td>${op.type === 'buy' ? 'Compra' : 'Venda'}</td>
+                        <td>${assets}</td>
+                        <td>${networks}</td>
+                        <td>${op.amount}</td>
+                        <td>${creator}</td>
+                        <td>${new Date(op.createdAt).toLocaleDateString('pt-BR')}</td>
+                        <td>
+                            <button class="btn btn-secondary btn-sm" onclick="adminAction('${op._id}','cancel')" title="Cancelar">🛑</button>
+                            <button class="btn btn-secondary btn-sm" onclick="adminAction('${op._id}','clear')" title="Limpar">✅</button>
+                        </td>
+                    </tr>`;
+                });
+
+                html += '</tbody></table></div>';
+                html += `<div style="padding: 12px; font-size: 0.875rem; color: var(--gray-600);">Total: ${result.total} | Pagina ${result.page}</div>`;
+
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = '<div class="empty-state">Erro ao carregar operacoes</div>';
+            }
+        }
+
+        // Admin Operation Action
+        async function adminAction(opId, action) {
+            const reason = prompt('Motivo (opcional):');
+
+            try {
+                const resp = await fetch('/setup/admin/operations/' + opId + '/' + action, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                });
+                const result = await resp.json();
+
+                if (result.success) {
+                    showAlert('Acao aplicada com sucesso!', 'success');
+                    loadOperations();
+                } else {
+                    showAlert('Erro: ' + (result.message || 'Falha'), 'error');
+                }
+            } catch (e) {
+                showAlert('Erro: ' + e.message, 'error');
+            }
+        }
+
+        // Export CSV
         function exportOpsCsv() {
             const status = document.getElementById('opsStatus').value;
             const page = document.getElementById('opsPage').value;
             const limit = document.getElementById('opsLimit').value;
+
             const params = new URLSearchParams();
             if (status) params.set('status', status);
             params.set('page', page);
             params.set('limit', limit);
-            fetch('/config/operations?' + params.toString())
-              .then(r => r.json())
-              .then(result => {
-                if (!result.success) return;
-                const rows = [['ID','Status','Tipo','Ativos','Redes','Quantidade','Preço','Criador','Negociador','Criado']];
-                result.items.forEach(op => {
-                  const assets = (op.assets && op.assets.join) ? op.assets.join(', ') : op.assets;
-                  const networks = (op.networks && op.networks.map) ? op.networks.map(n=>String(n).toUpperCase()).join(', ') : op.networks;
-                  const creator = op.creator ? (op.creator.userName ? '@'+op.creator.userName : (op.creator.firstName || '—')) : '—';
-                  const acceptor = op.acceptor ? (op.acceptor.userName ? '@'+op.acceptor.userName : (op.acceptor.firstName || '—')) : '—';
-                  rows.push([op._id, op.status, op.type, assets, networks, op.amount, op.price, creator, acceptor, new Date(op.createdAt).toLocaleString('pt-BR')]);
+
+            fetch('/setup/operations?' + params.toString())
+                .then(r => r.json())
+                .then(result => {
+                    if (!result.success) return;
+
+                    const rows = [['ID','Status','Tipo','Ativos','Redes','Quantidade','Preco','Criador','Data']];
+                    result.items.forEach(op => {
+                        const assets = Array.isArray(op.assets) ? op.assets.join(', ') : op.assets;
+                        const networks = Array.isArray(op.networks) ? op.networks.map(n => n.toUpperCase()).join(', ') : op.networks;
+                        const creator = op.creator ? (op.creator.userName ? '@' + op.creator.userName : op.creator.firstName || '-') : '-';
+                        rows.push([op._id, op.status, op.type, assets, networks, op.amount, op.price, creator, new Date(op.createdAt).toLocaleString('pt-BR')]);
+                    });
+
+                    const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'operacoes.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
                 });
-                const csv = rows.map(r => r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'operacoes.csv';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-              });
         }
-        
+
+        // Test Connection
+        async function testConnection() {
+            try {
+                const response = await fetch('/config/test-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: 'Teste de conexao - ' + new Date().toLocaleString('pt-BR') })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('Conexao OK!', 'success');
+                } else {
+                    showAlert('Erro: ' + (result.message || 'Falha'), 'error');
+                }
+            } catch (e) {
+                showAlert('Erro: ' + e.message, 'error');
+            }
+        }
+
+        // Test Currency API
         async function testCurrencyAPI() {
-            const alert = document.getElementById('alert');
-            alert.style.display = 'block';
-            alert.className = 'alert';
-            alert.innerHTML = '💱 Testando API de cotação...';
-            
             try {
                 const response = await fetch('/config/test-currency', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        from: 'USD',
-                        to: 'BRL'
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ from: 'USD', to: 'BRL' })
                 });
-                
                 const result = await response.json();
-                
+
                 if (result.success) {
-                     alert.className = 'alert success';
-                     alert.innerHTML = '✅ API de cotação funcionando!<br>' +
-                                     '<strong>USD/BRL: R$ ' + result.rate.toFixed(4) + '</strong><br>' +
-                                     '<small>Fonte: ' + result.source + ' | API: ' + result.apiUsed + ' | Atualizado: ' + new Date(result.timestamp).toLocaleString('pt-BR') + '</small>';
-                 } else {
-                     alert.className = 'alert error';
-                     alert.innerHTML = '❌ Erro na API de cotação: ' + (result.message || 'Erro desconhecido');
-                 }
-            } catch (error) {
-                alert.className = 'alert error';
-                alert.innerHTML = '❌ Erro ao testar API de cotação: ' + error.message;
+                    showAlert('USD/BRL: R$ ' + result.rate.toFixed(4), 'success');
+                } else {
+                    showAlert('Erro: ' + (result.message || 'Falha'), 'error');
+                }
+            } catch (e) {
+                showAlert('Erro: ' + e.message, 'error');
             }
         }
 
-        async function loadDisputes() {
-            const container = document.getElementById('disputesContainer');
-            container.style.display = 'block';
-            container.innerHTML = '⏳ Carregando disputas...';
-            try {
-                const resp = await fetch('/setup/disputes');
-                const result = await resp.json();
-                if (result.success) {
-                    if (!result.items || result.items.length === 0) {
-                        container.innerHTML = '✅ Sem disputas no momento';
-                        return;
-                    }
-                    let html = '';
-                    result.items.forEach(d => {
-                        const assets = (d.assets && d.assets.join) ? d.assets.join(', ') : d.assets;
-                        const networks = (d.networks && d.networks.map) ? d.networks.map(n=>String(n).toUpperCase()).join(', ') : d.networks;
-                        html += `<div style="padding:12px;border:1px solid #e1e8ed;border-radius:8px;margin-bottom:10px;background:#f9fafb;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <div><strong>ID:</strong> ${d._id}</div>
-                                <div>
-                                    <button class="btn btn-secondary" onclick="adminDisputeAction('${d._id}','clear')">✅ Resolver</button>
-                                    <button class="btn btn-secondary" onclick="adminDisputeAction('${d._id}','penalize-accused')">🚨 Penalizar Acusado</button>
-                                    <button class="btn btn-secondary" onclick="adminDisputeAction('${d._id}','penalize-accuser')">⚠️ Penalizar Acusador</button>
-                                </div>
-                            </div>
-                            <div><strong>Status:</strong> ${d.status} — <strong>Tipo:</strong> ${d.type}</div>
-                            <div><strong>Ativos:</strong> ${assets} — <strong>Redes:</strong> ${networks}</div>
-                            <div><strong>Quantidade:</strong> ${d.amount} — <strong>Preço:</strong> ${d.price}</div>
-                            <div><strong>Motivo:</strong> ${d.reason || '—'}</div>
-                            <div><strong>Criador:</strong> ${d.creator || '—'} — <strong>Contestante:</strong> ${d.complainant || '—'} — <strong>Contestado:</strong> ${d.defendant || '—'}</div>
-                            <div><small>${new Date(d.createdAt).toLocaleString('pt-BR')}</small></div>
-                        </div>`;
-                    });
-                    container.innerHTML = html;
-                } else {
-                    container.innerHTML = '❌ Erro ao carregar disputas';
-                }
-            } catch (e) {
-                container.innerHTML = '❌ Erro ao carregar disputas: ' + e.message;
-            }
-        }
+        // Save Config Form
+        document.getElementById('configForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
 
-        async function loadOperations() {
-            const container = document.getElementById('operationsContainer');
-            container.style.display = 'block';
-            const body = document.getElementById('opsTableBody');
-            const footer = document.getElementById('opsTableFooter');
-            body.innerHTML = '<tr><td colspan="10" style="padding:8px;">⏳ Carregando operações...</td></tr>';
-            const status = document.getElementById('opsStatus').value;
-            const page = document.getElementById('opsPage').value;
-            const limit = document.getElementById('opsLimit').value;
-            const params = new URLSearchParams();
-            if (status) params.set('status', status);
-            params.set('page', page);
-            params.set('limit', limit);
+            const formData = new FormData(e.target);
+            const config = Object.fromEntries(formData.entries());
+
             try {
-                const resp = await fetch('/setup/operations?' + params.toString());
-                const result = await resp.json();
+                const response = await fetch('/setup/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const result = await response.json();
+
                 if (result.success) {
-                    if (!result.items || result.items.length === 0) {
-                        body.innerHTML = '<tr><td colspan="8" style="padding:8px;">✅ Nenhuma operação encontrada</td></tr>';
-                        footer.innerHTML = '';
-                        return;
-                    }
-                    let rows = '';
-                    result.items.forEach(op => {
-                        const assets = (op.assets && op.assets.join) ? op.assets.join(', ') : op.assets;
-                        const networks = (op.networks && op.networks.map) ? op.networks.map(n=>String(n).toUpperCase()).join(', ') : op.networks;
-                        const creator = op.creator ? (op.creator.userName ? '@'+op.creator.userName : (op.creator.firstName || '—')) : '—';
-                        const acceptor = op.acceptor ? (op.acceptor.userName ? '@'+op.acceptor.userName : (op.acceptor.firstName || '—')) : '—';
-                        rows += `<tr>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${op._id}</td>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${op.status}</td>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${op.type}</td>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${assets}</td>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${networks}</td>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:right;">${op.amount}</td>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;text-align:right;">${op.price}</td>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${creator}</td>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${acceptor}</td>
-                            <td style="padding:8px;border-bottom:1px solid #e1e8ed;">${new Date(op.createdAt).toLocaleString('pt-BR')}</td>
-                            <td style=\"padding:8px;border-bottom:1px solid #e1e8ed;text-align:center;\">\n                                <button class=\"btn btn-secondary\" onclick=\"adminAction('${op._id}','cancel')\">🛑</button>\n                                <button class=\"btn btn-secondary\" onclick=\"adminAction('${op._id}','clear')\">✅</button>\n                                <button class=\"btn btn-secondary\" onclick=\"adminAction('${op._id}','flag')\">🚨</button>\n                            </td>
-                        </tr>`;
-                    });
-                    body.innerHTML = rows;
-                    footer.innerHTML = `Total: ${result.total} | Página: ${result.page} | Limite: ${result.limit}`;
+                    showAlert('Configuracoes salvas! Reinicie o bot para aplicar.', 'success');
                 } else {
-                    body.innerHTML = '<tr><td colspan="8" style="padding:8px;">❌ Erro ao carregar operações</td></tr>';
-                    footer.innerHTML = '';
+                    showAlert('Erro: ' + (result.message || 'Falha'), 'error');
                 }
             } catch (e) {
-                body.innerHTML = '<tr><td colspan="8" style="padding:8px;">❌ Erro ao carregar operações: ' + e.message + '</td></tr>';
-                footer.innerHTML = '';
+                showAlert('Erro: ' + e.message, 'error');
             }
-        }
-        function adminAction(opId, action) {
-            const reason = prompt('Informe o motivo (opcional):');
-            fetch('/setup/admin/operations/' + opId + '/' + action, { 
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ reason })
-            })
-              .then(r => r.json())
-              .then(result => {
-                const alert = document.getElementById('alert');
-                alert.style.display = 'block';
-                if (result.success) {
-                  alert.className = 'alert success';
-                  alert.innerHTML = '✅ Ação aplicada: ' + action;
-                  loadOperations();
-                } else {
-                  alert.className = 'alert error';
-                  alert.innerHTML = '❌ Erro: ' + (result.message || 'falha');
-                }
-              })
-        }
+        });
     </script>
 </body>
 </html>
-        function adminDisputeAction(opId, action) {
-            const reason = prompt('Informe o motivo (opcional):');
-            fetch('/setup/admin/disputes/' + opId + '/' + action, { 
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ reason })
-            })
-              .then(r => r.json())
-              .then(result => {
-                const alert = document.getElementById('alert');
-                alert.style.display = 'block';
-                if (result.success) {
-                  alert.className = 'alert success';
-                  alert.innerHTML = '✅ Ação aplicada na disputa: ' + action;
-                  loadDisputes();
-                } else {
-                  alert.className = 'alert error';
-                  alert.innerHTML = '❌ Erro: ' + (result.message || 'falha');
-                }
-              })
-        }
