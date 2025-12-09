@@ -826,13 +826,14 @@
                 }
 
                 let html = '<div class="table-container"><table><thead><tr>';
-                html += '<th>ID</th><th>Status</th><th>Tipo</th><th>Ativos</th><th>Redes</th><th>Qtde</th><th>Criador</th><th>Data</th><th>Acoes</th>';
+                html += '<th>ID</th><th>Status</th><th>Tipo</th><th>Ativos</th><th>Redes</th><th>Qtde</th><th>Criador</th><th>Negociador</th><th>Data</th><th>Acoes</th>';
                 html += '</tr></thead><tbody>';
 
                 result.items.forEach(op => {
                     const assets = Array.isArray(op.assets) ? op.assets.join(', ') : op.assets;
                     const networks = Array.isArray(op.networks) ? op.networks.map(n => n.toUpperCase()).join(', ') : op.networks;
                     const creator = op.creator ? (op.creator.userName ? '@' + op.creator.userName : op.creator.firstName || '-') : '-';
+                    const acceptor = op.acceptor ? (op.acceptor.userName ? '@' + op.acceptor.userName : op.acceptor.firstName || '-') : '-';
 
                     html += `<tr>
                         <td style="font-family: monospace; font-size: 0.7rem;">${op._id.slice(-8)}</td>
@@ -842,6 +843,7 @@
                         <td>${networks}</td>
                         <td>${op.amount}</td>
                         <td>${creator}</td>
+                        <td>${acceptor}</td>
                         <td>${new Date(op.createdAt).toLocaleDateString('pt-BR')}</td>
                         <td>
                             <button class="btn btn-secondary btn-sm" onclick="adminAction('${op._id}','cancel')" title="Cancelar">🛑</button>
@@ -898,12 +900,13 @@
                 .then(result => {
                     if (!result.success) return;
 
-                    const rows = [['ID','Status','Tipo','Ativos','Redes','Quantidade','Preco','Criador','Data']];
+                    const rows = [['ID','Status','Tipo','Ativos','Redes','Quantidade','Preco','Criador','Negociador','Data']];
                     result.items.forEach(op => {
                         const assets = Array.isArray(op.assets) ? op.assets.join(', ') : op.assets;
                         const networks = Array.isArray(op.networks) ? op.networks.map(n => n.toUpperCase()).join(', ') : op.networks;
                         const creator = op.creator ? (op.creator.userName ? '@' + op.creator.userName : op.creator.firstName || '-') : '-';
-                        rows.push([op._id, op.status, op.type, assets, networks, op.amount, op.price, creator, new Date(op.createdAt).toLocaleString('pt-BR')]);
+                        const acceptor = op.acceptor ? (op.acceptor.userName ? '@' + op.acceptor.userName : op.acceptor.firstName || '-') : '-';
+                        rows.push([op._id, op.status, op.type, assets, networks, op.amount, op.price, creator, acceptor, new Date(op.createdAt).toLocaleString('pt-BR')]);
                     });
 
                     const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
