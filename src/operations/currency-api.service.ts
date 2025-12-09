@@ -66,8 +66,14 @@ export class CurrencyApiService {
 
   async getSuggestedPrice(asset: string): Promise<number | null> {
     try {
+      // DEPIX sempre tem cotação 1:1 com BRL (stablecoin brasileira na rede Liquid)
+      if (asset.toUpperCase() === 'DEPIX') {
+        this.logger.log(`DEPIX price: R$ 1.00 (1:1 peg)`);
+        return 1.0;
+      }
+
       const rates = await this.getCurrentRates();
-      
+
       // Mapear ativos para suas cotações correspondentes
       const assetMapping: { [key: string]: keyof CurrencyApiResponse } = {
         'USDT': 'USDBRL',
@@ -79,16 +85,16 @@ export class CurrencyApiService {
         'SOL': 'SOLBRL',
         'EUR': 'EURBRL'
       };
-      
+
       const rateKey = assetMapping[asset.toUpperCase()];
       if (!rateKey || !rates[rateKey]) {
         this.logger.warn(`No rate found for asset: ${asset}`);
         return null;
       }
-      
+
       const rate = rates[rateKey];
       const suggestedPrice = parseFloat(rate.bid);
-      
+
       this.logger.log(`Suggested price for ${asset}: R$ ${suggestedPrice.toFixed(2)}`);
       return suggestedPrice;
     } catch (error) {

@@ -116,10 +116,20 @@ export class CotacaoChoiceService {
    */
   private async getGoogleRate(asset: AssetType): Promise<QuotationChoice | null> {
     try {
+      // DEPIX sempre tem cotação 1:1 com BRL (stablecoin brasileira na rede Liquid)
+      if (asset === AssetType.DEPIX) {
+        return {
+          source: 'google',
+          rate: 1.0,
+          timestamp: new Date(),
+          symbol: 'DEPIXBRL'
+        };
+      }
+
       // Mapear assets para símbolos do Google Finance
       const symbolMap = {
         [AssetType.USDT]: 'USD',
-        [AssetType.USDC]: 'USD', 
+        [AssetType.USDC]: 'USD',
         [AssetType.USDE]: 'USD',
         [AssetType.DOLAR]: 'USD',
         [AssetType.EURO]: 'EUR',
@@ -163,6 +173,16 @@ export class CotacaoChoiceService {
    */
   private async getBinanceRate(asset: AssetType): Promise<QuotationChoice | null> {
     try {
+      // DEPIX sempre tem cotação 1:1 com BRL (stablecoin brasileira na rede Liquid)
+      if (asset === AssetType.DEPIX) {
+        return {
+          source: 'binance',
+          rate: 1.0,
+          timestamp: new Date(),
+          symbol: 'DEPIXBRL'
+        };
+      }
+
       // Mapear assets para símbolos da Binance
       const symbolMap = {
         [AssetType.USDT]: 'USDTBRL',
