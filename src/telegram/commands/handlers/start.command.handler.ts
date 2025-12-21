@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ITextCommandHandler, TextCommandContext } from '../../telegram.types';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { KarmaService } from '../../../karma/karma.service';
@@ -12,6 +12,7 @@ import { CriarOperacaoCommandHandler } from './criar-operacao.command.handler';
 import { PopupStateService } from '../../shared/popup-state.service';
 import { ReputacaoCommandHandler } from './reputacao.command.handler';
 import { CotacoesCommandHandler } from './cotacoes.command.handler';
+import { JoinRequestHandler } from '../../handlers/join-request.handler';
 import { validateActiveMembershipForCallback } from '../../../shared/group-membership.utils';
 import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
 import { getOrCreateUserFromCtx } from '../../shared/user.utils';
@@ -38,6 +39,8 @@ export class StartCommandHandler implements ITextCommandHandler {
     private readonly cotacoesHandler: CotacoesCommandHandler,
     private readonly pendingEvaluationService: PendingEvaluationService,
     private readonly popupStateService: PopupStateService,
+    @Inject(forwardRef(() => JoinRequestHandler))
+    private readonly joinRequestHandler: JoinRequestHandler,
   ) {}
 
   private async getKarmaForUserWithFallback(user: any, chatId: number): Promise<any> {
@@ -95,6 +98,9 @@ export class StartCommandHandler implements ITextCommandHandler {
   }
 
   async handle(ctx: TextCommandContext): Promise<void> {
+    const match = ctx.message.text.match(this.command);
+    const startParam = match?.[1];
+
     // VERIFICAÇÃO PRIORITÁRIA: Se usuário não aceitou termos em grupos, apresentar termos primeiro
     if (ctx.chat.type !== 'private') {
       const hasAccepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(
@@ -106,10 +112,41 @@ export class StartCommandHandler implements ITextCommandHandler {
         await this.presentTermsInStart(ctx);
         return;
       }
-    }
+    } else {
+      // Em chat PRIVADO - usar sistema de solicitação de entrada
 
-    const match = ctx.message.text.match(this.command);
-    const startParam = match?.[1];
+      // Deep link: /start terms_<groupId> (para membros existentes)
+      if (startParam && startParam.startsWith('terms_')) {
+        const groupId = parseInt(startParam.replace('terms_', ''));
+        if (!isNaN(groupId)) {
+          // Verificar se já é membro
+          const isMember = await this.joinRequestHandler.isUserMemberOfGroup(ctx.from.id);
+          if (isMember) {
+            await this.presentTermsForGroup(ctx, groupId);
+          } else {
+            // Não é membro, iniciar processo de solicitação
+            await this.joinRequestHandler.startJoinRequest(ctx);
+          }
+          return;
+        }
+      }
+
+      // Verificar se é membro de algum grupo e precisa aceitar termos
+      const isMember = await this.joinRequestHandler.isUserMemberOfGroup(ctx.from.id);
+
+      if (isMember) {
+        // É membro, verificar se precisa aceitar termos
+        const pendingTermsGroup = await this.checkPendingTermsInGroups(ctx.from.id);
+        if (pendingTermsGroup) {
+          await this.presentTermsForGroup(ctx, pendingTermsGroup);
+          return;
+        }
+      } else {
+        // NÃO é membro - iniciar processo de solicitação de entrada
+        await this.joinRequestHandler.startJoinRequest(ctx);
+        return;
+      }
+    }
 
     // Se há parâmetro de start e é relacionado à reputação
     if (startParam && startParam.startsWith('reputacao_')) {
@@ -965,6 +1002,111 @@ export class StartCommandHandler implements ITextCommandHandler {
     });
   }
 
+  // Verificar se usuário precisa aceitar termos em algum grupo configurado
+  private async checkPendingTermsInGroups(userId: number): Promise<number | null> {
+    try {
+      // Obter grupos configurados
+      let configuredGroups: number[] = [];
+
+      if (process.env.TELEGRAM_GROUP_ID) {
+        configuredGroups.push(parseInt(process.env.TELEGRAM_GROUP_ID));
+      }
+
+      if (process.env.TELEGRAM_GROUPS) {
+        const additionalGroups = process.env.TELEGRAM_GROUPS.split(',').map(id => parseInt(id.trim()));
+        configuredGroups = [...configuredGroups, ...additionalGroups];
+      }
+
+      // Remover duplicatas
+      configuredGroups = [...new Set(configuredGroups)];
+
+      // Para cada grupo, verificar se usuário é membro e se precisa aceitar termos
+      for (const groupId of configuredGroups) {
+        try {
+          // Verificar se é membro do grupo
+          const memberInfo = await this.bot.telegram.getChatMember(groupId, userId);
+          const activeMemberStatuses = ['member', 'administrator', 'creator'];
+
+          if (activeMemberStatuses.includes(memberInfo.status)) {
+            // É membro ativo, verificar se aceitou termos
+            const hasAccepted = await this.termsAcceptanceService.hasUserAcceptedCurrentTerms(userId, groupId);
+            if (!hasAccepted) {
+              this.logger.log(`🔔 Usuário ${userId} precisa aceitar termos no grupo ${groupId}`);
+              return groupId;
+            }
+          }
+        } catch (error) {
+          // Usuário não é membro deste grupo ou outro erro, ignorar
+          continue;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      this.logger.error('Erro ao verificar termos pendentes:', error);
+      return null;
+    }
+  }
+
+  // Apresentar termos para um grupo específico (usado no privado)
+  private async presentTermsForGroup(ctx: TextCommandContext, groupId: number): Promise<void> {
+    try {
+      const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+      const termsText = this.termsAcceptanceService.getTermsText();
+
+      // Tentar obter nome do grupo
+      let groupName = `Grupo ${groupId}`;
+      try {
+        const chat = await this.bot.telegram.getChat(groupId);
+        if ('title' in chat && chat.title) {
+          groupName = chat.title;
+        }
+      } catch (error) {
+        this.logger.warn(`Não foi possível obter nome do grupo ${groupId}`);
+      }
+
+      const message = (
+        `🎉 **Bem-vindo(a), ${userName}!**\n\n` +
+        `📋 **Você precisa aceitar os termos de responsabilidade** para participar do grupo **${groupName}**.\n\n` +
+        termsText + `\n\n` +
+        `👤 **Usuário:** ${userName}\n` +
+        `🆔 **ID:** \`${ctx.from.id}\`\n` +
+        `📅 **Data:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
+        `⚠️ **IMPORTANTE:** Você precisa aceitar estes termos para usar o bot e participar do grupo.`
+      );
+
+      const keyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: '✅ ACEITO OS TERMOS',
+              callback_data: `accept_terms_${ctx.from.id}_${groupId}`
+            },
+            {
+              text: '❌ NÃO ACEITO',
+              callback_data: `reject_terms_${ctx.from.id}_${groupId}`
+            }
+          ],
+          [
+            {
+              text: '📋 Ver Termos Detalhados',
+              callback_data: `view_terms_detail_${ctx.from.id}_${groupId}`
+            }
+          ]
+        ]
+      };
+
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
+
+    } catch (error) {
+      this.logger.error(`Erro ao apresentar termos para grupo ${groupId}:`, error);
+      // Fallback para mensagem genérica
+      await this.presentTermsInStart(ctx);
+    }
+  }
 
   private async showUserOperations(ctx: any, page: number = 0): Promise<void> {
     try {

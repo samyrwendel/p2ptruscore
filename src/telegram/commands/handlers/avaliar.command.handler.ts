@@ -635,14 +635,14 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
            const starRating = parseInt(parts[0]);
            const suggestionIndex = parseInt(parts[1]);
            const operationId = parts.slice(2).join('_');
-           
-           // Recuperar sugestões armazenadas
-           const suggestions = this.tempSuggestions.get(`${operationId}_${starRating}`);
+
+           // Usar sugestões fixas baseadas no rating (não depende de memória)
+           const suggestions = this.getSuggestionsForRating(starRating);
            if (!suggestions || !suggestions[suggestionIndex]) {
              await ctx.answerCbQuery('❌ Sugestão não encontrada', { show_alert: true });
              return true;
            }
-           
+
            const selectedComment = suggestions[suggestionIndex];
            
            // Finalizar avaliação com comentário selecionado
@@ -1085,5 +1085,48 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
   hasActiveSession(sessionKey: string): boolean {
     const userId = sessionKey.split('_')[0];
     return this.pendingCustomComments.has(userId);
+  }
+
+  // Retorna sugestões fixas de comentários baseado no rating (não depende de memória)
+  private getSuggestionsForRating(starRating: number): string[] {
+    switch (starRating) {
+      case 5:
+        return [
+          'Excelente negociação! Muito confiável.',
+          'Transação perfeita, recomendo!',
+          'Pessoa séria e pontual.',
+          'Comunicação clara e rápida.'
+        ];
+      case 4:
+        return [
+          'Boa experiência, recomendo.',
+          'Transação tranquila.',
+          'Pessoa confiável.',
+          'Tudo ocorreu bem.'
+        ];
+      case 3:
+        return [
+          'Experiência regular.',
+          'Transação ok, sem problemas.',
+          'Atendeu as expectativas.',
+          'Negociação normal.'
+        ];
+      case 2:
+        return [
+          'Experiência abaixo do esperado.',
+          'Alguns problemas na comunicação.',
+          'Transação demorada.',
+          'Poderia ter sido melhor.'
+        ];
+      case 1:
+        return [
+          'Experiência ruim.',
+          'Problemas na transação.',
+          'Comunicação deficiente.',
+          'Não recomendo.'
+        ];
+      default:
+        return [];
+    }
   }
 }

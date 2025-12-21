@@ -17,7 +17,7 @@ export interface TermsAcceptanceData {
 @Injectable()
 export class TermsAcceptanceService {
   private readonly logger = new Logger(TermsAcceptanceService.name);
-  private readonly CURRENT_TERMS_VERSION = '1.2.0';
+  private readonly CURRENT_TERMS_VERSION = '1.3.0';
 
   constructor(
     private readonly termsAcceptanceRepository: TermsAcceptanceRepository,
@@ -210,22 +210,22 @@ export class TermsAcceptanceService {
   getTermsText(): string {
     return (
       `📋 **TERMO DE RESPONSABILIDADE - TRUSTSCORE P2P**\n\n` +
-      `🎯 **OBJETIVO:** Este grupo facilita transações P2P de criptomoedas sem KYC, priorizando privacidade e segurança entre membros verificados.\n\n` +
-      `📜 **REGRAS E RESPONSABILIDADES:**\n\n` +
-      `1️⃣ **Responsabilidade Total:** Todas as negociações são de sua exclusiva responsabilidade. O TrustScore é apenas uma ferramenta de reputação.\n\n` +
-      `2️⃣ **Limite Inicial:** Para começar, operações limitadas a R$ 600,00. Construa reputação gradualmente.\n\n` +
-      `3️⃣ **Prioridade de Envio:** Quem tem MENOR reputação no TrustScore deve enviar primeiro (critério de segurança).\n\n` +
-      `4️⃣ **Contas Próprias:** Pagamentos devem ser feitos exclusivamente de contas próprias (CPF ou CNPJ próprio).\n\n` +
-      `5️⃣ **Execução Imediata:** Boletos devem ser pagos no mesmo dia. Evite agendamentos.\n\n` +
-      `6️⃣ **Verificação de Membros:** Sempre confirme se a pessoa está no mesmo grupo antes de negociar.\n\n` +
-      `7️⃣ **Cautela com Feriados:** Seja cauteloso com valores altos em vésperas de feriados e finais de semana.\n\n` +
-      `8️⃣ **Conduta Ética:** Tentativas de fraude resultam em banimento permanente da comunidade.\n\n` +
-      `9️⃣ **Negociações Privadas:** Todas as tratativas devem ser feitas no privado entre os interessados.\n\n` +
-      `🔟 **Ativos Ilícitos - ATENÇÃO ESPECIAL:** Existe a possibilidade de negociar ativos marcados como provenientes de roubos, hacks e outras origens ilegais. Para sua segurança:\n\n` +
-      `   🏦 **RECOMENDADO:** Priorize stablecoins, BTC e ETH de corretoras conhecidas (Binance, Coinbase, Bybit, Bitget, MEXC e outras), pois possuem sistemas de prevenção contra ativos ilícitos.\n\n` +
-      `   🚫 **NÃO RECOMENDADO:** Ativos que passaram por mixers - tenha extrema cautela nessas situações.\n\n` +
-      `   ⚖️ **RESPONSABILIDADE:** Você é totalmente responsável por verificar a origem dos ativos que negocia.\n\n` +
-      `1️⃣1️⃣ **Isenção de Responsabilidade:** A comunidade e o bot não se responsabilizam por perdas ou problemas nas negociações.\n\n` +
+      `🔑 **PONTOS IMPORTANTES:**\n` +
+      `• Este é um grupo INFORMAL entre amigos\n` +
+      `• NÃO é P2P profissional/comercial\n` +
+      `• NÃO deve haver reporte\n` +
+      `• Você assume total responsabilidade\n\n` +
+      `📜 **REGRAS:**\n\n` +
+      `1️⃣ **Limite Inicial:** Operações limitadas a R$ 600,00. Construa reputação gradualmente.\n\n` +
+      `2️⃣ **Prioridade de Envio:** Quem tem MENOR reputação no TrustScore deve enviar primeiro.\n\n` +
+      `3️⃣ **Contas Próprias:** Pagamentos exclusivamente de contas próprias (CPF ou CNPJ próprio).\n\n` +
+      `4️⃣ **Execução Imediata:** Boletos devem ser pagos no mesmo dia. Evite agendamentos.\n\n` +
+      `5️⃣ **Verificação:** Sempre confirme se a pessoa está no mesmo grupo antes de negociar.\n\n` +
+      `6️⃣ **Cautela com Feriados:** Cuidado com valores altos em vésperas de feriados e finais de semana.\n\n` +
+      `7️⃣ **Conduta Ética:** Tentativas de fraude resultam em banimento permanente.\n\n` +
+      `8️⃣ **Negociações Privadas:** Todas as tratativas devem ser feitas no privado.\n\n` +
+      `9️⃣ **Ativos Ilícitos:** Priorize stablecoins, BTC e ETH de corretoras conhecidas. Evite ativos de mixers.\n\n` +
+      `🔟 **PIX Noturno:** Entre 20h e 6h, o limite de PIX é R$ 1.000. Valores maiores podem não ser processados.\n\n` +
       `⚠️ **ACEITAR OS TERMOS significa concordar com todas essas condições e assumir total responsabilidade por suas ações.**`
     );
   }

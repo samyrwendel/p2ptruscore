@@ -233,16 +233,10 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
         Markup.button.callback('⚪ ARB', 'op_network_arbitrum'),
         Markup.button.callback('🟣 POL', 'op_network_polygon'),
         Markup.button.callback('🔵 BASE', 'op_network_base'),
+      ],
+      [
         Markup.button.callback('🟡 BNB', 'op_network_bnb'),
-      ],
-      [
         Markup.button.callback('🟪 SOLANA', 'op_network_solana'),
-      ],
-      [
-        Markup.button.callback('⬜ ETH', 'op_network_eth'),
-      ],
-      [
-
       ],
       [
         Markup.button.callback('⬅️ Voltar', 'op_back_assets'),
@@ -602,51 +596,54 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
         const asset = data.replace('op_asset_', '') as AssetType;
         if (!session.data.assets) session.data.assets = [];
         if (!session.data.networks) session.data.networks = [];
-        
+
         if (session.data.assets.includes(asset)) {
-          // Remove se já estiver selecionado
+          // Remove se já estiver selecionado (desmarcar)
           session.data.assets = session.data.assets.filter(a => a !== asset);
 
-          // Se removeu uma moeda fiat, remove também a rede fiat se não há outras moedas fiat
-          if ([AssetType.DOLAR, AssetType.EURO, AssetType.REAL].includes(asset)) {
-            const hasFiatAssets = session.data.assets.some(a => [AssetType.DOLAR, AssetType.EURO, AssetType.REAL].includes(a));
-            if (!hasFiatAssets) {
-              session.data.networks = session.data.networks.filter(n => n !== NetworkType.FIAT);
-            }
-          }
-
-          // Se removeu DEPIX, remove também a rede LIQUID
-          if (asset === AssetType.DEPIX) {
-            session.data.networks = session.data.networks.filter(n => n !== NetworkType.LIQUID);
+          // Se removeu todos os ativos, limpar redes automáticas
+          if (session.data.assets.length === 0) {
+            session.data.networks = session.data.networks.filter(n => n !== NetworkType.FIAT && n !== NetworkType.LIQUID);
+            session.data.quotationType = undefined;
+            session.data.price = undefined;
           }
         } else {
           // Verificar compatibilidade antes de adicionar
-          const isCompatible = this.isAssetCompatible(session.data.assets, asset);
-
-          if (!isCompatible) {
-            // Mostrar mensagem de erro sobre incompatibilidade
-            await ctx.answerCbQuery('❌ Não é possível misturar stablecoins com BTC/ETH/XRP ou moedas FIAT. Escolha ativos do mesmo tipo.', { show_alert: true });
-            return true;
+          if (!this.isAssetCompatible(session.data.assets, asset)) {
+            // Não é compatível - limpar e adicionar o novo
+            session.data.assets = [asset];
+            session.data.networks = session.data.networks.filter(n => n !== NetworkType.FIAT && n !== NetworkType.LIQUID);
+            session.data.quotationType = undefined;
+            session.data.price = undefined;
+          } else {
+            // É compatível - adicionar à lista existente
+            session.data.assets.push(asset);
           }
-
-          // Adiciona se não estiver selecionado e for compatível
-          session.data.assets.push(asset);
 
           // Se selecionou uma moeda fiat, adiciona automaticamente a rede fiat
           if ([AssetType.DOLAR, AssetType.EURO, AssetType.REAL].includes(asset)) {
             if (!session.data.networks.includes(NetworkType.FIAT)) {
               session.data.networks.push(NetworkType.FIAT);
             }
+
+            // REAL sempre usa cotação 1:1 com BRL - auto-configura
+            if (asset === AssetType.REAL) {
+              session.data.quotationType = QuotationType.MANUAL;
+              session.data.price = 1.0;
+            }
           }
 
-          // Se selecionou DEPIX, adiciona automaticamente a rede LIQUID
+          // Se selecionou DEPIX, adiciona automaticamente a rede LIQUID e configura cotação 1:1
           if (asset === AssetType.DEPIX) {
             if (!session.data.networks.includes(NetworkType.LIQUID)) {
               session.data.networks.push(NetworkType.LIQUID);
             }
+            // DEPIX sempre usa cotação 1:1 com BRL - auto-configura
+            session.data.quotationType = QuotationType.MANUAL;
+            session.data.price = 1.0;
           }
         }
-        
+
         await this.updateAssetsAndNetworksSelection(ctx, session);
       }
 
@@ -915,6 +912,11 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
     const cryptos: AssetType[] = [];
     const fiatCurrencies = [AssetType.DOLAR, AssetType.EURO, AssetType.REAL];
 
+    // DEPIX é especial: é uma stablecoin BRL na rede Liquid
+    // Pode ser usado sozinho OU combinado com moedas FIAT
+    const newAssetIsDEPIX = newAsset === AssetType.DEPIX;
+    const hasDEPIX = existingAssets.includes(AssetType.DEPIX);
+
     // Verificar qual grupo o novo ativo pertence
     const newAssetIsStablecoin = stablecoins.includes(newAsset);
     const newAssetIsCrypto = cryptos.includes(newAsset);
@@ -926,23 +928,35 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
     const hasFiat = existingAssets.some(asset => fiatCurrencies.includes(asset));
 
     // Regras de compatibilidade:
-    // 1. Stablecoins podem ser misturadas entre si
+    // 1. Stablecoins (USDT, USDC, USDe) podem ser misturadas entre si
     // 2. BTC, ETH, XRP não podem ser misturados com nada (cada um isolado)
-    // 3. Moedas FIAT não podem ser misturadas com nada (cada uma isolada)
-    
+    // 3. Moedas FIAT podem ser misturadas entre si E com DEPIX
+    // 4. DEPIX pode ser usado sozinho OU com moedas FIAT
+
+    // DEPIX: compatível apenas consigo mesmo ou com FIAT
+    if (newAssetIsDEPIX) {
+      // DEPIX só pode ser adicionado se tem apenas FIAT ou está vazio
+      return !hasStablecoins && !hasCryptos && (hasFiat || existingAssets.every(a => a === AssetType.DEPIX));
+    }
+
+    // Se já tem DEPIX, só pode adicionar FIAT
+    if (hasDEPIX) {
+      return newAssetIsFiat;
+    }
+
     if (newAssetIsStablecoin) {
-      // Stablecoins só podem ser adicionadas se não há cryptos ou fiat
-      return !hasCryptos && !hasFiat;
+      // Stablecoins só podem ser adicionadas se não há cryptos, fiat ou DEPIX
+      return !hasCryptos && !hasFiat && !hasDEPIX;
     }
-    
+
     if (newAssetIsCrypto) {
-      // Cryptos (ETH) não podem ser misturadas com nada
-      return !hasStablecoins && !hasCryptos && !hasFiat;
+      // Cryptos não podem ser misturadas com nada
+      return !hasStablecoins && !hasCryptos && !hasFiat && !hasDEPIX;
     }
-    
+
     if (newAssetIsFiat) {
-      // Moedas FIAT não podem ser misturadas com nada
-      return !hasStablecoins && !hasCryptos && !hasFiat;
+      // Moedas FIAT podem ser misturadas entre si E com DEPIX
+      return !hasStablecoins && !hasCryptos;
     }
 
     return false; // Por segurança, rejeitar se não se encaixar em nenhum grupo
@@ -989,18 +1003,30 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
 
   // Função refatorada para criar keyboard completo e consistente
   private createOperationKeyboard(session: OperationSession): any {
-    // Mapeamento de nomes de botões para valores do enum
+    // Mapeamento de nomes de botões para valores do enum (ETH removido - taxas altas)
     const networkButtonMap: { [key: string]: NetworkType } = {
       'ARB': NetworkType.ARBITRUM,
       'POL': NetworkType.POLYGON,
       'BASE': NetworkType.BASE,
       'BNB': NetworkType.BNB,
       'SOLANA': NetworkType.SOLANA,
-      'ETH': NetworkType.ETH
     };
     
+    // Mapeamento de nomes de botões para valores do enum de ativos
+    const assetButtonMap: { [key: string]: AssetType } = {
+      'USDT': AssetType.USDT,
+      'USDC': AssetType.USDC,
+      'DEPIX': AssetType.DEPIX,
+      'DÓLAR': AssetType.DOLAR,
+      'EURO': AssetType.EURO,
+      'REAL': AssetType.REAL,
+    };
+
     // Funções para verificar seleções
-    const isAssetSelected = (asset: string) => session?.data.assets?.includes(asset as AssetType) || false;
+    const isAssetSelected = (buttonName: string) => {
+      const assetEnum = assetButtonMap[buttonName];
+      return assetEnum ? session?.data.assets?.includes(assetEnum) || false : false;
+    };
     const isNetworkSelected = (networkButton: string) => {
       const networkEnum = networkButtonMap[networkButton];
       return networkEnum ? session?.data.networks?.includes(networkEnum) || false : false;
@@ -1052,27 +1078,31 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
       [
         createAssetButton('🟢', 'USDT', 'op_asset_USDT'),
         createAssetButton('🔵', 'USDC', 'op_asset_USDC'),
-        createAssetButton('⚫', 'USDe', 'op_asset_USDe'),
+        createAssetButton('💧', 'DEPIX', 'op_asset_DEPIX'),
       ],
       [
         createAssetButton('💵', 'DÓLAR', 'op_asset_DOLAR'),
         createAssetButton('💶', 'EURO', 'op_asset_EURO'),
         createAssetButton('💰', 'REAL', 'op_asset_REAL'),
       ],
-      [
-        createAssetButton('🔷', 'DEPIX (Liquid)', 'op_asset_DEPIX'),
-      ],
 
       // Divisor visual - REDES
       [
         Markup.button.callback('━━━━━ REDES ━━━━━', 'op_divider'),
       ],
-      // Seção de Redes - Se DEPIX selecionado, mostra apenas LIQUID fixo
+      // Seção de Redes - depende do ativo selecionado
       ...(session?.data.assets?.includes(AssetType.DEPIX) ? [
+        // DEPIX: mostrar apenas LIQUID fixo
         [
-          Markup.button.callback('✔️ DEPIX (Liquid)', 'op_divider'),
+          Markup.button.callback('✔️ 💧LIQUID', 'op_divider'),
+        ],
+      ] : session?.data.assets?.some(a => [AssetType.DOLAR, AssetType.EURO, AssetType.REAL].includes(a)) ? [
+        // FIAT (DÓLAR, EURO, REAL): mostrar apenas FIAT fixo
+        [
+          Markup.button.callback('✔️ 💵FIAT', 'op_divider'),
         ],
       ] : [
+        // Stablecoins: permitir seleção de redes DeFi (sem ETH - taxas altas)
         [
           createNetworkButton('⚪', 'ARB', 'op_network_arbitrum'),
           createNetworkButton('🟣', 'POL', 'op_network_polygon'),
@@ -1081,7 +1111,6 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
         [
           createNetworkButton('🟡', 'BNB', 'op_network_bnb'),
           createNetworkButton('🟪', 'SOLANA', 'op_network_solana'),
-          createNetworkButton('⬜', 'ETH', 'op_network_eth'),
         ],
       ]),
 
@@ -1102,15 +1131,25 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
       ],
 
       // Divisor visual - COTAÇÃO
-      [
-        Markup.button.callback('━━━━━ COTAÇÃO ━━━━━', 'op_divider'),
-      ],
-      // Seção de Cotação
-      [
-        createQuotationButton('✋', 'Manual', 'op_quote_manual'),
-        createQuotationButton('🌐', 'Google', 'op_quote_google'),
-        createQuotationButton('🟡', 'Binance', 'op_quote_binance'),
-      ],
+      ...(session?.data.assets?.includes(AssetType.DEPIX) || session?.data.assets?.includes(AssetType.REAL) ? [
+        // DEPIX ou REAL: mostrar cotação fixa 1:1
+        [
+          Markup.button.callback('━━━━━ COTAÇÃO ━━━━━', 'op_divider'),
+        ],
+        [
+          Markup.button.callback('✔️ R$ 1,00 (1:1 BRL)', 'op_divider'),
+        ],
+      ] : [
+        // Outros ativos: permitir seleção de cotação
+        [
+          Markup.button.callback('━━━━━ COTAÇÃO ━━━━━', 'op_divider'),
+        ],
+        [
+          createQuotationButton('✋', 'Manual', 'op_quote_manual'),
+          createQuotationButton('🌐', 'Google', 'op_quote_google'),
+          createQuotationButton('🟡', 'Binance', 'op_quote_binance'),
+        ],
+      ]),
     ]);
   }
 
@@ -1817,7 +1856,28 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
     if (session?.data.description && session.data.description !== 'pular') {
       resumoText += `Descrição: ${session.data.description}\n`;
     }
-    
+
+    // Verificar PIX noturno (20h-6h, limite R$1000)
+    const paymentMethods = session?.data.paymentMethods || [];
+    const hasPix = paymentMethods.some(method => method === 'PIX');
+
+    if (hasPix && session?.data.price && session?.data.amount) {
+      const now = new Date();
+      // Converter para horário de Brasília (UTC-3)
+      const brasiliaHour = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })).getHours();
+      const isNightTime = brasiliaHour >= 20 || brasiliaHour < 6;
+
+      if (isNightTime) {
+        // Calcular valor em BRL
+        const totalBRL = session.data.amount * session.data.price;
+
+        if (totalBRL > 1000) {
+          resumoText += `\n🌙 **Aviso PIX Noturno:** Operação de R$ ${totalBRL.toFixed(2)} entre 20h-6h.\n`;
+          resumoText += `⚠️ Limite padrão de PIX noturno é R$ 1.000. Verifique seu limite bancário.\n`;
+        }
+      }
+    }
+
     // Adicionar aviso de disputa se existir
     resumoText += disputeWarning;
     
