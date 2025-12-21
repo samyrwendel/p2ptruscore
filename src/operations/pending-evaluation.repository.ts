@@ -22,12 +22,16 @@ export class PendingEvaluationRepository extends AbstractRepository<PendingEvalu
     evaluatorId: Types.ObjectId,
     targetId: Types.ObjectId
   ): Promise<PendingEvaluation> {
+    const nextNotificationAt = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hora após criação
     return this.create({
       operation: operationId,
       evaluator: evaluatorId,
       target: targetId,
-      completed: false
-    });
+      completed: false,
+      notificationCount: 0,
+      autoEvaluated: false,
+      nextNotificationAt: nextNotificationAt
+    } as any);
   }
 
   async findPendingByUser(userId: Types.ObjectId): Promise<PendingEvaluation[]> {
@@ -103,5 +107,26 @@ export class PendingEvaluationRepository extends AbstractRepository<PendingEvalu
       completed: false
     });
     return result.deletedCount || 0;
+  }
+
+  async countPendingNotCompleted(): Promise<number> {
+    return this.model.countDocuments({
+      completed: false,
+      autoEvaluated: { $ne: true }
+    });
+  }
+
+  async countPendingToNotify(): Promise<number> {
+    return this.model.countDocuments({
+      completed: false,
+      autoEvaluated: { $ne: true },
+      nextNotificationAt: { $lte: new Date() }
+    });
+  }
+
+  async countAutoEvaluated(): Promise<number> {
+    return this.model.countDocuments({
+      autoEvaluated: true
+    });
   }
 }

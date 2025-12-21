@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { StartCommandHandler } from './handlers/start.command.handler';
 import { MeCommandHandler } from './handlers/me.command.handler';
 import { TopCommandHandler } from './handlers/top.command.handler';
@@ -33,6 +33,7 @@ import { DisputarOperacaoCallbackCommandHandler } from './handlers/disputar-oper
 import { AdminDisputeCommandHandler } from './handlers/admin-dispute.command.handler';
 import { NotificarTermosCommandHandler } from './handlers/notificar-termos.command.handler';
 import { DesbloquearUsuarioCommandHandler } from './handlers/desbloquear-usuario.command.handler';
+import { JoinRequestHandler } from '../handlers/join-request.handler';
 import { OperationsModule } from '../../operations/operations.module';
 import { UsersModule } from '../../users/users.module';
 import { GroupsModule } from '../../groups/groups.module';
@@ -80,8 +81,8 @@ const commandHandlers = [
 
 @Module({
   imports: [OperationsModule, UsersModule, GroupsModule, KarmaModule, TelegramSharedModule, IntegrationsModule, SharedModule],
-  providers: commandHandlers,
-  exports: commandHandlers,
+  providers: [...commandHandlers, JoinRequestHandler],
+  exports: [...commandHandlers, JoinRequestHandler],
 })
 export class CommandsModule {}
 

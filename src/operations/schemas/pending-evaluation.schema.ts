@@ -20,6 +20,25 @@ export class PendingEvaluation extends AbstractDocument {
 
   @Prop({ type: Date })
   completedAt?: Date;
+
+  // Sistema de notificações exponenciais
+  @Prop({ default: 0 })
+  notificationCount: number; // Número de notificações enviadas (0-7)
+
+  @Prop({ type: Date })
+  lastNotificationAt?: Date; // Data da última notificação
+
+  @Prop({ type: Date })
+  nextNotificationAt?: Date; // Data da próxima notificação programada
+
+  @Prop({ default: false })
+  autoEvaluated: boolean; // Se a avaliação foi feita automaticamente
+
+  @Prop({ type: Date })
+  autoEvaluatedAt?: Date; // Data da avaliação automática
+
+  @Prop({ type: String })
+  autoEvaluationReason?: string; // Motivo da avaliação automática
 }
 
 export const PendingEvaluationSchema = SchemaFactory.createForClass(PendingEvaluation);

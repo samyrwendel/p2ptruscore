@@ -44,6 +44,8 @@ import { DisputarOperacaoCallbackCommandHandler } from './commands/handlers/disp
 import { NotificarTermosCommandHandler } from './commands/handlers/notificar-termos.command.handler';
 import { KarmaMessageHandler } from './handlers/karma-message.handler';
 import { NewMemberHandler } from './handlers/new-member.handler';
+import { JoinRequestHandler } from './handlers/join-request.handler';
+import { PendingEvaluationNotificationService } from './handlers/pending-evaluation-notification.service';
 import { TermsAcceptanceService } from '../users/terms-acceptance.service';
 import { isTextCommandHandler, TextCommandContext } from './telegram.types';
 
@@ -93,6 +95,8 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     private readonly disputarOperacaoCallbackHandler: DisputarOperacaoCallbackCommandHandler,
     private readonly notificarTermosHandler: NotificarTermosCommandHandler,
     private readonly newMemberHandler: NewMemberHandler,
+    private readonly joinRequestHandler: JoinRequestHandler,
+    private readonly pendingEvaluationNotificationService: PendingEvaluationNotificationService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
   ) {
     // Registrar todos os command handlers
@@ -137,6 +141,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       await this.bot.telegram.setMyCommands([
         { command: 'start', description: '🚀 Menu Principal' },
         { command: 'iniciar', description: '🚀 Inicia Operações' },
+        { command: 'termos', description: '📋 Aceitar Termos de Responsabilidade' },
         { command: 'criaroperacao', description: '💼 Criar Nova Operação' },
         { command: 'minhasoperacoes', description: '📋 Minhas Operações' },
         { command: 'reputacao', description: '⭐ Ver Reputação' },
@@ -194,6 +199,151 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
             this.logger.error('Error handling left chat member:', error);
           }
         });
+
+        // === LIMPEZA DE MENSAGENS DE SERVIÇO (estilo Group Help) ===
+        // Apagar mensagens de mudança de foto do grupo
+        this.bot.on('new_chat_photo', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'nova foto do grupo');
+          } catch (error) {
+            this.logger.error('Error deleting new_chat_photo message:', error);
+          }
+        });
+
+        // Apagar mensagens de remoção de foto do grupo
+        this.bot.on('delete_chat_photo', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'foto do grupo removida');
+          } catch (error) {
+            this.logger.error('Error deleting delete_chat_photo message:', error);
+          }
+        });
+
+        // Apagar mensagens de mudança de título do grupo
+        this.bot.on('new_chat_title', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'título do grupo alterado');
+          } catch (error) {
+            this.logger.error('Error deleting new_chat_title message:', error);
+          }
+        });
+
+        // Apagar mensagens de fixação de mensagem
+        this.bot.on('pinned_message', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'mensagem fixada');
+          } catch (error) {
+            this.logger.error('Error deleting pinned_message notification:', error);
+          }
+        });
+
+        // Apagar mensagens de criação de tópico em supergrupos
+        this.bot.on('forum_topic_created', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'tópico criado');
+          } catch (error) {
+            this.logger.error('Error deleting forum_topic_created message:', error);
+          }
+        });
+
+        // Apagar mensagens de edição de tópico
+        this.bot.on('forum_topic_edited', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'tópico editado');
+          } catch (error) {
+            this.logger.error('Error deleting forum_topic_edited message:', error);
+          }
+        });
+
+        // Apagar mensagens de fechamento de tópico
+        this.bot.on('forum_topic_closed', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'tópico fechado');
+          } catch (error) {
+            this.logger.error('Error deleting forum_topic_closed message:', error);
+          }
+        });
+
+        // Apagar mensagens de reabertura de tópico
+        this.bot.on('forum_topic_reopened', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'tópico reaberto');
+          } catch (error) {
+            this.logger.error('Error deleting forum_topic_reopened message:', error);
+          }
+        });
+
+        // Apagar mensagens de tópico geral escondido
+        this.bot.on('general_forum_topic_hidden', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'tópico geral escondido');
+          } catch (error) {
+            this.logger.error('Error deleting general_forum_topic_hidden message:', error);
+          }
+        });
+
+        // Apagar mensagens de tópico geral revelado
+        this.bot.on('general_forum_topic_unhidden', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'tópico geral revelado');
+          } catch (error) {
+            this.logger.error('Error deleting general_forum_topic_unhidden message:', error);
+          }
+        });
+
+        // Apagar mensagens de chat de vídeo iniciado
+        this.bot.on('video_chat_started', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'chat de vídeo iniciado');
+          } catch (error) {
+            this.logger.error('Error deleting video_chat_started message:', error);
+          }
+        });
+
+        // Apagar mensagens de chat de vídeo encerrado
+        this.bot.on('video_chat_ended', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'chat de vídeo encerrado');
+          } catch (error) {
+            this.logger.error('Error deleting video_chat_ended message:', error);
+          }
+        });
+
+        // Apagar mensagens de participantes convidados para chat de vídeo
+        this.bot.on('video_chat_participants_invited', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'participantes convidados para chat de vídeo');
+          } catch (error) {
+            this.logger.error('Error deleting video_chat_participants_invited message:', error);
+          }
+        });
+
+        // Apagar mensagens de chat de vídeo agendado
+        this.bot.on('video_chat_scheduled', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'chat de vídeo agendado');
+          } catch (error) {
+            this.logger.error('Error deleting video_chat_scheduled message:', error);
+          }
+        });
+
+        // Apagar mensagens de migração para supergrupo
+        this.bot.on('migrate_to_chat_id', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'migração para supergrupo');
+          } catch (error) {
+            this.logger.error('Error deleting migrate_to_chat_id message:', error);
+          }
+        });
+
+        // Apagar mensagens de migração de chat
+        this.bot.on('migrate_from_chat_id', async (ctx) => {
+          try {
+            await this.deleteSystemMessage(ctx, 'migração de chat');
+          } catch (error) {
+            this.logger.error('Error deleting migrate_from_chat_id message:', error);
+          }
+        });
   }
 
   private async handleCommand(ctx: TextCommandContext) {
@@ -243,6 +393,56 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     try {
       const text = ctx.message.text;
       this.logger.log(`🎯 Processando comando: ${text}`);
+
+      // VALIDAÇÃO 0: Bloquear comandos em grupos (exceto comandos específicos)
+      if (ctx.chat.type !== 'private') {
+        const isGroupAllowedCommand = await this.isCommandAllowedInGroup(text);
+
+        if (!isGroupAllowedCommand) {
+          this.logger.log(`🚫 Comando ${text} bloqueado no grupo - direcionando para privado`);
+
+          // Apagar o comando do grupo
+          await this.deleteCommandMessage(ctx);
+
+          // Enviar mensagem no grupo direcionando para o bot
+          const botUsername = this.configService.get<string>('TELEGRAM_BOT_USERNAME') || 'p2pscorebot';
+          const userName = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+
+          try {
+            const redirectMessage = await ctx.reply(
+              `🚫 ${userName}, comandos devem ser executados no privado!\n\n` +
+              `👉 Clique no botão abaixo para interagir com o bot:`,
+              {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                  inline_keyboard: [
+                    [
+                      {
+                        text: '💬 Abrir Chat com o Bot',
+                        url: `https://t.me/${botUsername}`
+                      }
+                    ]
+                  ]
+                }
+              }
+            );
+
+            // Apagar mensagem de redirecionamento após 15 segundos
+            setTimeout(async () => {
+              try {
+                await ctx.telegram.deleteMessage(ctx.chat.id, redirectMessage.message_id);
+              } catch (e) {
+                // Ignorar erro ao deletar
+              }
+            }, 15000);
+
+          } catch (replyError) {
+            this.logger.warn('Não foi possível enviar mensagem de redirecionamento:', replyError);
+          }
+
+          return; // Bloquear execução do comando
+        }
+      }
 
       // VALIDAÇÃO GLOBAL 1: Verificar se usuário é membro ativo do grupo (exceto comandos permitidos)
       if (await this.shouldValidateActiveMembership(ctx, text)) {
@@ -426,12 +626,29 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     ];
 
     // Verificar se é um comando permitido
-    const isAllowedCommand = allowedCommands.some(cmd => 
+    const isAllowedCommand = allowedCommands.some(cmd =>
       text.toLowerCase().startsWith(cmd.toLowerCase())
     );
 
     // Só validar termos se não for comando permitido (tanto em grupos quanto em chat privado)
     return !isAllowedCommand;
+  }
+
+  private async isCommandAllowedInGroup(text: string): Promise<boolean> {
+    // Comandos que PODEM ser executados em grupos (muito poucos)
+    // A maioria dos comandos deve ser executada apenas no privado
+    const groupAllowedCommands = [
+      // Comandos permitidos apenas para admin verificar configurações
+      '/admin', // Admin pode precisar verificar status
+      '/notificar_termos', // Admin notifica termos (apenas admin)
+    ];
+
+    // Verificar se é um comando permitido no grupo
+    const isAllowed = groupAllowedCommands.some(cmd =>
+      text.toLowerCase().startsWith(cmd.toLowerCase())
+    );
+
+    return isAllowed;
   }
 
 
@@ -629,6 +846,18 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         return;
       }
 
+      // Verificar callbacks de revisão de avaliação automática
+      const data = ctx.callbackQuery?.data;
+      if (data?.startsWith('eval_review_')) {
+        const operationId = data.replace('eval_review_', '');
+        const handled = await this.pendingEvaluationNotificationService.handleReviewCallback(ctx, operationId);
+        if (handled) return;
+      }
+      if (data?.startsWith('eval_revise_')) {
+        const handled = await this.pendingEvaluationNotificationService.handleReviseCallback(ctx, data);
+        if (handled) return;
+      }
+
       // Validar termos apenas para callbacks que não são de notificação
       if (await this.shouldValidateTermsForCallback(ctx)) {
         const { validateUserTermsForCallback } = await import('../shared/terms-validation.utils');
@@ -640,6 +869,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
       // Tentar processar com cada handler que suporta callbacks
       const handlers = [
+        this.joinRequestHandler, // PRIMEIRO: processar callbacks de solicitação de entrada
         this.avaliarHandler,
         this.disputarOperacaoCallbackHandler, // ADICIONADO ANTES para processar dispute_operation_ callbacks
         this.confirmAcceptOperationHandler, // ADICIONADO para processar confirm_accept_ callbacks
@@ -704,6 +934,10 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       'reject_terms_',
       'resend_terms_',
       'view_terms_detail_',
+      'join_accept_terms_', // Solicitação de entrada - aceitar termos
+      'join_reject_terms_', // Solicitação de entrada - rejeitar termos
+      'admin_approve_join_', // Admin aprova entrada
+      'admin_reject_join_', // Admin recusa entrada
       'quotes_', // Cotações são informações públicas
       'start_', // Callbacks do comando /start
       'back_to_start_menu', // Navegação
@@ -729,25 +963,22 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
 
   private async deleteCommandMessage(ctx: TextCommandContext): Promise<void> {
     try {
-      // Só apagar comandos em grupos (não em chats privados)
-      if (ctx.chat.type !== 'private') {
-        await ctx.deleteMessage();
-        this.logger.log(`🗑️ Comando apagado: ${ctx.message.text} (manter chat limpo)`);
-      }
+      await ctx.deleteMessage();
     } catch (error) {
-      // Falha silenciosa - pode não ter permissão para apagar mensagens
-      this.logger.warn(`⚠️ Não foi possível apagar comando: ${error.description || error.message}`);
+      // Silencioso
     }
   }
 
-  private async deleteSystemMessage(ctx: any): Promise<void> {
+  private async deleteSystemMessage(ctx: any, description: string = ''): Promise<void> {
     try {
+      const cleanupEnabled = this.configService.get<string>('CLEANUP_SERVICE_MESSAGES', 'true') === 'true';
+      if (!cleanupEnabled) return;
+
       if (ctx.chat.type !== 'private') {
         await ctx.deleteMessage();
-        this.logger.log(`🗑️ Mensagem de sistema apagada (entrada/saída de usuário)`);
       }
     } catch (error) {
-      this.logger.warn(`⚠️ Não foi possível apagar mensagem de sistema: ${error.description || error.message}`);
+      // Silencioso
     }
   }
 
