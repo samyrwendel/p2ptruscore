@@ -375,7 +375,7 @@ export class OperationsService {
     }
     
     // Notificar o grupo sobre a reversão usando a operação completa
-    await this.broadcastService.notifyOperationReverted(fullOperation, userId, operation.acceptor);
+    await this.broadcastService.notifyOperationReverted(fullOperation, operation.acceptor);
 
     return updatedOperation;
   }

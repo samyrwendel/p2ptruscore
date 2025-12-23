@@ -1105,7 +1105,6 @@ export class OperationsBroadcastService {
 
   async notifyOperationReverted(
     operation: Operation,
-    userId: Types.ObjectId,
     originalAcceptorId?: Types.ObjectId
   ): Promise<void> {
     try {
@@ -1126,9 +1125,8 @@ export class OperationsBroadcastService {
         return;
       }
       
-      const user = await this.usersService.findById(userId.toString());
-      if (!group || !user) {
-        this.logger.warn('Missing data for operation revert notification');
+      if (!group) {
+        this.logger.warn('Missing group data for operation revert notification');
         return;
       }
 
@@ -1154,43 +1152,70 @@ export class OperationsBroadcastService {
           break;
       }
       
-      const total = operation.amount * operation.price;
       const assetsText = this.formatAssets(operation);
       const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
-      const userName = user.userName ? `@${user.userName}` : user.firstName || 'Usuário';
-      
-      // Restaurar formato original da operação pendente
+
+      // Buscar dados do CRIADOR (não de quem reverteu)
       const creator = await this.usersService.findById(operation.creator.toString());
       const creatorName = creator?.userName ? `@${creator.userName}` : creator?.firstName || 'Usuário';
-      
+
       // Buscar karma do criador com fallback
       const creatorKarma = await this.getKarmaForUserWithFallback(creator, group._id);
-      
+
       // Calcular nível de reputação do criador usando função utilitária
       const creatorRep = getReputationInfo(creatorKarma);
-      
+
       // Calcular tempo até expiração
-      const now = new Date();
-      const expiresAt = new Date(operation.expiresAt);
-      const timeLeft = this.getTimeUntilExpiration(expiresAt);
-      
-      let message = `🔄 **Operação Revertida**\n\n`;
-      message += `${typeEmoji} **${typeText} ${assetsText}**\n`;
-      message += `Ativos: ${assetsText}\n`;
+      const expiresIn = this.getTimeUntilExpiration(operation.expiresAt);
+
+      let message = `${typeEmoji} **${typeText} ${assetsText}**\n`;
       message += `Redes: ${networksText}\n`;
-      
-      // Formato baseado no tipo de cotação
-      message += `Quantidade: ${operation.amount} (total)\n\n`;
-      
-      message += `👤 **Negociador:** ${userName}\n`;
-      
+
+      // Formato baseado no tipo de cotação (igual ao broadcast original)
+      if (operation.quotationType === 'manual') {
+        const total = operation.amount * operation.price;
+        const buyText = `${operation.amount} ${assetsText}`;
+        const payText = `R$ ${total.toFixed(2)}`;
+        const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
+        const { actionArrow: arrowIcon, paymentArrow } = this.getArrowsForType(operation.type);
+        const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
+
+        message += (
+          `${arrowIcon} **${actionText}:** ${buyText}\n` +
+          `${paymentArrow} **${paymentText}:** ${payText}\n` +
+          `💱 **Cotação:** R$ ${operation.price.toFixed(2)}\n\n`
+        );
+      } else if (operation.quotationType === 'google' || operation.quotationType === 'binance') {
+        const actionText = operation.type === 'buy' ? 'Quero comprar' : 'Quero vender';
+        const paymentText = operation.type === 'buy' ? 'Quero pagar' : 'Quero receber';
+        const { actionArrow: arrowIcon, paymentArrow } = this.getArrowsForType(operation.type);
+        const sourceIcon = operation.quotationType === 'google' ? '🌐 Google' : '🟡 Binance';
+
+        message += (
+          `${arrowIcon} **${actionText}:** ${operation.amount} ${assetsText}\n` +
+          `${paymentArrow} **${paymentText}:** Calculado na hora\n` +
+          `💱 **Cotação:** ${sourceIcon}\n\n`
+        );
+      } else {
+        message += `Quantidade: ${operation.amount} (total)\n\n`;
+      }
+
+      // Adicionar métodos de pagamento se disponíveis
+      if (operation.paymentMethods && operation.paymentMethods.length > 0) {
+        message += `💳 **Métodos de Pagamento:** ${operation.paymentMethods.join(', ')}\n\n`;
+      }
+
+      // Mostrar CRIADOR (não negociador) - igual ao broadcast original
+      message += `👤 **Criador:** ${creatorName}\n`;
+      message += `${creatorRep.icone} ${creatorRep.nivel}: ${creatorRep.score} pts\n\n`;
+
       if (operation.description) {
         message += `📝 **Descrição:** ${operation.description}\n\n`;
       }
-      
+
       message += (
-        `⚠️ A operação anteriormente aceita foi revertida pelo negociador.\n\n` +
-        `🆔 **ID:** \`${operation._id}\``
+        `⏰ **Expira em:** ${expiresIn}\n` +
+        `🆔 **ID da Operação:** ${operation._id}`
       );
 
       // Criar botões inline EXATAMENTE como no broadcast original
