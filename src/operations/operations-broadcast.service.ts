@@ -310,7 +310,6 @@ export class OperationsBroadcastService {
       const { emoji: typeEmoji, text: typeText } = this.getTypeEmojiAndText(operation.type);
       // Calcular total corretamente baseado no tipo de operação
       const total = operation.amount * operation.price;
-      const expiresIn = this.getTimeUntilExpiration(operation.expiresAt);
 
       const assetsText = this.formatAssets(operation);
       const networksText = this.formatNetworks(operation);
@@ -405,10 +404,7 @@ export class OperationsBroadcastService {
         message += disputeMessage;
       }
 
-      message += (
-        `⏰ **Expira em:** ${expiresIn}\n` +
-        `🆔 **ID da Operação:** ${operation._id}`
-      );
+      message += `🆔 **ID da Operação:** ${operation._id}`;
 
       // Criar botões inline com confirmação se houver disputas
       let acceptButtonText = '🚀 Aceitar Operação';
@@ -1165,9 +1161,6 @@ export class OperationsBroadcastService {
       // Calcular nível de reputação do criador usando função utilitária
       const creatorRep = getReputationInfo(creatorKarma);
 
-      // Calcular tempo até expiração
-      const expiresIn = this.getTimeUntilExpiration(operation.expiresAt);
-
       let message = `${typeEmoji} **${typeText} ${assetsText}**\n`;
       message += `Redes: ${networksText}\n`;
 
@@ -1213,10 +1206,7 @@ export class OperationsBroadcastService {
         message += `📝 **Descrição:** ${operation.description}\n\n`;
       }
 
-      message += (
-        `⏰ **Expira em:** ${expiresIn}\n` +
-        `🆔 **ID da Operação:** ${operation._id}`
-      );
+      message += `🆔 **ID da Operação:** ${operation._id}`;
 
       // Criar botões inline EXATAMENTE como no broadcast original
       const inlineKeyboard = this.buildBroadcastInlineKeyboard(operation, creator, '🚀 Aceitar Operação', `accept_operation_${operation._id}`);
@@ -1593,20 +1583,22 @@ export class OperationsBroadcastService {
               `Quantidade: ${operation.amount} (total)\n\n` +
               `👤 Negociador: ${negotiatorName}\n` +
               `⚠️ A operação anteriormente aceita foi revertida pelo negociador.\n\n` +
-              `🆔 **ID:** \`${operation._id}\``
+              `🆔 **ID:** \`${operation._id}\`\n\n` +
+              `💡 A operação está novamente **PENDENTE**. Você pode cancelá-la ou aguardar outra pessoa aceitar.`
             );
             await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
               creator.userId,
               operation.creatorAcceptanceDmMessageId as number,
               undefined,
               detailedText,
-              { parse_mode: 'Markdown' }
-            ));
-            await this.sendWithBackoff(() => this.bot.telegram.editMessageReplyMarkup(
-              creator.userId,
-              operation.creatorAcceptanceDmMessageId as number,
-              undefined,
-              { inline_keyboard: [] }
+              {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: '❌ Cancelar Operação', callback_data: `cancel_operation_${operation._id}` }]
+                  ]
+                }
+              }
             ));
             this.logger.log(`✅ Detailed revert DM updated for creator in operation ${operation._id}`);
           }
@@ -1618,24 +1610,6 @@ export class OperationsBroadcastService {
       this.logger.log(`Pending evaluation messages removed for operation ${operation._id}`);
     } catch (error) {
       this.logger.error(`Failed to remove pending evaluation messages for operation ${operation._id}:`, error);
-    }
-  }
-
-  private getTimeUntilExpiration(expiresAt: Date): string {
-    const now = new Date();
-    const diff = expiresAt.getTime() - now.getTime();
-    
-    if (diff <= 0) {
-      return 'Expirada';
-    }
-    
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    } else {
-      return `${minutes}m`;
     }
   }
 
@@ -1989,6 +1963,146 @@ export class OperationsBroadcastService {
       this.logger.log(`Admin notification sent for disputed operation ${operation._id}`);
     } catch (error) {
       this.logger.error('Failed to notify administrators about dispute:', error);
+    }
+  }
+
+  /**
+   * Envia mensagem privada ao criador perguntando se a operação ainda é válida
+   */
+  async sendValidityCheckMessage(operation: Operation): Promise<number | null> {
+    try {
+      const creator = await this.usersService.findById(operation.creator.toString());
+      if (!creator) {
+        this.logger.warn(`Creator not found for operation ${operation._id}`);
+        return null;
+      }
+
+      const typeEmoji = operation.type === 'buy' ? '🟢' : '🔴';
+      const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+      const assetsText = operation.assets.join(', ');
+      const networksText = operation.networks.map(n => n.toUpperCase()).join(', ');
+      const { priceFormatted, quotationFormatted } = this.formatPriceAndQuotation(operation);
+
+      const createdAt = (operation as any).createdAt;
+      const daysAgo = Math.floor((Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24));
+
+      const message = (
+        `⏰ **Verificação de Operação Pendente**\n\n` +
+        `${typeEmoji} **${typeText} ${assetsText}**\n\n` +
+        `📊 **Detalhes:**\n` +
+        `• Quantidade: ${operation.amount} (total)\n` +
+        `• Cotação: ${quotationFormatted}\n` +
+        `• Redes: ${networksText}\n\n` +
+        `⏳ Esta operação está pendente há **${daysAgo} dias**.\n\n` +
+        `🆔 **ID:** \`${operation._id}\`\n\n` +
+        `❓ **Esta operação ainda é válida?**\n\n` +
+        `Se você não responder em **24 horas**, a operação será automaticamente cancelada.`
+      );
+
+      const sentMessage = await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
+        creator.userId,
+        message,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Ainda é válida', callback_data: `validity_confirm_${operation._id}` },
+                { text: '❌ Cancelar', callback_data: `validity_cancel_${operation._id}` }
+              ]
+            ]
+          }
+        }
+      ));
+
+      this.logger.log(`Validity check sent to creator ${creator.userId} for operation ${operation._id}`);
+      return sentMessage?.message_id || null;
+    } catch (error: any) {
+      this.logger.error(`Failed to send validity check for operation ${operation._id}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Atualiza a mensagem de verificação de validade após resposta
+   */
+  async updateValidityCheckMessage(
+    operation: Operation,
+    confirmed: boolean
+  ): Promise<void> {
+    try {
+      if (!operation.validityCheckMessageId) {
+        return;
+      }
+
+      const creator = await this.usersService.findById(operation.creator.toString());
+      if (!creator) {
+        return;
+      }
+
+      const message = confirmed
+        ? `✅ **Operação confirmada como válida!**\n\n🆔 \`${operation._id}\`\n\nSua operação continua disponível para aceitação.`
+        : `❌ **Operação cancelada com sucesso!**\n\n🆔 \`${operation._id}\``;
+
+      await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
+        creator.userId,
+        operation.validityCheckMessageId,
+        undefined,
+        message,
+        { parse_mode: 'Markdown' }
+      ));
+    } catch (error: any) {
+      this.logger.warn(`Could not update validity check message: ${error.message}`);
+    }
+  }
+
+  /**
+   * Notifica o criador que a operação foi cancelada por falta de resposta
+   */
+  async notifyValidityCheckTimeout(operation: Operation): Promise<void> {
+    try {
+      const creator = await this.usersService.findById(operation.creator.toString());
+      if (!creator) {
+        return;
+      }
+
+      const typeEmoji = operation.type === 'buy' ? '🟢' : '🔴';
+      const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+      const assetsText = operation.assets.join(', ');
+
+      // Se há uma mensagem de verificação, atualizá-la
+      if (operation.validityCheckMessageId) {
+        try {
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
+            creator.userId,
+            operation.validityCheckMessageId,
+            undefined,
+            `⏰ **Operação Cancelada Automaticamente**\n\n` +
+            `${typeEmoji} **${typeText} ${assetsText}**\n\n` +
+            `🆔 \`${operation._id}\`\n\n` +
+            `A operação foi cancelada porque você não respondeu à verificação de validade dentro do prazo.\n\n` +
+            `💡 Você pode criar uma nova operação quando quiser usando /criaroperacao`,
+            { parse_mode: 'Markdown' }
+          ));
+        } catch (editError: any) {
+          this.logger.warn(`Could not edit validity timeout message: ${editError.message}`);
+        }
+      } else {
+        // Enviar nova mensagem se não houver mensagem para editar
+        await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
+          creator.userId,
+          `⏰ **Operação Cancelada Automaticamente**\n\n` +
+          `${typeEmoji} **${typeText} ${assetsText}**\n\n` +
+          `🆔 \`${operation._id}\`\n\n` +
+          `A operação foi cancelada porque estava pendente há muito tempo sem confirmação de validade.\n\n` +
+          `💡 Você pode criar uma nova operação quando quiser usando /criaroperacao`,
+          { parse_mode: 'Markdown' }
+        ));
+      }
+
+      this.logger.log(`Validity timeout notification sent to creator ${creator.userId} for operation ${operation._id}`);
+    } catch (error: any) {
+      this.logger.error(`Failed to send validity timeout notification: ${error.message}`);
     }
   }
 }

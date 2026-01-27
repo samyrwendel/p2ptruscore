@@ -48,8 +48,7 @@ export class OperationsService {
   ) {}
 
   async createOperation(dto: CreateOperationDto): Promise<Operation> {
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + (dto.expiresInHours || 24));
+    // Operações não expiram mais - removida lógica de expiração
 
     // Se groupId for null mas chatId estiver disponível, criar/encontrar o grupo
     // Apenas para grupos (chatId negativo), não para chats privados (chatId positivo)
@@ -80,7 +79,7 @@ export class OperationsService {
       description: dto.description,
       paymentMethods: dto.paymentMethods,
       status: OperationStatus.PENDING,
-      expiresAt,
+      // expiresAt removido - operações não expiram mais
     });
 
     this.logger.log(
@@ -140,10 +139,7 @@ export class OperationsService {
       throw new ForbiddenException('Você não pode aceitar sua própria operação');
     }
 
-    if (new Date() > operation.expiresAt) {
-      await this.operationsRepository.cancelOperation(operationId);
-      throw new BadRequestException('Esta operação expirou');
-    }
+    // Verificação de expiração removida - operações não expiram mais
 
     const updatedOperation = await this.operationsRepository.acceptOperation(
       operationId,
@@ -511,10 +507,133 @@ export class OperationsService {
     }
   }
 
+  async cleanupStalePendingOperations(olderThanDays: number = 7): Promise<number> {
+    const staleOperations = await this.operationsRepository.findStalePendingOperations(olderThanDays);
+
+    let cancelledCount = 0;
+    for (const operation of staleOperations) {
+      try {
+        await this.operationsRepository.cancelOperation(operation._id);
+
+        // Notificar o criador
+        await this.broadcastService.notifyOperationAdminCancelled(
+          operation as Operation,
+          'Sistema',
+          `Operação pendente há mais de ${olderThanDays} dias`
+        );
+
+        cancelledCount++;
+        this.logger.log(`Stale operation ${operation._id} auto-cancelled (pending for ${olderThanDays}+ days)`);
+      } catch (error) {
+        this.logger.error(`Failed to cancel stale operation ${operation._id}:`, error);
+      }
+    }
+
+    if (cancelledCount > 0) {
+      this.logger.log(`Auto-cancelled ${cancelledCount} stale pending operations (older than ${olderThanDays} days)`);
+    }
+
+    return cancelledCount;
+  }
+
   async deletePendingOperations(userId: Types.ObjectId): Promise<number> {
     const deletedCount = await this.operationsRepository.deletePendingOperations(userId);
     this.logger.log(`${deletedCount} pending operations deleted for user ${userId}`);
     return deletedCount;
+  }
+
+  /**
+   * Processa verificações de validade de operações pendentes antigas
+   * @param olderThanDays Dias de inatividade para iniciar verificação
+   * @returns Número de verificações enviadas
+   */
+  async processValidityChecks(olderThanDays: number = 1): Promise<number> {
+    const operations = await this.operationsRepository.findOperationsNeedingValidityCheck(olderThanDays);
+    let sentCount = 0;
+
+    for (const operation of operations) {
+      try {
+        const messageId = await this.broadcastService.sendValidityCheckMessage(operation);
+        if (messageId) {
+          await this.operationsRepository.markValidityCheckSent(operation._id, messageId);
+          sentCount++;
+          this.logger.log(`Validity check sent for operation ${operation._id}`);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to send validity check for operation ${operation._id}:`, error);
+      }
+    }
+
+    if (sentCount > 0) {
+      this.logger.log(`Sent ${sentCount} validity check messages`);
+    }
+
+    return sentCount;
+  }
+
+  /**
+   * Cancela operações que não responderam à verificação de validade
+   * @param hoursWithoutResponse Horas sem resposta para cancelar
+   * @returns Número de operações canceladas
+   */
+  async cancelUnconfirmedOperations(hoursWithoutResponse: number = 24): Promise<number> {
+    const operations = await this.operationsRepository.findUnconfirmedValidityChecks(hoursWithoutResponse);
+    let cancelledCount = 0;
+
+    for (const operation of operations) {
+      try {
+        // Notificar o criador antes de cancelar
+        await this.broadcastService.notifyValidityCheckTimeout(operation);
+
+        // Cancelar a operação
+        await this.operationsRepository.cancelOperation(operation._id);
+
+        // Deletar a mensagem do grupo
+        await this.broadcastService.deleteOperationMessage(operation);
+
+        cancelledCount++;
+        this.logger.log(`Operation ${operation._id} cancelled due to validity check timeout`);
+      } catch (error) {
+        this.logger.error(`Failed to cancel operation ${operation._id} for validity timeout:`, error);
+      }
+    }
+
+    if (cancelledCount > 0) {
+      this.logger.log(`Cancelled ${cancelledCount} operations due to validity check timeout`);
+    }
+
+    return cancelledCount;
+  }
+
+  /**
+   * Confirma que uma operação ainda é válida
+   */
+  async confirmOperationValidity(
+    operationId: Types.ObjectId,
+    userId: Types.ObjectId,
+  ): Promise<Operation> {
+    const operation = await this.getOperationById(operationId);
+
+    // Verificar se o usuário é o criador
+    if (operation.creator.toString() !== userId.toString()) {
+      throw new ForbiddenException('Apenas o criador pode confirmar a validade da operação');
+    }
+
+    // Verificar se a operação está pendente
+    if (operation.status !== OperationStatus.PENDING) {
+      throw new BadRequestException('Apenas operações pendentes podem ter validade confirmada');
+    }
+
+    const updatedOperation = await this.operationsRepository.confirmOperationValidity(operationId);
+    if (!updatedOperation) {
+      throw new BadRequestException('Erro ao confirmar validade da operação');
+    }
+
+    // Atualizar a mensagem de verificação
+    await this.broadcastService.updateValidityCheckMessage(operation, true);
+
+    this.logger.log(`Operation ${operationId} validity confirmed by user ${userId}`);
+    return updatedOperation;
   }
 
   formatOperationMessage(operation: Operation): string {
@@ -552,8 +671,7 @@ export class OperationsService {
       `📊 **Total:** R$ ${total.toFixed(2)}\n` +
       `🌐 **Redes:** ${networksText}\n` +
       `📈 **Cotação:** ${operation.quotationType}\n` +
-      (operation.description ? `📝 **Descrição:** ${operation.description}\n` : '') +
-      `⏰ **Expira:** ${operation.expiresAt.toLocaleString('pt-BR')}\n\n` +
+      (operation.description ? `📝 **Descrição:** ${operation.description}\n\n` : '\n') +
       `Para aceitar esta operação, use: \`/aceitaroperacao ${operation._id}\``
     );
   }

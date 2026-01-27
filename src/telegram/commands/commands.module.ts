@@ -33,6 +33,7 @@ import { DisputarOperacaoCallbackCommandHandler } from './handlers/disputar-oper
 import { AdminDisputeCommandHandler } from './handlers/admin-dispute.command.handler';
 import { NotificarTermosCommandHandler } from './handlers/notificar-termos.command.handler';
 import { DesbloquearUsuarioCommandHandler } from './handlers/desbloquear-usuario.command.handler';
+import { ValidityCheckCommandHandler } from './handlers/validity-check.command.handler';
 import { JoinRequestHandler } from '../handlers/join-request.handler';
 import { OperationsModule } from '../../operations/operations.module';
 import { UsersModule } from '../../users/users.module';
@@ -77,6 +78,7 @@ const commandHandlers = [
   AdminDisputeCommandHandler,
   NotificarTermosCommandHandler,
   DesbloquearUsuarioCommandHandler,
+  ValidityCheckCommandHandler,
 ];
 
 @Module({

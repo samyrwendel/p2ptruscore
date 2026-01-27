@@ -175,12 +175,23 @@ export class Operation extends AbstractDocument {
   @Prop()
   creatorAcceptanceDmMessageId?: number;
 
+  // Campos para verificação de validade de operações pendentes antigas
+  @Prop({ type: Date })
+  validityCheckSentAt?: Date; // Quando a pergunta de validade foi enviada
+
+  @Prop()
+  validityCheckMessageId?: number; // ID da mensagem privada de verificação
+
+  @Prop({ type: Date })
+  validityConfirmedAt?: Date; // Quando o criador confirmou que ainda é válida
+
   // ID da mensagem privada enviada à outra parte ao solicitar conclusão
   @Prop()
   completionRequestDmMessageId?: number;
 
-  @Prop({ default: Date.now })
-  expiresAt: Date;
+  // expiresAt é opcional - operações não expiram mais
+  @Prop({ type: Date, required: false })
+  expiresAt?: Date;
 }
 
 export const OperationSchema = SchemaFactory.createForClass(Operation);
@@ -195,3 +206,4 @@ OperationSchema.index({ acceptor: 1, status: 1 }); // Operações aceitas por st
 OperationSchema.index({ group: 1, status: 1, createdAt: -1 }); // Operações do grupo ordenadas
 OperationSchema.index({ status: 1, expiresAt: 1 }); // Cleanup de expiradas
 OperationSchema.index({ status: 1, createdAt: -1 }); // Operações por status e data
+OperationSchema.index({ status: 1, validityCheckSentAt: 1 }); // Verificação de validade

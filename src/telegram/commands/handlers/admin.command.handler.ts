@@ -6,6 +6,7 @@ import { Update } from 'telegraf/types';
 import { KarmaService } from '../../../karma/karma.service';
 import { UsersService } from '../../../users/users.service';
 import { GroupsService } from '../../../groups/groups.service';
+import { OperationsService } from '../../../operations/operations.service';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -32,6 +33,7 @@ export class AdminCommandHandler implements ITextCommandHandler {
     private readonly karmaService: KarmaService,
     private readonly usersService: UsersService,
     private readonly groupsService: GroupsService,
+    private readonly operationsService: OperationsService,
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
   ) {}
 
@@ -94,6 +96,22 @@ export class AdminCommandHandler implements ITextCommandHandler {
       case 'informacoes':
         await this.handleUserInfo(ctx, params);
         break;
+      case 'cancelop':
+      case 'cancelaroperacao':
+        await this.handleCancelOperation(ctx, params);
+        break;
+      case 'ops':
+      case 'operacoes':
+        await this.handleListOperations(ctx, params);
+        break;
+      case 'cleanupops':
+      case 'limparops':
+        await this.handleCleanupOperations(ctx, params);
+        break;
+      case 'validitycheck':
+      case 'verificarvalidade':
+        await this.handleValidityCheck(ctx, params);
+        break;
       default:
         await ctx.reply('❌ Subcomando não reconhecido. Use `/admin` para ver a ajuda.');
     }
@@ -119,10 +137,17 @@ export class AdminCommandHandler implements ITextCommandHandler {
 • \`/admin info @usuario\` - Ver informações detalhadas
 • \`/admin log [quantidade]\` - Ver log de ações (padrão: 10)
 
+**💼 Operações:**
+• \`/admin ops [@usuario]\` - Listar operações pendentes
+• \`/admin cancelop [ID]\` - Cancelar operação pelo ID
+• \`/admin cleanupops [dias]\` - Cancelar operações pendentes há X dias (padrão: 7)
+• \`/admin validitycheck [dias]\` - Enviar verificação de validade para operações antigas (padrão: 1 dia)
+
 **💡 Exemplos:**
 \`/admin ban @spammer Spam excessivo no grupo\`
 \`/admin addkarma @usuario_bom 50\`
 \`/admin mute @usuario_problema 2h\`
+\`/admin cancelop 697903582bcaf1da5ab7f8ae\`
     `;
 
     await ctx.reply(message, { parse_mode: 'Markdown' });
@@ -560,6 +585,200 @@ export class AdminCommandHandler implements ITextCommandHandler {
     } catch (error) {
       this.logger.error('Erro ao buscar informações do usuário:', error);
       await ctx.reply('❌ Erro ao buscar informações do usuário.');
+    }
+  }
+
+  private async handleCancelOperation(ctx: TextCommandContext, params: string[]): Promise<void> {
+    if (params.length < 1) {
+      await ctx.reply('❌ Uso: `/admin cancelop [ID_DA_OPERACAO] [motivo]`\n\nExemplo: `/admin cancelop 697903582bcaf1da5ab7f8ae Usuário inativo`', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const operationId = params[0];
+    const reason = params.slice(1).join(' ') || 'Cancelamento administrativo';
+
+    // Validar se é um ObjectId válido
+    if (!Types.ObjectId.isValid(operationId)) {
+      await ctx.reply('❌ ID de operação inválido. O ID deve ter 24 caracteres hexadecimais.');
+      return;
+    }
+
+    try {
+      const adminInfo = {
+        telegramId: ctx.from.id,
+        username: ctx.from.username,
+        firstName: ctx.from.first_name
+      };
+
+      const cancelledOp = await this.operationsService.adminCancelOperation(
+        new Types.ObjectId(operationId),
+        adminInfo,
+        reason
+      );
+
+      const typeEmoji = cancelledOp.type === 'buy' ? '🟢' : '🔴';
+      const typeText = cancelledOp.type === 'buy' ? 'COMPRA' : 'VENDA';
+
+      // Buscar nome do criador
+      let creatorName = 'Desconhecido';
+      try {
+        const creator = await this.usersService.findById(cancelledOp.creator.toString());
+        if (creator) {
+          creatorName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
+        }
+      } catch {}
+
+      await ctx.reply(
+        `🛑 **Operação Cancelada pelo Admin**\n\n` +
+        `${typeEmoji} **${typeText}** ${cancelledOp.assets.join(', ')}\n` +
+        `💰 **Quantidade:** ${cancelledOp.amount}\n` +
+        `👤 **Criador:** ${creatorName}\n` +
+        `📝 **Motivo:** ${reason}\n` +
+        `🆔 **ID:** \`${operationId}\`\n\n` +
+        `👮 **Admin:** @${ctx.from.username || ctx.from.first_name}`,
+        { parse_mode: 'Markdown' }
+      );
+
+      this.logger.log(`Admin ${ctx.from.id} cancelou operação ${operationId}: ${reason}`);
+    } catch (error: any) {
+      this.logger.error('Erro ao cancelar operação:', error);
+
+      let errorMsg = '❌ Erro ao cancelar operação.';
+      if (error.message?.includes('não encontrada')) {
+        errorMsg = '❌ Operação não encontrada.';
+      } else if (error.message?.includes('já está')) {
+        errorMsg = '❌ Esta operação já foi cancelada ou concluída.';
+      }
+
+      await ctx.reply(errorMsg);
+    }
+  }
+
+  private async handleListOperations(ctx: TextCommandContext, params: string[]): Promise<void> {
+    try {
+      let operations;
+      let filterText = '';
+
+      if (params.length > 0 && params[0].startsWith('@')) {
+        // Filtrar por usuário
+        const targetUser = await this.findUser(params[0]);
+        if (!targetUser) {
+          await ctx.reply('❌ Usuário não encontrado.');
+          return;
+        }
+        operations = await this.operationsService.getUserOperations(targetUser._id);
+        filterText = ` de ${params[0]}`;
+      } else {
+        // Listar todas operações pendentes (limite de 10)
+        operations = await this.operationsService.getPendingOperations();
+        filterText = ' pendentes';
+      }
+
+      if (!operations || operations.length === 0) {
+        await ctx.reply(`📋 Nenhuma operação${filterText} encontrada.`);
+        return;
+      }
+
+      let message = `📋 **Operações${filterText}**\n\n`;
+
+      for (const op of operations.slice(0, 10)) {
+        const typeEmoji = op.type === 'buy' ? '🟢' : '🔴';
+        const typeText = op.type === 'buy' ? 'COMPRA' : 'VENDA';
+        const statusEmoji = op.status === 'pending' ? '⏳' :
+                           op.status === 'accepted' ? '🤝' :
+                           op.status === 'completed' ? '✅' : '❌';
+
+        // Buscar nome do criador
+        let creatorName = 'Desconhecido';
+        try {
+          const creator = await this.usersService.findById(op.creator.toString());
+          if (creator) {
+            creatorName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
+          }
+        } catch {}
+
+        message += `${statusEmoji} ${typeEmoji} **${typeText}** ${op.assets.join(', ')}\n`;
+        message += `   💰 ${op.amount} | 👤 ${creatorName}\n`;
+        message += `   🆔 \`${op._id}\`\n\n`;
+      }
+
+      if (operations.length > 10) {
+        message += `\n_... e mais ${operations.length - 10} operações_`;
+      }
+
+      message += `\n💡 Use \`/admin cancelop [ID]\` para cancelar`;
+
+      await ctx.reply(message, { parse_mode: 'Markdown' });
+    } catch (error) {
+      this.logger.error('Erro ao listar operações:', error);
+      await ctx.reply('❌ Erro ao listar operações.');
+    }
+  }
+
+  private async handleCleanupOperations(ctx: TextCommandContext, params: string[]): Promise<void> {
+    const days = params.length > 0 ? parseInt(params[0]) : 7;
+
+    if (isNaN(days) || days < 1) {
+      await ctx.reply('❌ Número de dias inválido. Use um número positivo.');
+      return;
+    }
+
+    try {
+      await ctx.reply(`⏳ Procurando operações pendentes há mais de ${days} dias...`);
+
+      const cancelledCount = await this.operationsService.cleanupStalePendingOperations(days);
+
+      if (cancelledCount > 0) {
+        await ctx.reply(
+          `🧹 **Limpeza Concluída**\n\n` +
+          `✅ **${cancelledCount}** operações pendentes canceladas\n` +
+          `📅 Critério: pendentes há mais de **${days} dias**\n` +
+          `👮 **Admin:** @${ctx.from.username || ctx.from.first_name}`,
+          { parse_mode: 'Markdown' }
+        );
+      } else {
+        await ctx.reply(`✅ Nenhuma operação pendente há mais de ${days} dias encontrada.`);
+      }
+
+      this.logger.log(`Admin ${ctx.from.id} executou cleanup de operações antigas: ${cancelledCount} canceladas`);
+    } catch (error) {
+      this.logger.error('Erro ao limpar operações antigas:', error);
+      await ctx.reply('❌ Erro ao limpar operações antigas.');
+    }
+  }
+
+  private async handleValidityCheck(ctx: TextCommandContext, params: string[]): Promise<void> {
+    const days = params.length > 0 ? parseInt(params[0]) : 1;
+
+    if (isNaN(days) || days < 1) {
+      await ctx.reply('❌ Número de dias inválido. Use um número positivo.');
+      return;
+    }
+
+    try {
+      await ctx.reply(`⏳ Enviando verificação de validade para operações pendentes há mais de ${days} dias...`);
+
+      const sentCount = await this.operationsService.processValidityChecks(days);
+
+      if (sentCount > 0) {
+        await ctx.reply(
+          `📩 **Verificações Enviadas**\n\n` +
+          `✅ **${sentCount}** mensagens de verificação enviadas\n` +
+          `📅 Critério: operações pendentes há mais de **${days} dias**\n` +
+          `⏰ Prazo para resposta: **24 horas**\n\n` +
+          `💡 Os criadores receberão uma mensagem perguntando se a operação ainda é válida. ` +
+          `Se não responderem em 24h, a operação será cancelada automaticamente.\n\n` +
+          `👮 **Admin:** @${ctx.from.username || ctx.from.first_name}`,
+          { parse_mode: 'Markdown' }
+        );
+      } else {
+        await ctx.reply(`✅ Nenhuma operação pendente há mais de ${days} dias precisando de verificação.`);
+      }
+
+      this.logger.log(`Admin ${ctx.from.id} executou verificação de validade: ${sentCount} mensagens enviadas`);
+    } catch (error) {
+      this.logger.error('Erro ao enviar verificações de validade:', error);
+      await ctx.reply('❌ Erro ao enviar verificações de validade.');
     }
   }
 
