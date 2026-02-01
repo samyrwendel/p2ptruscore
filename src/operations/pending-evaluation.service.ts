@@ -18,7 +18,7 @@ export class PendingEvaluationService implements OnApplicationBootstrap {
     operationId: Types.ObjectId,
     evaluatorId: Types.ObjectId,
     targetId: Types.ObjectId
-  ): Promise<PendingEvaluation> {
+  ): Promise<PendingEvaluation | null> {
     return this.pendingEvaluationRepository.createPendingEvaluation(
       operationId,
       evaluatorId,
@@ -175,10 +175,55 @@ export class PendingEvaluationService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap(): Promise<void> {
     try {
+      // Limpar duplicatas primeiro
+      const dupsRemoved = await this.cleanupDuplicatePendings();
+      if (dupsRemoved > 0) {
+        this.logger.log(`Startup cleanup of duplicate pendings: removed=${dupsRemoved}`);
+      }
+
+      // Depois limpar órfãos
       const result = await this.cleanupOrphanPendings();
       this.logger.log(`Startup cleanup of orphan pendings completed: removed=${result.removed}, checked=${result.checked}`);
     } catch (err) {
-      this.logger.warn('Startup cleanup of orphan pendings failed:', err);
+      this.logger.warn('Startup cleanup failed:', err);
+    }
+  }
+
+  /**
+   * Remove pending evaluations duplicados (mesma operação + avaliador + alvo)
+   * Mantém apenas o mais antigo de cada combinação
+   */
+  async cleanupDuplicatePendings(): Promise<number> {
+    try {
+      const allPendings = await this.pendingEvaluationRepository.findAllPending();
+      const seen = new Map<string, Types.ObjectId>();
+      const toDelete: Types.ObjectId[] = [];
+
+      for (const pending of allPendings) {
+        const key = `${pending.operation.toString()}_${pending.evaluator.toString()}_${pending.target.toString()}`;
+
+        if (seen.has(key)) {
+          // Já existe um - este é duplicado, marcar para remoção
+          toDelete.push(pending._id);
+          this.logger.warn(`Found duplicate pending evaluation: ${pending._id} for key ${key}`);
+        } else {
+          seen.set(key, pending._id);
+        }
+      }
+
+      // Remover duplicatas
+      for (const id of toDelete) {
+        await this.pendingEvaluationRepository.deleteById(id);
+      }
+
+      if (toDelete.length > 0) {
+        this.logger.log(`Removed ${toDelete.length} duplicate pending evaluations`);
+      }
+
+      return toDelete.length;
+    } catch (error) {
+      this.logger.error('Error cleaning up duplicate pending evaluations:', error);
+      return 0;
     }
   }
 }

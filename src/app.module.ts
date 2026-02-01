@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import * as Joi from 'joi';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TelegrafModule } from 'nestjs-telegraf';
+import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule } from './database/database.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { UsersModule } from './users/users.module';
@@ -38,6 +39,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
         limit: parseInt(process.env.RATE_LIMIT_LIMIT || '100'),
       },
     ]),
+    ScheduleModule.forRoot(),
     TelegrafModule.forRootAsync({
       botName: 'DEFAULT_BOT_NAME',
       useFactory: (configService: ConfigService) => ({

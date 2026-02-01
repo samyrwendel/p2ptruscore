@@ -42,6 +42,7 @@ import { AdminCommandHandler } from './commands/handlers/admin.command.handler';
 import { DesbloquearUsuarioCommandHandler } from './commands/handlers/desbloquear-usuario.command.handler';
 import { DisputarOperacaoCallbackCommandHandler } from './commands/handlers/disputar-operacao-callback.command.handler';
 import { NotificarTermosCommandHandler } from './commands/handlers/notificar-termos.command.handler';
+import { ValidityCheckCommandHandler } from './commands/handlers/validity-check.command.handler';
 import { KarmaMessageHandler } from './handlers/karma-message.handler';
 import { NewMemberHandler } from './handlers/new-member.handler';
 import { JoinRequestHandler } from './handlers/join-request.handler';
@@ -98,6 +99,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     private readonly joinRequestHandler: JoinRequestHandler,
     private readonly pendingEvaluationNotificationService: PendingEvaluationNotificationService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
+    private readonly validityCheckHandler: ValidityCheckCommandHandler,
   ) {
     // Registrar todos os command handlers
     this.registerCommand(meHandler);
@@ -870,6 +872,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
       // Tentar processar com cada handler que suporta callbacks
       const handlers = [
         this.joinRequestHandler, // PRIMEIRO: processar callbacks de solicitação de entrada
+        this.validityCheckHandler, // Processar callbacks de verificação de validade (validity_confirm_, validity_cancel_)
         this.avaliarHandler,
         this.disputarOperacaoCallbackHandler, // ADICIONADO ANTES para processar dispute_operation_ callbacks
         this.confirmAcceptOperationHandler, // ADICIONADO para processar confirm_accept_ callbacks

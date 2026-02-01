@@ -21,7 +21,19 @@ export class PendingEvaluationRepository extends AbstractRepository<PendingEvalu
     operationId: Types.ObjectId,
     evaluatorId: Types.ObjectId,
     targetId: Types.ObjectId
-  ): Promise<PendingEvaluation> {
+  ): Promise<PendingEvaluation | null> {
+    // Verificar se já existe um pending evaluation para essa combinação (previne duplicados)
+    const existing = await this.findOne({
+      operation: operationId,
+      evaluator: evaluatorId,
+      target: targetId
+    });
+
+    if (existing) {
+      this.logger.warn(`⚠️ Pending evaluation already exists for operation ${operationId}, evaluator ${evaluatorId}, target ${targetId} - skipping creation`);
+      return existing;
+    }
+
     const nextNotificationAt = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hora após criação
     return this.create({
       operation: operationId,

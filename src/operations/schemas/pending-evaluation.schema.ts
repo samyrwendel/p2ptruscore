@@ -42,3 +42,13 @@ export class PendingEvaluation extends AbstractDocument {
 }
 
 export const PendingEvaluationSchema = SchemaFactory.createForClass(PendingEvaluation);
+
+// Índice único composto para prevenir duplicatas (uma avaliação por combinação operation+evaluator+target)
+PendingEvaluationSchema.index(
+  { operation: 1, evaluator: 1, target: 1 },
+  { unique: true, background: true }
+);
+
+// Índices para consultas frequentes
+PendingEvaluationSchema.index({ evaluator: 1, completed: 1 });
+PendingEvaluationSchema.index({ completed: 1, autoEvaluated: 1, nextNotificationAt: 1 });

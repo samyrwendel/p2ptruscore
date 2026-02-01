@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TelegramService } from './telegram.service';
+import { TelegramHealthService } from './telegram-health.service';
 import { KarmaModule } from '../karma/karma.module';
 import { CommandsModule, commandHandlers } from './commands/commands.module';
 import { KarmaMessageHandler } from './handlers/karma-message.handler';
@@ -16,7 +17,7 @@ import { getBotToken } from 'nestjs-telegraf';
 
 @Module({
   imports: [KarmaModule, CommandsModule, TelegramSharedModule, OperationsModule, UsersModule, GroupsModule, SharedModule],
-  providers: [TelegramService, KarmaMessageHandler, BoraMessageHandler, NewMemberHandler, PendingEvaluationNotificationService],
-  exports: [TelegramService, NewMemberHandler, PendingEvaluationNotificationService],
+  providers: [TelegramService, TelegramHealthService, KarmaMessageHandler, BoraMessageHandler, NewMemberHandler, PendingEvaluationNotificationService],
+  exports: [TelegramService, TelegramHealthService, NewMemberHandler, PendingEvaluationNotificationService],
 })
 export class TelegramModule {}
