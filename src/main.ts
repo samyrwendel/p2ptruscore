@@ -6,6 +6,10 @@ import * as path from 'path'
 import { NestExpressApplication } from '@nestjs/platform-express'
 import { join } from 'path'
 import * as hbs from 'hbs'
+import * as dns from 'dns'
+
+// Forçar IPv4 para evitar problemas de conectividade
+dns.setDefaultResultOrder('ipv4first')
 
 // Carregar arquivo .env padrão
 config() // Carrega .env padrão

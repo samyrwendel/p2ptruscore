@@ -99,14 +99,6 @@ export class BoraMessageHandler {
         return;
       }
 
-      // Verificar se a operação não expirou
-      if (new Date() > operation.expiresAt) {
-        await ctx.reply(
-          '❌ Esta operação já expirou.'
-        );
-        return;
-      }
-
       // Aceitar a operação
       const acceptedOperation = await this.operationsService.acceptOperation(
         new Types.ObjectId(operationId),

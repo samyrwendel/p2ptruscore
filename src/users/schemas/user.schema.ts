@@ -17,6 +17,9 @@ export class User extends AbstractDocument {
 
   @Prop()
   lastName?: string;
+
+  @Prop({ default: true })
+  notifyOperations: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

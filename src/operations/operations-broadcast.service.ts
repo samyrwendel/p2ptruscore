@@ -198,8 +198,38 @@ export class OperationsBroadcastService {
       const msgId = typeof operation.messageId === 'number' ? operation.messageId : undefined;
       if (group && typeof msgId === 'number') {
         this.logger.log(`Found group ${group.groupId}, attempting to delete message ${operation.messageId}`);
-        await this.sendWithBackoff(() => this.bot.telegram.deleteMessage(group.groupId, msgId));
-        this.logger.log(`Successfully deleted operation message ${operation.messageId} from group ${group.groupId}`);
+        try {
+          // Tentar deletar diretamente
+          await this.sendWithBackoff(() => this.bot.telegram.deleteMessage(group.groupId, msgId));
+          this.logger.log(`Successfully deleted operation message ${operation.messageId} from group ${group.groupId}`);
+        } catch (deleteError: any) {
+          this.logger.warn(`Could not delete message, attempting edit+delete fallback: ${deleteError.message}`);
+          try {
+            // Fallback: editar para "Operação Cancelada" e remover botões
+            const typeEmoji = operation.type === 'buy' ? '\u{1F7E2}' : '\u{1F534}';
+            const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
+            const assetsText = operation.assets?.join(', ') || '';
+            await this.sendWithBackoff(() => this.bot.telegram.editMessageText(
+              group.groupId,
+              msgId,
+              undefined,
+              `\u274C Opera\u00E7\u00E3o Cancelada\n\n${typeEmoji} ${typeText} ${assetsText}\n\n\u{1F194} ${operation._id}\n\nEsta opera\u00E7\u00E3o n\u00E3o est\u00E1 mais dispon\u00EDvel.`,
+              { reply_markup: { inline_keyboard: [] } }
+            ));
+            this.logger.log(`Edited operation message ${msgId} to cancelled state`);
+
+            // Aguardar 3 segundos e tentar deletar novamente
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            try {
+              await this.sendWithBackoff(() => this.bot.telegram.deleteMessage(group.groupId, msgId));
+              this.logger.log(`Successfully deleted operation message ${msgId} after edit`);
+            } catch (deleteError2: any) {
+              this.logger.warn(`Could not delete after edit (keeping edited version): ${deleteError2.message}`);
+            }
+          } catch (editError: any) {
+            this.logger.error(`Failed to edit operation message as fallback: ${editError.message}`);
+          }
+        }
       } else {
         this.logger.warn(`Group ${operation.group} not found - cannot delete message`);
       }
@@ -405,6 +435,25 @@ export class OperationsBroadcastService {
       }
 
       message += `🆔 **ID da Operação:** ${operation._id}`;
+
+      // Mencionar todos os membros para notificar sobre nova operação
+      try {
+        const allUsers = await this.usersService.findNotifiable();
+        if (allUsers && allUsers.length > 0) {
+          const usersToMention = allUsers.filter((u) => 
+            u.userId > 0 && 
+            u.userId !== creator.userId &&
+            u.firstName !== 'Sistema'
+          );
+          if (usersToMention.length > 0) {
+            // Adicionar menções invisíveis via Markdown tg://user links
+            const mentions = usersToMention.map((u) => `[​](tg://user?id=${u.userId})`).join('');
+            message += '\n' + mentions;
+          }
+        }
+      } catch (mentionError) {
+        this.logger.warn(`Could not mention all users: ${(mentionError as any).message}`);
+      }
 
       // Criar botões inline com confirmação se houver disputas
       let acceptButtonText = '🚀 Aceitar Operação';
@@ -858,38 +907,15 @@ export class OperationsBroadcastService {
         `🚀 **Continuem negociando com segurança!**`
       );
 
-      // Para operações concluídas, criar botões de reputação
-      const creatorUserId = creator?.userName || creator?.firstName || creator?.userId;
-      const acceptorUserId = acceptor?.userName || acceptor?.firstName || acceptor?.userId;
-      
-      const buttons = [
-        {
-          text: `📊 ${creatorName}`,
-          url: this.getReputationUrlForUser(creator)
-        }
-      ];
-      
-      if (acceptor) {
-        buttons.push({
-          text: `📊 ${acceptorName}`,
-          url: this.getReputationUrlForUser(acceptor)
-        });
-      }
-      
-      const inlineKeyboard = {
-        inline_keyboard: [buttons]
+      // Configurar envio para tópico específico se for o grupo mencionado (sem botões - operação concluída)
+      const sendOptions: any = {
+        parse_mode: 'Markdown'
       };
 
-      // Configurar envio para tópico específico se for o grupo mencionado
-      const sendOptions: any = { 
-        parse_mode: 'Markdown',
-        reply_markup: inlineKeyboard
-      };
-      
       // Usar as variáveis de ambiente corretas
       const p2pGroupId = parseInt(this.configService.get<string>('TELEGRAM_GROUP_ID') || '0');
       const p2pThreadId = parseInt(this.configService.get<string>('TELEGRAM_THREAD_ID') || '0');
-      
+
       if (group.groupId === p2pGroupId && p2pThreadId > 0) {
         sendOptions.message_thread_id = p2pThreadId;
       }
@@ -903,7 +929,8 @@ export class OperationsBroadcastService {
             undefined,
             message,
             {
-              parse_mode: 'Markdown'
+              parse_mode: 'Markdown',
+              reply_markup: { inline_keyboard: [] }
             }
           ));
           this.logger.log(`Edited original message ${operation.messageId} for completed operation ${operation._id} - buttons removed`);
@@ -913,9 +940,7 @@ export class OperationsBroadcastService {
           await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
             group.groupId,
             message,
-            {
-              parse_mode: 'Markdown'
-            }
+            sendOptions
           ));
         }
       } else {
@@ -923,9 +948,7 @@ export class OperationsBroadcastService {
         await this.sendWithBackoff(() => this.bot.telegram.sendMessage(
           group.groupId,
           message,
-          {
-            parse_mode: 'Markdown'
-          }
+          sendOptions
         ));
       }
 
@@ -1674,7 +1697,7 @@ export class OperationsBroadcastService {
       }
 
       this.logger.log(`Completion request notification sent to user ${otherParty.userId} for operation ${operation._id}`);
-      
+
     } catch (error) {
       this.logger.error('Error sending completion request notification:', error);
     }

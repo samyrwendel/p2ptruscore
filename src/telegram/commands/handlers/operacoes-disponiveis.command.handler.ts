@@ -50,24 +50,21 @@ export class OperacoesDisponiveisCommandHandler implements ITextCommandHandler {
         const typeEmoji = operation.type === 'buy' ? '🟢' : '🔴';
         const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
         const total = operation.amount * operation.price;
-        const timeLeft = this.getTimeLeft(operation.expiresAt);
-        
+
         message += (
           `**${index + 1}.** ${typeEmoji} **${typeText} ${operation.assets.join(', ')}**\n` +
           `💰 Quantidade: ${operation.amount} (total)\n` +
           `💵 Preço: R$ ${total.toFixed(2)}\n` +
-  
           `Redes: ${operation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
-            `Ativos: ${operation.assets.join(', ')}\n` +
-            `Cotação: ${operation.quotationType}\n`
+          `Ativos: ${operation.assets.join(', ')}\n` +
+          `Cotação: ${operation.quotationType}\n`
         );
-        
+
         if (operation.description) {
           message += `📝 Descrição: ${operation.description}\n`;
         }
-        
+
         message += (
-          `⏰ Expira: ${timeLeft}\n` +
           `🆔 ID: \`${operation._id}\`\n` +
           `📞 Para aceitar: \`/aceitaroperacao ${operation._id}\`\n\n`
         );
@@ -92,21 +89,4 @@ export class OperacoesDisponiveisCommandHandler implements ITextCommandHandler {
     }
   }
 
-  private getTimeLeft(expiresAt: Date): string {
-    const now = new Date();
-    const diff = expiresAt.getTime() - now.getTime();
-    
-    if (diff <= 0) {
-      return 'Expirada';
-    }
-    
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    } else {
-      return `${minutes}m`;
-    }
-  }
 }

@@ -854,24 +854,6 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
           return true; // validateUserTermsForOperation já envia o popup
         }
         
-        // ✅ VALIDAÇÃO CRÍTICA: Verificar dados obrigatórios da sessão
-        const missingFields: string[] = [];
-        if (!session.data.type) missingFields.push("tipo");
-        if (!session.data.assets || session.data.assets.length === 0) missingFields.push("ativos");
-        if (!session.data.networks || session.data.networks.length === 0) missingFields.push("redes");
-        if (!session.data.amount) missingFields.push("valor");
-        if (!session.data.quotationType) missingFields.push("cotação");
-        
-        if (missingFields.length > 0) {
-          this.logger.error(`❌ Dados incompletos na sessão: ${missingFields.join(", ")}`);
-          await ctx.answerCbQuery(
-            `⚠️ Dados incompletos! Faltando: ${missingFields.join(", ")}. Inicie nova operação.`,
-            { show_alert: true }
-          );
-          this.sessions.delete(sessionKey);
-          return true;
-        }
-
         this.logger.log(`✅ Validações aprovadas - Criando operação para usuário ${ctx.from.id}`);
         await this.createOperation(ctx, session);
       }
@@ -1679,12 +1661,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
         session.data.paymentMethods = [];
       }
       session.data.paymentMethods.push(text);
-      // FIX: Verificar se cotação e valor foram selecionados antes de ir pra descrição
-      if (!session.data.quotationType || !session.data.amount) {
-        await this.showValueInput(ctx);
-      } else {
-        await this.showDescriptionInput(ctx);
-      }
+      await this.showDescriptionInput(ctx);
     } else if (session.step === 'description' || session.step === 'description_payment') {
       // Deletar a mensagem do usuário com a descrição digitada
       try {

@@ -23,7 +23,8 @@ export class PendingEvaluationRepository extends AbstractRepository<PendingEvalu
     targetId: Types.ObjectId
   ): Promise<PendingEvaluation | null> {
     // Verificar se já existe um pending evaluation para essa combinação (previne duplicados)
-    const existing = await this.findOne({
+    // Usa findOneOptional para não lançar exceção se não existir
+    const existing = await this.findOneOptional({
       operation: operationId,
       evaluator: evaluatorId,
       target: targetId

@@ -43,6 +43,7 @@ import { DesbloquearUsuarioCommandHandler } from './commands/handlers/desbloquea
 import { DisputarOperacaoCallbackCommandHandler } from './commands/handlers/disputar-operacao-callback.command.handler';
 import { NotificarTermosCommandHandler } from './commands/handlers/notificar-termos.command.handler';
 import { ValidityCheckCommandHandler } from './commands/handlers/validity-check.command.handler';
+import { NotificarCommandHandler } from './commands/handlers/notificar.command.handler';
 import { KarmaMessageHandler } from './handlers/karma-message.handler';
 import { NewMemberHandler } from './handlers/new-member.handler';
 import { JoinRequestHandler } from './handlers/join-request.handler';
@@ -100,6 +101,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     private readonly pendingEvaluationNotificationService: PendingEvaluationNotificationService,
     private readonly termsAcceptanceService: TermsAcceptanceService,
     private readonly validityCheckHandler: ValidityCheckCommandHandler,
+    private readonly notificarHandler: NotificarCommandHandler,
   ) {
     // Registrar todos os command handlers
     this.registerCommand(meHandler);
@@ -132,6 +134,7 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
     this.registerCommand(termosHandler);
     this.registerCommand(adminHandler);
     this.registerCommand(notificarTermosHandler);
+    this.registerCommand(this.notificarHandler);
   }
 
   async onModuleInit() {
@@ -147,7 +150,9 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         { command: 'criaroperacao', description: '💼 Criar Nova Operação' },
         { command: 'minhasoperacoes', description: '📋 Minhas Operações' },
         { command: 'reputacao', description: '⭐ Ver Reputação' },
-        { command: 'help', description: '❓ Ajuda' }
+        { command: 'help', description: '❓ Ajuda' },
+        { command: 'notificar', description: '🔔 Ativar notificações de operações' },
+        { command: 'silenciar', description: '🔕 Desativar notificações de operações' }
       ]);
       
       // Configurar menu button para mostrar comandos
@@ -876,13 +881,13 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         this.avaliarHandler,
         this.disputarOperacaoCallbackHandler, // ADICIONADO ANTES para processar dispute_operation_ callbacks
         this.confirmAcceptOperationHandler, // ADICIONADO para processar confirm_accept_ callbacks
+        this.concluirOperacaoHandler,
         this.criarOperacaoHandler,
         this.aceitarOperacaoHandler,
         this.minhasOperacoesHandler,
         this.cancelarOperacaoHandler,
         this.cancelarOrdemHandler,
         this.reverterOperacaoHandler,
-        this.concluirOperacaoHandler,
         this.operacoesDisponiveisHandler,
         this.apagarOperacoesPendentesHandler,
         this.fecharOperacaoHandler,

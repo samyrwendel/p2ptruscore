@@ -85,8 +85,7 @@ export class MinhasOperacoesCommandHandler implements ITextCommandHandler {
             `   💵 Preço: R$ ${op.price.toFixed(2)}\n` +
             `   Redes: ${op.networks.map(n => n.toUpperCase()).join(', ')}\n` +
         `   Ativos: ${op.assets.join(', ')}\n` +
-            `   🆔 \`${op._id}\`\n` +
-            `   ⏰ Expira: ${op.expiresAt.toLocaleString('pt-BR')}\n\n`
+            `   🆔 \`${op._id}\`\n\n`
           );
         }
         if (pendingOps.length > 5) {

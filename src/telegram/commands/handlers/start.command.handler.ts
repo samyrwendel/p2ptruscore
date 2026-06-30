@@ -294,9 +294,14 @@ export class StartCommandHandler implements ITextCommandHandler {
         });
         return;
         
-      } catch (error) {
-        this.logger.error('Erro ao buscar reputação via start:', error);
-        await ctx.reply('❌ Erro ao buscar reputação. Tente novamente.');
+      } catch (error: any) {
+        // Ignorar erro "message is not modified" (conteúdo idêntico ao editar)
+        if (error?.description?.includes("message is not modified")) {
+          this.logger.warn("Reputação não mudou (message is not modified), ignorando.");
+          return;
+        }
+        this.logger.error("Erro ao buscar reputação via start:", error);
+        await ctx.reply("❌ Erro ao buscar reputação. Tente novamente.");
         return;
       }
     }

@@ -295,7 +295,7 @@ export class PendingEvaluationNotificationService implements OnModuleInit {
         `[Avaliação Automática] Usuário não avaliou após ${MAX_NOTIFICATIONS} lembretes`
       );
 
-      // Marcar como auto-avaliado (mas NÃO como completed - permitir revisão)
+      // Marcar como auto-avaliado E completed para desbloquear o usuário
       await this.pendingEvaluationRepository.findOneAndUpdate(
         { _id: pending._id },
         {
@@ -304,7 +304,8 @@ export class PendingEvaluationNotificationService implements OnModuleInit {
           autoEvaluated: true,
           autoEvaluatedAt: new Date(),
           autoEvaluationReason: `Avaliação automática após ${MAX_NOTIFICATIONS} lembretes sem resposta`,
-          // NÃO marca completed: true - permite revisão
+          completed: true, // Auto-avaliação concluída — desbloqueia o usuário
+          completedAt: new Date(),
         }
       );
 

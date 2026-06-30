@@ -44,6 +44,17 @@ export abstract class AbstractRepository<TDocument extends AbstractDocument> {
     return document as TDocument;
   }
 
+  /**
+   * Find one document without throwing exception if not found
+   * Returns null instead of throwing NotFoundException
+   */
+  async findOneOptional(
+    filterQuery: FilterQuery<TDocument>,
+  ): Promise<TDocument | null> {
+    const document = await this.model.findOne(filterQuery, {}, { lean: true });
+    return document as TDocument | null;
+  }
+
   async findOneAndUpdate(
     filterQuery: FilterQuery<TDocument>,
     update: UpdateQuery<TDocument>,

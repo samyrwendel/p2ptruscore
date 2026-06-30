@@ -16,6 +16,7 @@ interface JoinRequest {
   termsAcceptedAt?: Date;
   status: 'pending_terms' | 'pending_approval' | 'approved' | 'rejected';
   adminMessageId?: number;
+  adminMessageIds?: Map<number, number>; // IDs das mensagens enviadas para cada admin (adminId -> messageId)
   approvalMessageId?: number; // ID da mensagem de aprovação enviada ao usuário
 }
 
@@ -256,15 +257,35 @@ export class JoinRequestHandler {
     await ctx.answerCbQuery('❌ Termos não aceitos');
   }
 
-  // Enviar solicitação para canal admin
-  private async sendJoinRequestToAdmins(userId: number, request: JoinRequest): Promise<void> {
-    const adminChannelId = this.getAdminChannelId();
-    if (!adminChannelId) {
-      this.logger.error('TELEGRAM_ADMIN_CHANNEL_ID não configurado!');
-      return;
-    }
+  // Obter lista de admins humanos do grupo (excluindo bots)
+  private async getGroupAdmins(): Promise<number[]> {
+    const groupId = this.getGroupId();
+    if (!groupId) return [];
 
-    const message = (
+    try {
+      const admins = await this.bot.telegram.getChatAdministrators(groupId);
+      // Filtrar apenas admins humanos (excluindo bots)
+      const humanAdmins = admins
+        .filter(admin => !admin.user.is_bot)
+        .map(admin => admin.user.id);
+
+      this.logger.log(`📋 Admins humanos encontrados: ${humanAdmins.length}`);
+      return humanAdmins;
+    } catch (error) {
+      this.logger.error('Erro ao obter admins do grupo:', error);
+      return [];
+    }
+  }
+
+  // Enviar solicitação para admins do grupo (direto no privado de cada admin)
+  private async sendJoinRequestToAdmins(userId: number, request: JoinRequest): Promise<void> {
+    // Envia diretamente para os admins humanos do grupo
+    await this.sendJoinRequestToIndividualAdmins(userId, request);
+  }
+
+  // Construir mensagem de solicitação de entrada
+  private buildJoinRequestMessage(userId: number, request: JoinRequest): string {
+    return (
       `🆕 **Nova Solicitação de Entrada**\n\n` +
       `👤 **Usuário:** ${request.userName}\n` +
       `🆔 **ID:** \`${userId}\`\n` +
@@ -272,8 +293,11 @@ export class JoinRequestHandler {
       `✅ **Termos aceitos em:** ${request.termsAcceptedAt?.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
       `⚠️ **Ação necessária:** Aprovar ou recusar entrada no grupo.`
     );
+  }
 
-    const keyboard = {
+  // Construir teclado de solicitação de entrada
+  private buildJoinRequestKeyboard(userId: number) {
+    return {
       inline_keyboard: [
         [
           {
@@ -293,22 +317,70 @@ export class JoinRequestHandler {
         ]
       ]
     };
+  }
 
-    try {
-      const sentMessage = await this.retryService.executeWithRetry(() =>
-        this.bot.telegram.sendMessage(adminChannelId, message, {
-          parse_mode: 'Markdown',
-          reply_markup: keyboard
-        })
-      );
+  // Enviar solicitação para cada admin individualmente
+  private async sendJoinRequestToIndividualAdmins(userId: number, request: JoinRequest): Promise<void> {
+    const admins = await this.getGroupAdmins();
 
-      // Salvar ID da mensagem para atualizar depois
-      request.adminMessageId = sentMessage.message_id;
-      this.pendingRequests.set(userId, request);
+    if (admins.length === 0) {
+      this.logger.error('Nenhum admin encontrado para enviar solicitação!');
+      return;
+    }
 
-      this.logger.log(`✅ Solicitação de entrada enviada para admins: ${userId}`);
-    } catch (error) {
-      this.logger.error('Erro ao enviar solicitação para admins:', error);
+    const message = this.buildJoinRequestMessage(userId, request);
+    const keyboard = this.buildJoinRequestKeyboard(userId);
+
+    let sentCount = 0;
+    const adminMessageIds: Map<number, number> = new Map();
+
+    for (const adminId of admins) {
+      try {
+        const sentMessage = await this.retryService.executeWithRetry(() =>
+          this.bot.telegram.sendMessage(adminId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: keyboard
+          })
+        );
+        adminMessageIds.set(adminId, sentMessage.message_id);
+        sentCount++;
+        this.logger.log(`✅ Solicitação enviada para admin ${adminId}`);
+      } catch (error: any) {
+        // Admin pode ter bloqueado o bot ou nunca iniciou conversa
+        this.logger.warn(`⚠️ Não foi possível enviar para admin ${adminId}: ${error.description || error.message}`);
+      }
+    }
+
+    // Salvar IDs das mensagens para atualizar depois
+    request.adminMessageIds = adminMessageIds;
+    this.pendingRequests.set(userId, request);
+
+    this.logger.log(`✅ Solicitação de entrada enviada para ${sentCount}/${admins.length} admins: ${userId}`);
+  }
+
+  // Atualizar mensagens de outros admins quando um admin aprova/recusa
+  private async updateOtherAdminMessages(request: JoinRequest, newText: string, actionAdminId: number): Promise<void> {
+    if (!request.adminMessageIds || request.adminMessageIds.size === 0) {
+      return; // Não foi enviado individualmente
+    }
+
+    for (const [adminId, messageId] of request.adminMessageIds) {
+      if (adminId === actionAdminId) {
+        continue; // Pular o admin que já teve sua mensagem atualizada via ctx.editMessageText
+      }
+
+      try {
+        await this.bot.telegram.editMessageText(
+          adminId,
+          messageId,
+          undefined,
+          newText,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (error) {
+        // Ignorar erros (mensagem pode ter sido deletada, etc)
+        this.logger.warn(`Não foi possível atualizar mensagem para admin ${adminId}`);
+      }
     }
   }
 
@@ -354,17 +426,22 @@ export class JoinRequestHandler {
       request.status = 'approved';
       this.pendingRequests.set(userId, request);
 
-      // Atualizar mensagem no canal admin
-      await ctx.editMessageText(
+      // Mensagem de aprovação
+      const approvalText = (
         `✅ **Solicitação APROVADA**\n\n` +
         `👤 **Usuário:** ${request.userName}\n` +
         `🆔 **ID:** \`${userId}\`\n` +
         `📅 **Solicitado em:** ${request.requestedAt.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
         `✅ **Aprovado por:** ${adminName}\n` +
         `📅 **Aprovado em:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n` +
-        `⏳ **Aguardando usuário clicar para entrar**`,
-        { parse_mode: 'Markdown' }
+        `⏳ **Aguardando usuário clicar para entrar**`
       );
+
+      // Atualizar mensagem do admin que clicou
+      await ctx.editMessageText(approvalText, { parse_mode: 'Markdown' });
+
+      // Atualizar mensagens de outros admins (se enviado individualmente)
+      await this.updateOtherAdminMessages(request, approvalText, ctx.from.id);
 
       await ctx.answerCbQuery('✅ Usuário aprovado!');
 
@@ -555,16 +632,21 @@ export class JoinRequestHandler {
     request.status = 'rejected';
     this.pendingRequests.set(userId, request);
 
-    // Atualizar mensagem no canal admin
-    await ctx.editMessageText(
+    // Mensagem de rejeição
+    const rejectionText = (
       `❌ **Solicitação RECUSADA**\n\n` +
       `👤 **Usuário:** ${request.userName}\n` +
       `🆔 **ID:** \`${userId}\`\n` +
       `📅 **Solicitado em:** ${request.requestedAt.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}\n\n` +
       `❌ **Recusado por:** ${adminName}\n` +
-      `📅 **Recusado em:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
-      { parse_mode: 'Markdown' }
+      `📅 **Recusado em:** ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`
     );
+
+    // Atualizar mensagem do admin que clicou
+    await ctx.editMessageText(rejectionText, { parse_mode: 'Markdown' });
+
+    // Atualizar mensagens de outros admins (se enviado individualmente)
+    await this.updateOtherAdminMessages(request, rejectionText, ctx.from.id);
 
     await ctx.answerCbQuery('❌ Solicitação recusada');
 

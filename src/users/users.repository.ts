@@ -84,4 +84,20 @@ export class UsersRepository extends AbstractRepository<User> {
   async countDocuments(filterQuery: FilterQuery<User> = {}): Promise<number> {
     return this.model.countDocuments(filterQuery);
   }
+
+  async findAll(): Promise<User[]> {
+    return this.model.find().exec();
+  }
+
+  async findNotifiable(): Promise<User[]> {
+    return this.model.find({ notifyOperations: { $ne: false }, userId: { $gt: 0 } }).exec();
+  }
+
+  async setNotifyOperations(userId: number, notify: boolean): Promise<User | null> {
+    return this.model.findOneAndUpdate(
+      { userId },
+      { notifyOperations: notify },
+      { new: true }
+    ).exec();
+  }
 }

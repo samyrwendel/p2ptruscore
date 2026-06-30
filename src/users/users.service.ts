@@ -36,4 +36,16 @@ export class UsersService {
   async findById(id: string): Promise<User | null> {
     return this.usersRepository.findById(id);
   }
+
+  async findAll(): Promise<User[]> {
+    return this.usersRepository.findAll();
+  }
+
+  async findNotifiable(): Promise<User[]> {
+    return this.usersRepository.findNotifiable();
+  }
+
+  async setNotifyOperations(userId: number, notify: boolean): Promise<User | null> {
+    return this.usersRepository.setNotifyOperations(userId, notify);
+  }
 }

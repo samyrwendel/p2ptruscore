@@ -39,7 +39,7 @@ module.exports = {
       cwd: '/home/umbrel/TrustP2PBot',
 
       // Ambiente - usar variáveis do .env diretamente
-      node_args: '--max-old-space-size=512',
+      node_args: '--max-old-space-size=512 --require ./preload.js --dns-result-order=ipv4first',
       env: {
         NODE_ENV: 'production',
         TELEGRAM_BOT_TOKEN: envFile.TELEGRAM_BOT_TOKEN,
@@ -61,18 +61,20 @@ module.exports = {
         TELEGRAM_ADMIN_CHANNEL_ID: envFile.TELEGRAM_ADMIN_CHANNEL_ID,
       },
 
-      // Auto-restart
+      // Auto-restart - MÁXIMA RESILIÊNCIA (otimizado para quedas de energia)
       autorestart: true,
       watch: false,
-      max_restarts: 10,
-      min_uptime: '10s',
-      restart_delay: 5000,
+      max_restarts: 100,          // Mais tentativas antes de desistir
+      min_uptime: '10s',          // Considera iniciado após 10s
+      restart_delay: 10000,       // Espera 10s entre restarts (dar tempo à rede)
+      exp_backoff_restart_delay: 5000, // Backoff exponencial começa em 5s
 
       // Logs
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       error_file: '/home/umbrel/TrustP2PBot/logs/error.log',
       out_file: '/home/umbrel/TrustP2PBot/logs/out.log',
       merge_logs: true,
+      log_type: 'json',
 
       // Monitoramento
       max_memory_restart: '500M',
@@ -80,7 +82,10 @@ module.exports = {
       // Graceful shutdown
       kill_timeout: 5000,
       wait_ready: true,
-      listen_timeout: 10000,
+      listen_timeout: 15000,      // Mais tempo para inicializar
+
+      // Cron para restart diário preventivo (3h da manhã)
+      cron_restart: '0 3 * * *',
     },
   ],
 };
