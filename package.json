@@ -90,5 +90,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/WilliamsMata/karma_bot.git"
+  },
+  "overrides": {
+    "handlebars": "4.7.9"
   }
 }
