@@ -78,21 +78,36 @@ export class OperationsRepository extends AbstractRepository<Operation> {
       .exec();
   }
 
-  async cancelOperation(operationId: Types.ObjectId): Promise<Operation | null> {
+  // ATÔMICO (audit intertravamento): só cancela se o status atual estiver entre os permitidos. Retorna null se
+  // o estado já mudou (ex.: botão velho de cancelar/validade numa op já em disputa/fraude/concluída) → o chamador
+  // rejeita e NÃO deleta a mensagem. Default seguro (user/validade/cleanup); admin passa um conjunto mais amplo.
+  async cancelOperation(
+    operationId: Types.ObjectId,
+    allowedStatuses: OperationStatus[] = [
+      OperationStatus.PENDING,
+      OperationStatus.ACCEPTED,
+      OperationStatus.PENDING_COMPLETION,
+    ],
+  ): Promise<Operation | null> {
     return this.model
-      .findByIdAndUpdate(
-        operationId,
+      .findOneAndUpdate(
+        { _id: operationId, status: { $in: allowedStatuses } },
         { status: OperationStatus.CANCELLED },
         { new: true },
       )
       .exec();
   }
 
+  // ATÔMICO: reverter (desistir) só de op ACEITA (mesmo estado que o service valida em revertOperation).
+  // null = estado mudou (ex.: contraparte pediu conclusão no meio) → rejeitar, sem reverter indevidamente.
   async revertAcceptedOperation(operationId: Types.ObjectId): Promise<Operation | null> {
     return this.model
-      .findByIdAndUpdate(
-        operationId,
-        { 
+      .findOneAndUpdate(
+        {
+          _id: operationId,
+          status: OperationStatus.ACCEPTED,
+        },
+        {
           status: OperationStatus.PENDING,
           wasReverted: true,
           $unset: { acceptor: 1 } // Remove o campo acceptor
@@ -107,21 +122,26 @@ export class OperationsRepository extends AbstractRepository<Operation> {
     complainantId: Types.ObjectId,
     reason: string,
   ): Promise<Operation | null> {
-    const operation = await this.model.findById(operationId).exec();
-    if (!operation) {
-      return null;
-    }
-
+    // ATÔMICO: só contesta de op aceita/aguardando conclusão. Se uma conclusão/reversão/cancelamento correu no
+    // meio, a condição não casa → null → rejeita (evita concluir-vs-contestar corrompendo o estado final).
+    // previousStatus vem de '$status' NO PRÓPRIO update (pipeline) — sem read separado, sem TOCTOU no valor salvo.
     return this.model
-      .findByIdAndUpdate(
-        operationId,
+      .findOneAndUpdate(
         {
-          previousStatus: operation.status,
-          status: OperationStatus.DISPUTED,
-          disputedBy: complainantId,
-          disputedAt: new Date(),
-          disputeReason: reason,
+          _id: operationId,
+          status: { $in: [OperationStatus.ACCEPTED, OperationStatus.PENDING_COMPLETION] },
         },
+        [
+          {
+            $set: {
+              previousStatus: '$status',
+              status: OperationStatus.DISPUTED,
+              disputedBy: complainantId,
+              disputedAt: new Date(),
+              disputeReason: { $literal: reason },
+            },
+          },
+        ],
         { new: true },
       )
       .exec();
@@ -130,10 +150,16 @@ export class OperationsRepository extends AbstractRepository<Operation> {
   async updateOperation(
     operationId: Types.ObjectId,
     updateData: Partial<Operation>,
-    options?: { session?: ClientSession },
+    options?: { session?: ClientSession; expectedStatus?: OperationStatus[] },
   ): Promise<Operation | null> {
+    // Se expectedStatus for informado, o update vira ATÔMICO-condicional (só aplica se o status atual estiver
+    // no conjunto) → retorna null quando o estado já mudou. Usado por transições sensíveis (pedir conclusão, admin).
+    const filter: Record<string, unknown> = { _id: operationId };
+    if (options?.expectedStatus && options.expectedStatus.length > 0) {
+      filter.status = { $in: options.expectedStatus };
+    }
     return this.model
-      .findByIdAndUpdate(operationId, updateData, {
+      .findOneAndUpdate(filter, updateData, {
         new: true,
         ...(options?.session && { session: options.session })
       })
@@ -144,9 +170,11 @@ export class OperationsRepository extends AbstractRepository<Operation> {
     operationId: Types.ObjectId,
     options?: { session?: ClientSession },
   ): Promise<Operation | null> {
+    // ATÔMICO: só conclui a partir de PENDING_COMPLETION. Double-click ou concluir-vs-outra-ação → o 2º retorna
+    // null e o service NÃO dispara notificação/avaliação duplicada.
     return this.model
-      .findByIdAndUpdate(
-        operationId,
+      .findOneAndUpdate(
+        { _id: operationId, status: OperationStatus.PENDING_COMPLETION },
         {
           status: OperationStatus.COMPLETED,
           completionRequestedBy: null,
@@ -160,14 +188,16 @@ export class OperationsRepository extends AbstractRepository<Operation> {
       .exec();
   }
 
+  // ATÔMICO (defensivo — hoje sem callers; o service pede conclusão via updateOperation com expectedStatus).
+  // Mantido atômico para não reintroduzir corrida se for religado no futuro.
   async requestCompletion(
     operationId: Types.ObjectId,
     userId: Types.ObjectId,
   ): Promise<Operation | null> {
     return this.model
-      .findByIdAndUpdate(
-        operationId,
-        { 
+      .findOneAndUpdate(
+        { _id: operationId, status: OperationStatus.ACCEPTED },
+        {
           status: OperationStatus.PENDING_COMPLETION,
           completionRequestedBy: userId,
           completionRequestedAt: new Date()

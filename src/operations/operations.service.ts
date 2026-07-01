@@ -291,16 +291,17 @@ export class OperationsService {
     this.logger.log(`Tentativa de cancelamento da operação ${operationId} por usuário ${userId}`);
     this.logger.log(`Status da operação: ${operation.status}`);
     
-    // Cancelar definitivamente (deletar mensagem)
     const updatedOperation = await this.operationsRepository.cancelOperation(operationId);
-    this.logger.log(`Operation ${operationId} cancelled by user ${userId}`);
-    
-    // Sempre deletar a mensagem do grupo quando cancelar
-    await this.broadcastService.deleteOperationMessage(operation);
 
     if (!updatedOperation) {
-      throw new BadRequestException('Erro ao cancelar operação');
+      // Estado mudou entre o clique e agora (op em disputa/fraude/concluída) → NÃO deletar a mensagem nem apagar
+      // o estado. (audit intertravamento: botão velho de cancelar/validade não destrói mais disputa/fraude.)
+      throw new BadRequestException('Esta operação não está mais em um estado que permita cancelamento.');
     }
+    this.logger.log(`Operation ${operationId} cancelled by user ${userId}`);
+
+    // Deletar a mensagem do grupo só APÓS confirmar que o cancelamento realmente valeu
+    await this.broadcastService.deleteOperationMessage(operation);
 
     return updatedOperation;
   }
@@ -311,9 +312,16 @@ export class OperationsService {
     reason?: string
   ): Promise<Operation> {
     const operation = await this.getOperationById(operationId);
-    const updatedOperation = await this.operationsRepository.cancelOperation(operationId);
+    // Admin cancela de mais estados (inclusive disputa/fraude), mas nunca de já-terminal (concluída/cancelada).
+    const updatedOperation = await this.operationsRepository.cancelOperation(operationId, [
+      OperationStatus.PENDING,
+      OperationStatus.ACCEPTED,
+      OperationStatus.PENDING_COMPLETION,
+      OperationStatus.DISPUTED,
+      OperationStatus.FRAUD_REPORTED,
+    ]);
     if (!updatedOperation) {
-      throw new BadRequestException('Erro ao cancelar operação (admin)');
+      throw new BadRequestException('Operação não está em um estado cancelável (já concluída ou cancelada).');
     }
     await this.broadcastService.deleteOperationMessage(operation);
     const adminName = admin.username ? `@${admin.username}` : admin.firstName || 'Administrador';
@@ -328,15 +336,15 @@ export class OperationsService {
   ): Promise<Operation> {
     const operation = await this.getOperationById(operationId);
     const statusToRestore = operation.previousStatus || OperationStatus.ACCEPTED;
-    const updatedOperation = await this.operationsRepository.updateOperation(operationId, { 
+    const updatedOperation = await this.operationsRepository.updateOperation(operationId, {
       status: statusToRestore,
       previousStatus: undefined,
       disputedBy: undefined,
       disputedAt: undefined,
       disputeReason: undefined
-    });
+    }, { expectedStatus: [OperationStatus.DISPUTED] }); // atômico: só limpa se ainda EM DISPUTA
     if (!updatedOperation) {
-      throw new BadRequestException('Erro ao remover disputa (admin)');
+      throw new BadRequestException('Esta operação não está em disputa.');
     }
     const adminName = admin.username ? `@${admin.username}` : admin.firstName || 'Administrador';
     await this.broadcastService.notifyOperationAdminDisputeCleared(updatedOperation as Operation, adminName, reason);
@@ -349,9 +357,16 @@ export class OperationsService {
     reason?: string
   ): Promise<Operation> {
     const operation = await this.getOperationById(operationId);
-    const updatedOperation = await this.operationsRepository.updateOperation(operationId, { status: OperationStatus.FRAUD_REPORTED });
+    const updatedOperation = await this.operationsRepository.updateOperation(operationId, { status: OperationStatus.FRAUD_REPORTED }, {
+      expectedStatus: [
+        OperationStatus.PENDING,
+        OperationStatus.ACCEPTED,
+        OperationStatus.PENDING_COMPLETION,
+        OperationStatus.DISPUTED,
+      ],
+    }); // atômico: não marca fraude em op já concluída/cancelada
     if (!updatedOperation) {
-      throw new BadRequestException('Erro ao marcar fraude (admin)');
+      throw new BadRequestException('Não é possível marcar fraude nesta operação (já concluída ou cancelada).');
     }
     const adminName = admin.username ? `@${admin.username}` : admin.firstName || 'Administrador';
     await this.broadcastService.notifyOperationAdminFlagged(updatedOperation as Operation, adminName, reason);
@@ -474,7 +489,8 @@ export class OperationsService {
         );
 
         if (!completed) {
-          throw new BadRequestException('Erro ao concluir operação');
+          // Atômico: alguém já concluiu (double-click / corrida) → aborta sem duplicar notificação/avaliação.
+          throw new BadRequestException('Esta operação já foi concluída.');
         }
 
         this.logger.log(`Operation ${operationId} completed by confirmation from user ${userId}`);
@@ -506,7 +522,7 @@ export class OperationsService {
       awaitingConfirmationFrom: otherPartyId,
       awaitingConfirmationSince: new Date(),
       transactionDetails: transactionDetails,
-    });
+    }, { expectedStatus: [OperationStatus.ACCEPTED] }); // atômico: só pede conclusão se ainda ACEITA (anti double-click)
 
     if (!updatedOperation) {
       throw new BadRequestException('Erro ao solicitar conclusão da operação');

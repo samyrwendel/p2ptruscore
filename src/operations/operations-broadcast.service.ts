@@ -1016,7 +1016,7 @@ export class OperationsBroadcastService {
             operation.messageId as number,
             undefined,
             message,
-            { parse_mode: 'Markdown' }
+            { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [] } } // remove o teclado antigo (audit intertravamento #5)
           ));
         }
       }
@@ -1055,7 +1055,7 @@ export class OperationsBroadcastService {
             operation.messageId as number,
             undefined,
             message,
-            { parse_mode: 'Markdown' }
+            { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [] } } // remove o teclado antigo (audit intertravamento #5)
           ));
         }
       }
@@ -1095,7 +1095,7 @@ export class OperationsBroadcastService {
             operation.messageId as number,
             undefined,
             message,
-            { parse_mode: 'Markdown' }
+            { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [] } } // remove o teclado antigo (audit intertravamento #5)
           ));
         }
       }
