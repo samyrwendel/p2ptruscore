@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { formatTotalBRL, formatUnitPriceBRL } from '../../../shared/operation-value.utils';
 import { OperationsService } from '../../../operations/operations.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import {
@@ -81,8 +82,8 @@ export class MinhasOperacoesCommandHandler implements ITextCommandHandler {
           
           message += (
             `${typeEmoji} ${typeText} ${op.assets.join(', ')}\n` +
-            `   💰 Quantidade: ${op.amount} (total)\n` +
-            `   💵 Preço: R$ ${op.price.toFixed(2)}\n` +
+            `   📦 Quantidade: ${op.amount} ${op.assets.join('/')}\n` +
+            `   💵 Preço unit.: ${formatUnitPriceBRL(op)}\n` +
             `   Redes: ${op.networks.map(n => n.toUpperCase()).join(', ')}\n` +
         `   Ativos: ${op.assets.join(', ')}\n` +
             `   🆔 \`${op._id}\`\n\n`
@@ -102,8 +103,8 @@ export class MinhasOperacoesCommandHandler implements ITextCommandHandler {
           
           message += (
             `${typeEmoji} ${typeText} ${op.assets.join(', ')}\n` +
-            `   💰 Quantidade: ${op.amount} (total)\n` +
-            `   💵 Preço: R$ ${op.price.toFixed(2)}\n` +
+            `   📦 Quantidade: ${op.amount} ${op.assets.join('/')}\n` +
+            `   💵 Preço unit.: ${formatUnitPriceBRL(op)}\n` +
             `   Redes: ${op.networks.map(n => n.toUpperCase()).join(', ')}\n` +
         `   Ativos: ${op.assets.join(', ')}\n` +
             `   🆔 \`${op._id}\`\n` +
@@ -124,8 +125,8 @@ export class MinhasOperacoesCommandHandler implements ITextCommandHandler {
           
           message += (
             `${typeEmoji} ${typeText} ${op.assets.join(', ')}\n` +
-            `   💰 Quantidade: ${op.amount} (total)\n` +
-            `   💵 Total: R$ ${total.toFixed(2)}\n` +
+            `   📦 Quantidade: ${op.amount} ${op.assets.join('/')}\n` +
+            `   💵 Total: ${formatTotalBRL(op)}\n` +
             `   🌐 Redes: ${op.networks.map(n => n.toUpperCase()).join(', ')}\n` +
             `   👤 Contraparte: ${op.acceptor}\n` +
             `   🆔 \`${op._id}\`\n` +

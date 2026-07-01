@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { Operation, OperationStatus } from './schemas/operation.schema';
 import { UsersService } from '../users/users.service';
+import { formatTotalBRL, formatUnitPriceBRL } from '../shared/operation-value.utils';
 
 export interface OperationHistoryEntry {
   timestamp: Date;
@@ -166,8 +167,8 @@ export class OperationHistoryService {
     let message = `${typeEmoji} **${typeText}** - ${operation.assets.join(', ')}\n`;
     message += `🌐 ${operation.networks.map(n => n.toUpperCase()).join(', ')} | `;
     message += `📊 ${operation.amount} | `;
-    message += `💵 R$ ${operation.price.toFixed(2)} | `;
-    message += `💸 Total: R$ ${total.toFixed(2)}\n`;
+    message += `💵 ${formatUnitPriceBRL(operation)} | `;
+    message += `💸 Total: ${formatTotalBRL(operation)}\n`;
     message += `🆔 \`${operation._id}\`\n\n`;
 
     // Histórico otimizado (sem redundâncias)

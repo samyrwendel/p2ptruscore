@@ -83,6 +83,7 @@ export class CurrencyApiService {
         'BUSD': 'USDBRL',
         'ETH': 'ETHBRL',
         'SOL': 'SOLBRL',
+        'BTC': 'BTCBRL', // faltava — o rate BTCBRL já é buscado, mas sem este mapa google/BTC retornava null
         'EUR': 'EURBRL'
       };
 

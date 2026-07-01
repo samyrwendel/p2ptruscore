@@ -5,6 +5,7 @@ import { UsersService } from '../../../users/users.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import { TermsAcceptanceService } from '../../../users/terms-acceptance.service';
 import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
+import { formatTotalBRL, formatUnitPriceBRL } from '../../../shared/operation-value.utils';
 import {
   ITextCommandHandler,
   TextCommandContext,
@@ -76,7 +77,7 @@ export class CancelarOperacaoCommandHandler implements ITextCommandHandler {
         `${typeText}\n` +
         `💰 **Ativos:** ${cancelledOperation.assets.join(', ')}\n` +
         `📊 **Quantidade:** ${cancelledOperation.amount}\n` +
-        `💵 **Preço:** R$ ${total.toFixed(2)}\n` +
+        `💵 **Total:** ${formatTotalBRL(cancelledOperation)}\n` +
 
         `Redes: ${cancelledOperation.networks.map(n => n.toUpperCase()).join(', ')}\n\n` +
         `✅ A operação foi cancelada com sucesso.\n\n` +
@@ -170,7 +171,7 @@ export class CancelarOperacaoCommandHandler implements ITextCommandHandler {
           `${typeText}\n` +
           `💰 **Ativos:** ${cancelledOperation.assets.join(', ')}\n` +
           `📊 **Quantidade:** ${cancelledOperation.amount}\n` +
-          `💵 **Preço:** R$ ${total.toFixed(2)}\n` +
+          `💵 **Total:** ${formatTotalBRL(cancelledOperation)}\n` +
           `🌐 **Redes:** ${cancelledOperation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
           `🆔 **ID:** \`${cancelledOperation._id}\`\n\n` +
           `✅ A operação foi cancelada com sucesso.`,

@@ -209,7 +209,7 @@ export class AceitarOperacaoCommandHandler implements ITextCommandHandler {
       const priceText = isAutomaticQuotation ? 'Calculado na Transação' : `R$ ${(acceptedOperation.amount * acceptedOperation.price).toFixed(2)}`;
       const quotationText = acceptedOperation.quotationType === 'google' ? 'Google' : 
                            acceptedOperation.quotationType === 'binance' ? 'Binance' : 
-                           `R$ ${acceptedOperation.price.toFixed(2)}`;
+                           `R$ ${acceptedOperation.price.toFixed(2)} por unidade`;
       
       // Enviar aviso de disputa se existir
       if (disputeWarning) {

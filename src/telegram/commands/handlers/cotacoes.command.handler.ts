@@ -161,7 +161,7 @@ export class CotacoesCommandHandler implements ITextCommandHandler {
     
     return (
       `**${pairName}**\n` +
-      `**Preço:** ${symbol} ${price.toFixed(2)}\n` +
+      `**Preço:** ${symbol} ${price.toFixed(2)} por ${pairName.split('/')[0]}\n` +
       `**Variação:** ${changeIcon} ${change.toFixed(2)}%\n` +
       `**Máxima:** ${symbol} ${high.toFixed(2)}\n` +
       `**Mínima:** ${symbol} ${low.toFixed(2)}`

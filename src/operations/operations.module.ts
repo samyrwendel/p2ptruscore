@@ -16,6 +16,7 @@ import { UsersModule } from '../users/users.module';
 import { GroupsModule } from '../groups/groups.module';
 import { KarmaModule } from '../karma/karma.module';
 import { SharedModule } from '../shared/shared.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { SharedModule } from '../shared/shared.module';
     GroupsModule,
     KarmaModule,
     SharedModule,
+    IntegrationsModule,
   ],
   providers: [OperationsRepository, PendingEvaluationRepository, PendingEvaluationService, OperationsService, OperationsBroadcastService, OperationsSchedulerService, CurrencyApiService, OperationHistoryService],
   exports: [OperationsService, OperationsRepository, PendingEvaluationRepository, PendingEvaluationService, OperationsBroadcastService, CurrencyApiService, OperationHistoryService],

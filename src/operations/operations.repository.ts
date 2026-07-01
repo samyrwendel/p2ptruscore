@@ -45,12 +45,23 @@ export class OperationsRepository extends AbstractRepository<Operation> {
   async acceptOperation(
     operationId: Types.ObjectId,
     acceptorId: Types.ObjectId,
+    lockedPrice?: number,
   ): Promise<Operation | null> {
     // Atomic update com condições para prevenir race conditions
     // Só atualiza se:
     // 1. Status é PENDING
     // 2. acceptor não existe ou é null
     // Operações não expiram mais - verificação de expiresAt removida
+    const update: Record<string, unknown> = {
+      acceptor: acceptorId,
+      status: OperationStatus.ACCEPTED,
+      acceptedAt: new Date(),
+    };
+    // Cotação automática (google/binance): grava o preço travado JUNTO no update atômico,
+    // no mesmo instante do aceite (nunca deixa a operação ACCEPTED com price 0).
+    if (lockedPrice !== undefined) {
+      update.price = lockedPrice;
+    }
     return this.model
       .findOneAndUpdate(
         {
@@ -61,11 +72,7 @@ export class OperationsRepository extends AbstractRepository<Operation> {
             { acceptor: null }
           ]
         },
-        {
-          acceptor: acceptorId,
-          status: OperationStatus.ACCEPTED,
-          acceptedAt: new Date(),
-        },
+        update,
         { new: true },
       )
       .exec();

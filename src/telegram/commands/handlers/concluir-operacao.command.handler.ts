@@ -14,6 +14,7 @@ import {
   ITextCommandHandler,
   TextCommandContext,
 } from 'src/telegram/telegram.types';
+import { formatTotalBRL } from '../../../shared/operation-value.utils';
 
 @Injectable()
 export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
@@ -60,8 +61,8 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
         `${userMention} marcou a operação como concluída:\n\n` +
         `${typeText}\n` +
         `Ativos: ${completedOperation.assets.join(', ')}\n` +
-        `Quantidade: ${completedOperation.amount}\n` +
-        `Preço: R$ ${total.toFixed(2)}\n` +
+        `Quantidade: ${completedOperation.amount} ${completedOperation.assets.join('/')}\n` +
+        `Total: ${formatTotalBRL(completedOperation)}\n` +
 
         `Redes: ${completedOperation.networks.map(n => n.toUpperCase()).join(', ')}\n\n` +
         `🎉 **Parabéns pela transação bem-sucedida!**\n\n` +
@@ -143,7 +144,7 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
         if (completedOperation.assets.includes('EURO' as any)) {
           totalFormatted = `€ ${total.toFixed(2)}`;
         } else {
-          totalFormatted = `R$ ${total.toFixed(2)}`;
+          totalFormatted = formatTotalBRL(completedOperation);
         }
         
         // Verificar se foi uma solicitação de conclusão ou confirmação final
@@ -153,8 +154,8 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
             `⏳ **Solicitação de Conclusão Enviada**\n\n` +
             `${typeText}\n` +
             `💰 **Ativos:** ${completedOperation.assets.join(', ')}\n` +
-            `📊 **Quantidade:** ${completedOperation.amount}\n` +
-            `💵 **Total:** ${totalFormatted}\n` +
+            `📊 **Quantidade:** ${completedOperation.amount} ${completedOperation.assets.join('/')}\n` +
+            `💵 **Total a pagar (R$):** ${totalFormatted}\n` +
             `🆔 **ID:** \`${completedOperation._id}\`\n\n` +
             `🤝 **Aguardando confirmação** da outra parte.\n\n` +
             `💡 A operação será concluída quando ambas as partes confirmarem.`,
@@ -166,7 +167,7 @@ export class ConcluirOperacaoCommandHandler implements ITextCommandHandler {
             `✅ **Operação Concluída!**\n\n` +
             `${typeText}\n` +
             `💰 **Ativos:** ${completedOperation.assets.join(', ')}\n` +
-            `📊 **Quantidade:** ${completedOperation.amount}\n` +
+            `📊 **Quantidade:** ${completedOperation.amount} ${completedOperation.assets.join('/')}\n` +
             `💵 **Total:** ${totalFormatted}\n` +
             `🌐 **Redes:** ${completedOperation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
             `🆔 **ID:** \`${completedOperation._id}\`\n\n` +

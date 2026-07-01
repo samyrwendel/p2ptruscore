@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { formatTotalBRL, formatUnitPriceBRL } from '../../../shared/operation-value.utils';
 import { OperationsService } from '../../../operations/operations.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
 import {
@@ -49,15 +50,14 @@ export class OperacoesDisponiveisCommandHandler implements ITextCommandHandler {
       for (const [index, operation] of pendingOperations.slice(0, 10).entries()) {
         const typeEmoji = operation.type === 'buy' ? '🟢' : '🔴';
         const typeText = operation.type === 'buy' ? 'COMPRA' : 'VENDA';
-        const total = operation.amount * operation.price;
-
         message += (
           `**${index + 1}.** ${typeEmoji} **${typeText} ${operation.assets.join(', ')}**\n` +
-          `💰 Quantidade: ${operation.amount} (total)\n` +
-          `💵 Preço: R$ ${total.toFixed(2)}\n` +
+          `📦 Quantidade: ${operation.amount} ${operation.assets.join('/')}\n` +
+          `💵 Total: ${formatTotalBRL(operation)}\n` +
+          `💲 Preço unit.: ${formatUnitPriceBRL(operation)}\n` +
           `Redes: ${operation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
           `Ativos: ${operation.assets.join(', ')}\n` +
-          `Cotação: ${operation.quotationType}\n`
+          `Cotação: ${operation.quotationType} — Preço unit.: ${formatUnitPriceBRL(operation)}\n`
         );
 
         if (operation.description) {

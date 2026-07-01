@@ -8,6 +8,7 @@ import { OperationsService } from '../../../operations/operations.service';
 import { OperationsBroadcastService } from '../../../operations/operations-broadcast.service';
 import { CurrencyApiService } from '../../../operations/currency-api.service';
 import { BinancePriceService } from '../../../integrations/binance-price.service';
+import { formatTotalBRL, formatUnitPriceBRL } from '../../../shared/operation-value.utils';
 import { PendingEvaluationService } from '../../../operations/pending-evaluation.service';
 import { UsersService } from '../../../users/users.service';
 import { GroupsService } from '../../../groups/groups.service';
@@ -293,16 +294,16 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
     
     // Determinar texto baseado no tipo de operação
     const actionText = session?.data.type === OperationType.BUY ? 'comprar' : session?.data.type === OperationType.SELL ? 'vender' : 'negociar';
-    const valueText = 'VALOR';
-    
+    const valueText = 'QUANTIDADE';
+
     const message = await ctx.editMessageText(
       `💼 **Criar Nova Operação P2P**\n\n` +
       `${typeText}\n` +
       `Ativos: ${assetsText}\n` +
       `Redes: ${networksText}\n\n` +
-      `💰 **${valueText}**\n` +
-      `Digite o valor total que deseja ${actionText}:\n\n` +
-      `Exemplo: 1000\n\n` +
+      `📦 **${valueText}**\n` +
+      `Digite QUANTOS ${assetsText} deseja ${actionText} (quantidade do ativo, não em R$):\n\n` +
+      `Exemplo: 1000 (= 1000 ${assetsText})\n\n` +
       `━━━━━━━━ COTAÇÃO ━━━━━━━━\n\n` +
       `Escolha o tipo de cotação:\n` +
       `• **Manual:** Você define o preço\n` +
@@ -360,9 +361,9 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
           `🔹 **Tipo:** ${typeText}\n` +
           `💰 **Ativos:** ${operation.assets.join(', ')}\n` +
           `🌐 **Redes:** ${operation.networks.map(n => n.toUpperCase()).join(', ')}\n` +
-          `📊 **Quantidade:** ${operation.amount}\n` +
-          `💵 **Preço Unitário:** R$ ${operation.price.toFixed(2)}\n` +
-          `💸 **Total:** R$ ${total.toFixed(2)}\n` +
+          `📊 **Quantidade:** ${operation.amount} ${operation.assets.join('/')}\n` +
+          `💵 **Preço Unitário:** ${formatUnitPriceBRL(operation)}\n` +
+          `💸 **Total:** ${formatTotalBRL(operation)}\n` +
           `📝 **Descrição:** ${operation.description || 'Sem descrição'}\n` +
            `⏰ **Status:** ${operation.status === OperationStatus.PENDING ? 'Pendente' : operation.status}`;
         
@@ -1743,8 +1744,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
       `${session?.data.type === OperationType.BUY ? '🟢 QUERO COMPRAR' : session?.data.type === OperationType.SELL ? '🔴 QUERO VENDER' : session?.data.type === OperationType.ANNOUNCEMENT ? '📰 QUERO ANUNCIAR' : '🔁 QUERO TROCAR'}\n\n` +
       `Ativos: ${session?.data.assets?.join(', ') || 'Nenhum'}\n` +
       `Redes: ${session?.data.networks?.map(n => n.toUpperCase()).join(', ') || 'Nenhuma'}\n` +
-      `Quantidade: ${formattedAmount}${currencySuffix}\n`;
-    
+      `Quantidade: ${formattedAmount} ${session?.data.assets?.join('/') || ''}\n`;
+
     if (session?.data.quotationType === QuotationType.GOOGLE) {
       resumoText += `Cotação: (calculada na transação)\n`;
       resumoText += `Fonte: 🌐 Google\n`;
@@ -1762,11 +1763,11 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
       const isPixOrBoleto = paymentMethods.some(method => method === 'PIX' || method === 'Boleto');
       
       if (isPixOrBoleto) {
-        resumoText += `Preço: R$ ${total.toFixed(2)}\n` +
-          `Cotação: R$ ${(session?.data.price || 0).toFixed(2)}\n`;
+        resumoText += `Total: R$ ${total.toFixed(2)}\n` +
+          `Preço unitário: R$ ${(session?.data.price || 0).toFixed(2)}\n`;
       } else {
-        resumoText += `Preço: ${total.toFixed(2)} USD\n` +
-          `Cotação: ${formattedPrice}${currencySuffix}\n`;
+        resumoText += `Total: R$ ${total.toFixed(2)}\n` +
+          `Preço unitário: R$ ${(session?.data.price || 0).toFixed(2)}\n`;
       }
       
       // Verificar spread para cotação manual
@@ -1957,7 +1958,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
       `${session?.data.type === OperationType.BUY ? '🟢 QUERO COMPRAR' : session?.data.type === OperationType.SELL ? '🔴 QUERO VENDER' : session?.data.type === OperationType.ANNOUNCEMENT ? '📰 QUERO ANUNCIAR' : '🔁 QUERO TROCAR'}\n\n` +
       `**Ativos:** ${session?.data.assets?.join(', ') || 'Nenhum'}\n` +
       `**Redes:** ${session?.data.networks?.map(n => n.toUpperCase()).join(', ') || 'Nenhuma'}\n` +
-      `**Quantidade:** ${formattedAmount}${currencySuffix}\n`;
+      `**Quantidade:** ${formattedAmount} ${session?.data.assets?.join('/') || ''}\n`;
     
     if (session?.data.quotationType === QuotationType.GOOGLE) {
       resumoText += `**Cotação:** (calculada na transação)\n`;
@@ -2004,11 +2005,11 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
       const isPixOrBoleto = paymentMethods.some(method => method === 'PIX' || method === 'Boleto');
       
       if (isPixOrBoleto && session?.data.type !== OperationType.EXCHANGE) {
-        resumoText += `Preço: R$ ${total.toFixed(2)}\n` +
-          `Cotação: R$ ${(session?.data.price || 0).toFixed(2)}\n`;
+        resumoText += `Total: R$ ${total.toFixed(2)}\n` +
+          `Preço unitário: R$ ${(session?.data.price || 0).toFixed(2)}\n`;
       } else {
-        resumoText += `Preço: ${formattedTotal}\n` +
-          `Cotação: ${priceCurrency}\n`;
+        resumoText += `Total: ${formattedTotal}\n` +
+          `Preço unitário: ${priceCurrency}\n`;
       }
 
       // Exibir fonte quando preço manual veio de uma origem conhecida
@@ -2312,8 +2313,8 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
     
     // Determinar texto baseado no tipo de operação
     const actionText = session?.data.type === OperationType.BUY ? 'comprar' : session?.data.type === OperationType.SELL ? 'vender' : 'negociar';
-    const valueText = 'VALOR';
-    
+    const valueText = 'QUANTIDADE';
+
     const message = await ctx.editMessageText(
       `💼 **Criar Nova Operação P2P**\n\n` +
       `${typeText}\n` +
@@ -2321,9 +2322,9 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
       `Redes: ${networksText}\n` +
       `Pagamento: ${paymentText}\n` +
       `Cotação: ${quotationText}\n\n` +
-      `💰 **${valueText}**\n` +
-      `Digite o valor total que deseja ${actionText}:\n\n` +
-      `Exemplo: 2345,67`,
+      `📦 **${valueText}**\n` +
+      `Digite a quantidade de ${assetsText} que deseja ${actionText} (quantidade do ativo):\n\n` +
+      `Exemplo: 1000`,
       { parse_mode: 'Markdown', ...keyboard }
     );
     
@@ -2446,7 +2447,7 @@ export class CriarOperacaoCommandHandler implements ITextCommandHandler, OnModul
         confirmationMessage += `**Fonte:** ${fonte}\n`;
       }
       
-      confirmationMessage += `**Quantidade:** ${operation.amount} (total)\n`;
+      confirmationMessage += `**Quantidade:** ${operation.amount} ${operation.assets.join('/')}\n`;
       
       // Adicionar métodos de pagamento se existirem
       if (operation.paymentMethods && operation.paymentMethods.length > 0) {

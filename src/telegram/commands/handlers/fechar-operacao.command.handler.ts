@@ -7,6 +7,7 @@ import {
   ITextCommandHandler,
   TextCommandContext,
 } from 'src/telegram/telegram.types';
+import { formatTotalBRL, formatUnitPriceBRL } from '../../../shared/operation-value.utils';
 
 @Injectable()
 export class FecharOperacaoCommandHandler implements ITextCommandHandler {
@@ -73,8 +74,9 @@ export class FecharOperacaoCommandHandler implements ITextCommandHandler {
         `${userMention} fechou a operação:\n\n` +
         `${typeText}\n` +
         `Ativos: ${closedOperation.assets.join(', ')}\n` +
-        `Quantidade: ${closedOperation.amount}\n` +
-        `Preço: R$ ${total.toFixed(2)}\n` +
+        `Quantidade: ${closedOperation.amount} ${closedOperation.assets.join('/')}\n` +
+        `Preço unitário: ${formatUnitPriceBRL(closedOperation)}\n` +
+        `Total: ${formatTotalBRL(closedOperation)}\n` +
 
         `Redes: ${closedOperation.networks.map(n => n.toUpperCase()).join(', ')}\n\n` +
         `📝 **Status:** Operação fechada pelo criador\n\n` +

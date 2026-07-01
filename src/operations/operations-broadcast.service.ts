@@ -11,6 +11,7 @@ import { OperationsRepository } from './operations.repository';
 import { PendingEvaluationRepository } from './pending-evaluation.repository';
 import { PendingEvaluationService } from './pending-evaluation.service';
 import { getReputationInfo } from '../shared/reputation.utils';
+import { formatTotalBRL, formatUnitPriceBRL } from '../shared/operation-value.utils';
 import { TelegramRetryService } from '../shared/telegram-retry.service';
 
 @Injectable()
@@ -128,25 +129,41 @@ export class OperationsBroadcastService {
     return operation.assets.includes('EURO' as any);
   }
 
+  // Fonte legível da cotação automática (ou '' para manual).
+  private autoQuoteSource(operation: Operation): string {
+    return operation.quotationType === 'google' ? 'Google' : operation.quotationType === 'binance' ? 'Binance' : '';
+  }
+  // Preço já MATERIALIZADO? Manual sempre tem; auto passa a ter após o aceite (fix: trava no aceite).
+  private isPriceLocked(operation: Operation): boolean {
+    return typeof operation.price === 'number' && operation.price > 0;
+  }
+
   private formatPriceAndQuotation(operation: Operation): { priceFormatted: string; quotationFormatted: string } {
+    const isAuto = operation.quotationType === 'google' || operation.quotationType === 'binance';
+    const pending = isAuto && !this.isPriceLocked(operation); // auto ainda não aceito → sem número (evita valor que envelhece)
+    const src = this.autoQuoteSource(operation);
     if (this.isEuroOperation(operation)) {
-      const priceFormatted = (operation.quotationType === 'google' || operation.quotationType === 'binance') ? 'Calculado na Transação' : `€ ${(operation.amount * operation.price).toFixed(4)}`;
-      const quotationFormatted = (operation.quotationType === 'google') ? 'Google' : (operation.quotationType === 'binance') ? 'Binance' : `€ ${operation.price.toFixed(4)}`;
+      const priceFormatted = pending ? `A calcular no aceite (cotação ${src})` : `€ ${(operation.amount * operation.price).toFixed(4)}`;
+      const quotationFormatted = pending ? src : `€ ${operation.price.toFixed(4)}`;
       return { priceFormatted, quotationFormatted };
     }
-    const priceFormatted = (operation.quotationType === 'google' || operation.quotationType === 'binance') ? 'Calculado na Transação' : `R$ ${(operation.amount * operation.price).toFixed(2)}`;
-    const quotationFormatted = (operation.quotationType === 'google') ? 'Google' : (operation.quotationType === 'binance') ? 'Binance' : `R$ ${operation.price.toFixed(2)}`;
+    const priceFormatted = pending ? `A calcular no aceite (cotação ${src}, em R$)` : `R$ ${(operation.amount * operation.price).toFixed(2)}`;
+    const quotationFormatted = pending ? src : `R$ ${operation.price.toFixed(2)}`;
     return { priceFormatted, quotationFormatted };
   }
 
   private formatCompletionValues(operation: Operation, total: number): { priceFormatted: string; totalFormatted: string } {
+    const isAuto = operation.quotationType === 'google' || operation.quotationType === 'binance';
+    const locked = this.isPriceLocked(operation);
+    const src = this.autoQuoteSource(operation);
     if (this.isEuroOperation(operation)) {
-      const priceFormatted = operation.quotationType === 'google' ? 'Google (calculada na transação)' : `€ ${operation.price.toFixed(4)}`;
-      const totalFormatted = `€ ${total.toFixed(2)}`;
+      // auto sem preço (legado antigo com price 0) → não inventa R$; mostra travo indisponível
+      const priceFormatted = (isAuto && !locked) ? `${src} (valor não registrado)` : `€ ${operation.price.toFixed(4)}`;
+      const totalFormatted = (isAuto && !locked) ? '—' : `€ ${total.toFixed(2)}`;
       return { priceFormatted, totalFormatted };
     }
-    const priceFormatted = (operation.quotationType === 'google') ? 'Google (calculada na transação)' : (operation.quotationType === 'binance') ? 'Binance (calculada na transação)' : `R$ ${operation.price.toFixed(2)}`;
-    const totalFormatted = `R$ ${total.toFixed(2)}`;
+    const priceFormatted = (isAuto && !locked) ? `${src} (valor não registrado)` : `R$ ${operation.price.toFixed(2)}`;
+    const totalFormatted = (isAuto && !locked) ? '—' : `R$ ${total.toFixed(2)}`;
     return { priceFormatted, totalFormatted };
   }
 
@@ -385,7 +402,7 @@ export class OperationsBroadcastService {
           message += (
             `${arrowIcon} **${actionText}:** ${buyText}\n` +
             `${paymentArrow} **${paymentText}:** ${payText}\n` +
-            `💱 **Cotação:** R$ ${operation.price.toFixed(2)}\n\n`
+            `💱 **Cotação (preço unit.):** R$ ${operation.price.toFixed(2)} por ${operation.assets.join('/')}\n\n`
           );
         } else if (operation.quotationType === 'google' || operation.quotationType === 'binance') {
           const assetsText = this.formatAssets(operation);
@@ -396,7 +413,7 @@ export class OperationsBroadcastService {
           
           message += (
             `${arrowIcon} **${actionText}:** ${operation.amount} ${assetsText}\n` +
-            `${paymentArrow} **${paymentText}:** Calculado na hora\n` +
+            `${paymentArrow} **${paymentText}:** Calculado no aceite (em R$, cotação ${sourceIcon})\n` +
             `💱 **Cotação:** ${sourceIcon}\n\n`
           );
         }
@@ -694,9 +711,9 @@ export class OperationsBroadcastService {
         `✅ **Operação Aceita!**\n\n` +
         `${acceptorName} aceitou a operação de ${typeText}\n\n` +
         `**Ativos:** ${assetsText}\n` +
-        `**Quantidade:** ${operation.amount} ${assetUnit}\n` +
-        `**Preço Total:** ${priceFormatted}\n` +
-        `Cotação: ${quotationFormatted}\n` +
+        `**Quantidade:** ${operation.amount} ${operation.assets.join('/')}\n` +
+        `**Valor Total (R$):** ${priceFormatted}\n` +
+        `Cotação (preço unit.): ${quotationFormatted} (em R$/unidade)\n` +
         `Redes: ${networksText}\n` +
         `🆔 **ID:** ${operation._id}\n\n` +
         `👥 **Partes Envolvidas:**\n` +
@@ -866,7 +883,7 @@ export class OperationsBroadcastService {
         `✅ **Operação Concluída!**\n\n` +
         `${typeEmoji} **${typeText} ${assetsText}**\n` +
         `🌐 **Redes:** ${networksText}\n` +
-        `💰 **Quantidade:** ${operation.amount} (total)\n\n`
+        `📦 **Quantidade:** ${operation.amount} ${operation.assets.join('/')}\n\n`
       );
 
       const { priceFormatted, totalFormatted } = this.formatCompletionValues(operation, total);
@@ -874,7 +891,7 @@ export class OperationsBroadcastService {
       if (operation.quotationType === 'google' || operation.quotationType === 'binance') {
         message += `💵 **Cotação:** ${priceFormatted}\n`;
       } else {
-        message += `💵 **Preço:** ${priceFormatted}\n`;
+        message += `💵 **Preço unitário:** ${priceFormatted} por ${operation.assets.join('/')}\n`;
       }
       
       message += `💸 **Total:** ${totalFormatted}\n\n`;
@@ -1209,7 +1226,7 @@ export class OperationsBroadcastService {
 
         message += (
           `${arrowIcon} **${actionText}:** ${operation.amount} ${assetsText}\n` +
-          `${paymentArrow} **${paymentText}:** Calculado na hora\n` +
+          `${paymentArrow} **${paymentText}:** Calculado no aceite (cotação ${sourceIcon})\n` +
           `💱 **Cotação:** ${sourceIcon}\n\n`
         );
       } else {
@@ -1306,8 +1323,8 @@ export class OperationsBroadcastService {
         `**Detalhes da Operação:**\n` +
         `${typeEmoji} **${typeText} ${assetsText}**\n` +
         `🌐 **Redes:** ${networksText}\n` +
-        `💰 **Quantidade:** ${operation.amount} ${assetsText}\n` +
-        `💵 **Preço Total:** ${operation.quotationType === 'google' ? 'Calculado na Transação' : `R$ ${(operation.amount * operation.price).toFixed(2)}`}\n` +
+        `📦 **Quantidade:** ${operation.amount} ${operation.assets.join('/')}\n` +
+        `💵 **Valor Total (R$):** ${operation.price > 0 ? `R$ ${(operation.amount * operation.price).toFixed(2)}` : 'A calcular no aceite (em R$)'}\n` +
         `👤 **Criador:** ${creatorName}\n\n` +
         `💬 **Próximos Passos:**\n` +
         `• Entre em contato com o criador via DM\n` +
@@ -1798,7 +1815,7 @@ export class OperationsBroadcastService {
           `• **Tipo:** ${operation.type === 'buy' ? 'Compra' : 'Venda'}\n` +
           `• **Ativos:** ${operation.assets.join(', ')}\n` +
           `• **Quantidade:** ${operation.amount}\n` +
-          `• **Valor:** R$ ${operation.price.toFixed(2)}\n\n` +
+          `• **Valor:** ${formatUnitPriceBRL(operation)}\n\n` +
           `⚠️ **A operação está suspensa** até resolução administrativa.\n\n` +
           `📞 **Próximos Passos:**\n` +
           `• Os administradores irão analisar a disputa\n` +
@@ -1895,8 +1912,8 @@ export class OperationsBroadcastService {
       `${typeEmoji} **${typeText}** - ${operation.assets.join(', ')}\n` +
       `🌐 ${operation.networks.map(n => n.toUpperCase()).join(', ')} | ` +
       `📊 ${operation.amount} | ` +
-      `💵 R$ ${operation.price.toFixed(2)} | ` +
-      `💸 Total: R$ ${total.toFixed(2)}\n` +
+      `💵 ${formatUnitPriceBRL(operation)} | ` +
+      `💸 Total: ${formatTotalBRL(operation)}\n` +
       `🆔 \`${operation._id}\`\n\n` +
       `🚨 **Status:** Em Disputa\n` +
       `⚖️ **Contestada por:** ${complainantName}\n` +
@@ -1935,7 +1952,7 @@ export class OperationsBroadcastService {
         `⚖️ **NOVA DISPUTA REGISTRADA**\n\n` +
         `🆔 **Operação:** \`${operation._id}\`\n` +
         `📊 **Tipo:** ${operation.type === 'buy' ? 'Compra' : 'Venda'} de ${operation.assets.join(', ')}\n` +
-        `💰 **Valor:** ${operation.amount} por R$ ${operation.price.toFixed(2)}\n\n` +
+        `💰 **Quantidade:** ${operation.amount} ${operation.assets.join('/')} • **Preço unit.:** R$ ${operation.price.toFixed(2)} • **Total:** R$ ${(operation.amount * operation.price).toFixed(2)}\n\n` +
         `👤 **Contestante:** ${complainantName} (ID: ${complainant.userId})\n` +
         `👤 **Contestado:** ${defendantName} (ID: ${defendant.userId})\n\n` +
         `📝 **Motivo:** ${disputeReason}\n` +

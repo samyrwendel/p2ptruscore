@@ -6,6 +6,7 @@ import { UsersService } from '../../users/users.service';
 import { TextCommandContext } from '../telegram.types';
 import { OperationStatus } from '../../operations/schemas/operation.schema';
 import { getReputationInfoColored } from '../../shared/reputation.utils';
+import { formatTotalBRL, formatUnitPriceBRL } from '../../shared/operation-value.utils';
 
 const BORA_REGEX = /\b(bora{1,}|Bora{1,}|BORA{1,})\b/i;
 
@@ -124,11 +125,11 @@ export class BoraMessageHandler {
       let totalFormatted = '';
       
       if (acceptedOperation.assets.includes('EURO' as any)) {
-        priceFormatted = `€ ${acceptedOperation.price.toFixed(4)}`;
+        priceFormatted = `€ ${acceptedOperation.price.toFixed(4)}/un`;
         totalFormatted = `€ ${total.toFixed(2)}`;
       } else {
-        priceFormatted = `R$ ${acceptedOperation.price.toFixed(2)}`;
-        totalFormatted = `R$ ${total.toFixed(2)}`;
+        priceFormatted = formatUnitPriceBRL(acceptedOperation);
+        totalFormatted = formatTotalBRL(acceptedOperation);
       }
 
       await ctx.reply(
@@ -136,8 +137,8 @@ export class BoraMessageHandler {
         `✅ **${typeText}** aceita por ${acceptorName}\n` +
         `${reputationEmoji} **Reputação:** ${reputationInfo.score} pts | ${nivelConfianca}\n\n` +
         `💰 **Ativos:** ${acceptedOperation.assets.join(', ')}\n` +
-        `📊 **Quantidade:** ${acceptedOperation.amount}\n` +
-        `💵 **Preço:** ${priceFormatted}\n` +
+        `📊 **Quantidade:** ${acceptedOperation.amount} ${acceptedOperation.assets.join('/')}\n` +
+        `💵 **Preço unitário:** ${priceFormatted}\n` +
         `💸 **Total:** ${totalFormatted}\n\n` +
         `🆔 **ID:** \`${operationId}\`\n\n` +
         `📞 **Próximos passos:**\n` +

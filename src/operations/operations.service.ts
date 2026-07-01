@@ -16,6 +16,9 @@ import { UsersService } from '../users/users.service';
 import { GroupsService } from '../groups/groups.service';
 import { KarmaService } from '../karma/karma.service';
 import { TransactionService } from '../shared/transaction.service';
+import { CurrencyApiService } from './currency-api.service';
+import { BinancePriceService } from '../integrations/binance-price.service';
+import { formatTotalBRL, formatUnitPriceBRL } from '../shared/operation-value.utils';
 
 export interface CreateOperationDto {
   creatorId: Types.ObjectId;
@@ -45,7 +48,33 @@ export class OperationsService {
     private readonly pendingEvaluationRepository: PendingEvaluationRepository,
     private readonly karmaService: KarmaService,
     private readonly transactionService: TransactionService,
+    private readonly currencyApiService: CurrencyApiService,
+    private readonly binancePriceService: BinancePriceService,
   ) {}
+
+  /**
+   * Resolve o PREÇO UNITÁRIO em R$ de uma operação com cotação AUTOMÁTICA (google/binance).
+   * Usa o primeiro ativo como referência (stablecoins/moedas equivalentes compartilham a cotação USDBRL).
+   * Retorna null se a fonte falhar — o chamador deve tratar (abortar o aceite, não travar preço 0).
+   */
+  private async resolveAutoQuotePrice(operation: Operation): Promise<number | null> {
+    const asset = operation.assets?.[0];
+    if (!asset) return null;
+    try {
+      if (operation.quotationType === QuotationType.GOOGLE) {
+        return await this.currencyApiService.getSuggestedPrice(asset); // R$ por unidade
+      }
+      if (operation.quotationType === QuotationType.BINANCE) {
+        // Stablecoins ~1 USD: usar USDT como referência (USDTBRL existe nos pares; USDC/USDe/DAI/BUSD não têm par próprio).
+        const STABLE = ['USDT', 'USDC', 'USDE', 'DAI', 'BUSD'];
+        const symbol = STABLE.includes(asset.toUpperCase()) ? 'USDT' : asset;
+        return await this.binancePriceService.convertToBRL(symbol, 1); // R$ por 1 unidade
+      }
+    } catch (err) {
+      this.logger.error(`Falha ao resolver cotação automática (${operation.quotationType}/${asset}):`, err);
+    }
+    return null;
+  }
 
   async createOperation(dto: CreateOperationDto): Promise<Operation> {
     // Operações não expiram mais - removida lógica de expiração
@@ -141,9 +170,32 @@ export class OperationsService {
 
     // Verificação de expiração removida - operações não expiram mais
 
+    // FIX (auditoria CRÍTICA): materializar o PREÇO no ACEITE para cotação automática (google/binance).
+    // Antes o price ficava 0 para sempre → total R$ 0,00 nas concluídas. Travamos aqui, no instante em que
+    // as partes se comprometem. Resolve ANTES do accept atômico: se a cotação falhar, aborta sem reivindicar
+    // a operação (permanece PENDING, sem rollback). Manual mantém o price definido pelo criador.
+    const isAutoQuote =
+      operation.quotationType === QuotationType.GOOGLE ||
+      operation.quotationType === QuotationType.BINANCE;
+    let lockedPrice: number | undefined;
+    if (isAutoQuote) {
+      const resolved = await this.resolveAutoQuotePrice(operation);
+      if (resolved != null && Number.isFinite(resolved) && resolved > 0) {
+        lockedPrice = resolved;
+      } else {
+        // A fonte pode não cobrir este ativo/cotação (ex.: EURO/DOLAR no Google, pares ausentes na Binance).
+        // NÃO bloquear o aceite — seria REGRESSÃO (antes essas ops eram aceitáveis). Prossegue sem travar o
+        // preço; a exibição mostra "a calcular no aceite"/"—" em vez de R$ 0,00. Log para visibilidade.
+        this.logger.warn(
+          `Cotação automática não resolvida no aceite da op ${operationId} (${operation.quotationType}/${operation.assets?.[0]}); aceite prossegue sem travar preço.`,
+        );
+      }
+    }
+
     const updatedOperation = await this.operationsRepository.acceptOperation(
       operationId,
       acceptorId,
+      lockedPrice,
     );
 
     if (!updatedOperation) {
@@ -666,9 +718,9 @@ export class OperationsService {
     
     return (
       `${typeEmoji} **${typeText} ${assetsText}**\n\n` +
-      `💰 **Valor:** ${operation.amount} (total)\n` +
-      `💵 **Preço:** R$ ${operation.price.toFixed(2)}\n` +
-      `📊 **Total:** R$ ${total.toFixed(2)}\n` +
+      `📦 **Quantidade:** ${operation.amount} ${operation.assets.join('/')}\n` +
+      `💵 **Preço unit.:** ${formatUnitPriceBRL(operation)}\n` +
+      `📊 **Total:** ${formatTotalBRL(operation)}\n` +
       `🌐 **Redes:** ${networksText}\n` +
       `📈 **Cotação:** ${operation.quotationType}\n` +
       (operation.description ? `📝 **Descrição:** ${operation.description}\n\n` : '\n') +

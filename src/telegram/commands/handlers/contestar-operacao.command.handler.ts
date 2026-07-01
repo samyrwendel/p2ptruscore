@@ -12,6 +12,7 @@ import {
   ITextCommandHandler,
   TextCommandContext,
 } from 'src/telegram/telegram.types';
+import { formatTotalBRL, formatUnitPriceBRL } from '../../../shared/operation-value.utils';
 
 @Injectable()
 export class ContestarOperacaoCommandHandler implements ITextCommandHandler {
@@ -179,7 +180,7 @@ export class ContestarOperacaoCommandHandler implements ITextCommandHandler {
       await ctx.reply(
         `⚖️ **Contestação Registrada**\n\n` +
         `**Operação:** ${typeText} ${operation.assets.join(', ')}\n` +
-        `**Valor:** R$ ${total.toFixed(2)}\n` +
+        `**Valor:** ${formatTotalBRL(operation)}\n` +
         `**Contraparte:** ${defendantName}\n` +
         `**Motivo:** ${reason}\n\n` +
         `🔍 **Próximos passos:**\n` +
@@ -199,7 +200,7 @@ export class ContestarOperacaoCommandHandler implements ITextCommandHandler {
           `⚖️ **Operação Contestada**\n\n` +
           `Uma operação sua foi contestada:\n\n` +
           `**Operação:** ${typeText} ${operation.assets.join(', ')}\n` +
-          `**Valor:** R$ ${total.toFixed(2)}\n` +
+          `**Valor:** ${formatTotalBRL(operation)}\n` +
           `**Motivo:** ${reason}\n\n` +
           `🔍 **O que fazer:**\n` +
           `• A operação foi suspensa temporariamente\n` +
