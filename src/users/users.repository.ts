@@ -42,13 +42,16 @@ export class UsersRepository extends AbstractRepository<User> {
   async findOneByUsernameOrName(input: string): Promise<User | null> {
     const isUsername = input.startsWith('@');
     const queryValue = isUsername ? input.substring(1) : input;
+    // SEGURANÇA (audit ALTO): escapar metacaracteres antes de montar RegExp — senão o input vira regex
+    // (ReDoS congela o bot single-thread; `.`/`.*` casa QUALQUER um → admin bane/zera o usuário ERRADO). Limita tamanho.
+    const esc = queryValue.slice(0, 64).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     // Primeiro tentar busca exata
     let filterQuery = {
       $or: [
-        { userName: new RegExp(`^${queryValue}$`, 'i') },
-        { firstName: new RegExp(`^${queryValue}$`, 'i') },
-        { lastName: new RegExp(`^${queryValue}$`, 'i') },
+        { userName: new RegExp(`^${esc}$`, 'i') },
+        { firstName: new RegExp(`^${esc}$`, 'i') },
+        { lastName: new RegExp(`^${esc}$`, 'i') },
       ],
     };
 
@@ -58,9 +61,9 @@ export class UsersRepository extends AbstractRepository<User> {
     if (!user) {
       filterQuery = {
         $or: [
-          { userName: new RegExp(queryValue, 'i') },
-          { firstName: new RegExp(queryValue, 'i') },
-          { lastName: new RegExp(queryValue, 'i') },
+          { userName: new RegExp(esc, 'i') },
+          { firstName: new RegExp(esc, 'i') },
+          { lastName: new RegExp(esc, 'i') },
         ],
       };
       user = await this.findOne(filterQuery).catch(() => null);
@@ -68,7 +71,7 @@ export class UsersRepository extends AbstractRepository<User> {
     
     // Se ainda não encontrou e o input tem mais de 4 caracteres, tentar busca por prefixo
     if (!user && queryValue.length > 4) {
-      const prefix = queryValue.substring(0, Math.min(queryValue.length - 2, 6)); // Pegar primeiros caracteres
+      const prefix = queryValue.substring(0, Math.min(queryValue.length - 2, 6)).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // escapado (audit ALTO)
       filterQuery = {
         $or: [
           { userName: new RegExp(`^${prefix}`, 'i') },

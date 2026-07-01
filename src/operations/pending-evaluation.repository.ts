@@ -102,6 +102,20 @@ export class PendingEvaluationRepository extends AbstractRepository<PendingEvalu
     );
   }
 
+  async reopenPendingEvaluation(
+    operationId: Types.ObjectId,
+    evaluatorId: Types.ObjectId
+  ): Promise<PendingEvaluation | null> {
+    // Reabre uma pendência RESERVADA (completed:true → false) para permitir retry após falha ao aplicar karma.
+    // Usa o model direto porque o findOneAndUpdate do AbstractRepository LANÇA em miss; aqui queremos null silencioso.
+    // Escopo {operation, evaluator} garante que só reverte a PRÓPRIA reserva desta requisição — nunca a de outro.
+    return this.model.findOneAndUpdate(
+      { operation: operationId, evaluator: evaluatorId, completed: true },
+      { $set: { completed: false }, $unset: { completedAt: 1 } },
+      { new: true, lean: true }
+    ) as unknown as PendingEvaluation | null;
+  }
+
   async findByOperationAndEvaluator(
     operationId: Types.ObjectId,
     evaluatorId: Types.ObjectId

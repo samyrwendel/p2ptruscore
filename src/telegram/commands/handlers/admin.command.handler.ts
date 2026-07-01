@@ -38,10 +38,14 @@ export class AdminCommandHandler implements ITextCommandHandler {
   ) {}
 
   async handle(ctx: TextCommandContext): Promise<void> {
-    // Verificar se é administrador
-    const isAdmin = await this.isUserAdmin(ctx.from.id, ctx.chat.id);
+    // SEGURANÇA (audit CRÍTICO): /admin afeta SEMPRE o grupo PRINCIPAL (karma/ban são gravados lá). Autorizar
+    // contra o grupo principal — NÃO contra ctx.chat.id — senão o dono de um grupo QUALQUER manipularia a
+    // reputação global do principal. E só permitir no grupo principal ou no PV (nunca num grupo arbitrário).
+    const mainGroupId = this.getMainGroupId();
+    const isMainContext = ctx.chat.type === 'private' || ctx.chat.id === mainGroupId;
+    const isAdmin = isMainContext && (await this.isUserAdmin(ctx.from.id, mainGroupId));
     if (!isAdmin) {
-      await ctx.reply('❌ Apenas administradores podem usar comandos administrativos.');
+      await ctx.reply('❌ Apenas administradores do grupo principal podem usar comandos administrativos.');
       return;
     }
 
@@ -169,15 +173,15 @@ export class AdminCommandHandler implements ITextCommandHandler {
         return;
       }
 
-      // Verificar se não está tentando banir outro admin
-      const isTargetAdmin = await this.isUserAdmin(targetUser.userId, ctx.chat.id);
+      // Verificar se não está tentando banir outro admin (do grupo principal — consistente com a autorização)
+      const isTargetAdmin = await this.isUserAdmin(targetUser.userId, this.getMainGroupId());
       if (isTargetAdmin) {
         await ctx.reply('❌ Não é possível banir outros administradores.');
         return;
       }
 
       // Banir usuário
-      await this.bot.telegram.banChatMember(ctx.chat.id, targetUser.userId);
+      await this.bot.telegram.banChatMember(this.getMainGroupId(), targetUser.userId);
 
       // Registrar ação
       await this.logAdminAction(ctx, targetUser, 'BAN', reason);
@@ -218,15 +222,15 @@ export class AdminCommandHandler implements ITextCommandHandler {
         return;
       }
 
-      const isTargetAdmin = await this.isUserAdmin(targetUser.userId, ctx.chat.id);
+      const isTargetAdmin = await this.isUserAdmin(targetUser.userId, this.getMainGroupId());
       if (isTargetAdmin) {
         await ctx.reply('❌ Não é possível remover outros administradores.');
         return;
       }
 
       // Kick (ban + unban imediato)
-      await this.bot.telegram.banChatMember(ctx.chat.id, targetUser.userId);
-      await this.bot.telegram.unbanChatMember(ctx.chat.id, targetUser.userId);
+      await this.bot.telegram.banChatMember(this.getMainGroupId(), targetUser.userId);
+      await this.bot.telegram.unbanChatMember(this.getMainGroupId(), targetUser.userId);
 
       await this.logAdminAction(ctx, targetUser, 'KICK', reason);
 
@@ -321,7 +325,7 @@ export class AdminCommandHandler implements ITextCommandHandler {
         return;
       }
 
-      const isTargetAdmin = await this.isUserAdmin(targetUser.userId, ctx.chat.id);
+      const isTargetAdmin = await this.isUserAdmin(targetUser.userId, this.getMainGroupId());
       if (isTargetAdmin) {
         await ctx.reply('❌ Não é possível silenciar outros administradores.');
         return;
@@ -336,7 +340,7 @@ export class AdminCommandHandler implements ITextCommandHandler {
       const muteUntil = new Date(Date.now() + muteDuration);
 
       // Silenciar usuário
-      await this.bot.telegram.restrictChatMember(ctx.chat.id, targetUser.userId, {
+      await this.bot.telegram.restrictChatMember(this.getMainGroupId(), targetUser.userId, {
         permissions: {
           can_send_messages: false,
           can_send_polls: false,
@@ -517,7 +521,7 @@ export class AdminCommandHandler implements ITextCommandHandler {
         }
       }
 
-      await this.bot.telegram.unbanChatMember(ctx.chat.id, userId);
+      await this.bot.telegram.unbanChatMember(this.getMainGroupId(), userId);
 
       await ctx.reply(
         `✅ **Usuário Desbanido**\n\n` +
@@ -809,6 +813,11 @@ export class AdminCommandHandler implements ITextCommandHandler {
   }
 
   // Métodos auxiliares
+  // Grupo principal (onde karma/ban são aplicados). Do env; fallback pro ID histórico se não configurado.
+  private getMainGroupId(): number {
+    return Number(process.env.TELEGRAM_GROUP_ID) || -1002907400287;
+  }
+
   private async isUserAdmin(userId: number, chatId: number): Promise<boolean> {
     try {
       const member = await this.bot.telegram.getChatMember(chatId, userId);
@@ -853,7 +862,7 @@ export class AdminCommandHandler implements ITextCommandHandler {
       };
 
       const chatData = {
-        id: -1002907400287 // ID do grupo principal
+        id: this.getMainGroupId() // grupo principal (env TELEGRAM_GROUP_ID; fallback histórico)
       };
 
       await this.karmaService.registerEvaluation(

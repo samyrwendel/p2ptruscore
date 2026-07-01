@@ -98,29 +98,46 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
       return;
     }
 
-    try {
-      await this.karmaService.registerEvaluation(
-        ctx.from,
-        targetUser,
-        ctx.chat,
-        pontos,
-        comentario
-      );
-
-      // Mostrar quantas avaliações restam
-      const remaining = rateLimit.remaining;
-      const limitInfo = remaining > 0
-        ? `\n💫 **Você ainda pode fazer ${remaining} avaliação${remaining !== 1 ? 'ões' : ''} nesta hora.**`
-        : '';
-
-      await ctx.reply(
-        `✅ Avaliação registrada: ${pontos} estrelas para @${targetUser.username || targetUser.first_name}${limitInfo}`,
-        { parse_mode: 'Markdown' }
-      );
-    } catch (error) {
-      this.logger.error('Erro ao registrar avaliação:', error);
-      await ctx.reply('❌ Erro ao registrar avaliação. Tente novamente.');
+    // SEGURANÇA (audit ALTO): só avaliar quem foi sua CONTRAPARTE numa operação CONCLUÍDA e ainda não avaliada.
+    // Acha a pendência (evaluator=você, target=alvo, completed=false); aplica o karma PRIMEIRO e só CONSOME a
+    // pendência DEPOIS do sucesso — MESMA ordem de finalizeEvaluation/processEvaluationCallback. Consumir antes
+    // perderia a avaliação de vez se o karma falhasse (regressão pega na revisão pré-deploy).
+    const [evaluatorDoc, targetDoc] = await Promise.all([
+      this.usersService.findOrCreate(ctx.from),
+      this.usersService.findOrCreate(targetUser),
+    ]);
+    const pendings = await this.pendingEvaluationService.getPendingEvaluations(evaluatorDoc._id);
+    const pending = pendings.find((p) => String(p.target) === String(targetDoc._id));
+    if (!pending) {
+      await ctx.reply('❌ Você só pode avaliar quem foi sua contraparte numa operação concluída — e que ainda não avaliou.');
+      return;
     }
+
+    // RESERVA atômica → karma → reverte em falha (choke point único: anti dupla-contagem e anti perda de avaliação).
+    const outcome = await this.applyEvaluationAtomically(
+      pending.operation,
+      evaluatorDoc._id,
+      () => this.karmaService.registerEvaluation(ctx.from, targetUser, ctx.chat, pontos, comentario),
+    );
+    if (outcome === 'already') {
+      await ctx.reply('❌ Esta avaliação já foi registrada.');
+      return;
+    }
+    if (outcome === 'error') {
+      await ctx.reply('❌ Erro ao registrar avaliação. Tente novamente.');
+      return;
+    }
+
+    // Mostrar quantas avaliações restam
+    const remaining = rateLimit.remaining;
+    const limitInfo = remaining > 0
+      ? `\n💫 **Você ainda pode fazer ${remaining} avaliação${remaining !== 1 ? 'ões' : ''} nesta hora.**`
+      : '';
+
+    await ctx.reply(
+      `✅ Avaliação registrada: ${pontos} estrelas para @${targetUser.username || targetUser.first_name}${limitInfo}`,
+      { parse_mode: 'Markdown' }
+    );
   }
 
   async handleCallback(ctx: any): Promise<boolean> {
@@ -370,6 +387,44 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
      }
    }
 
+  /**
+   * Aplica uma avaliação à prova de corrida (audit HIGH — anti dupla-contagem de karma).
+   * 1) RESERVA a pendência via completePendingEvaluation: findOneAndUpdate atômico {completed:false}→{completed:true}.
+   *    Só UMA execução concorrente vence (double-tap no botão inline, /avaliar + callback simultâneos); as demais
+   *    recebem NotFoundException e retornam 'already' SEM aplicar karma. Atomicidade de doc único vale em Mongo standalone.
+   * 2) Aplica o karma. Se falhar, REVERTE a reserva (reopenPendingEvaluation) para o usuário poder tentar de novo —
+   *    senão a avaliação legítima se perderia.
+   * Cobre os 4 fluxos de avaliação por CONTRAPARTE (comando + callbacks). A auto-avaliação por timeout reserva por
+   *    conta própria (sem karma). Revisão via botão (eval_review_) e ajustes de admin gravam karma por caminhos
+   *    próprios, FORA deste choke point — superfície residual conhecida.
+   * LIMITAÇÃO (audit MEDIUM): registerEvaluation faz 2 gravações não-transacionais (Mongo standalone não tem
+   *    transação multi-doc). Falha ENTRE elas + retry pode inflar o givenKarma do avaliador (contador, não a
+   *    reputação do alvo). Aceito: reverter e permitir retry é melhor que perder a avaliação legítima.
+   */
+  private async applyEvaluationAtomically(
+    operationId: Types.ObjectId,
+    evaluatorId: Types.ObjectId,
+    applyKarma: () => Promise<unknown>,
+  ): Promise<'ok' | 'already' | 'error'> {
+    try {
+      await this.pendingEvaluationService.completePendingEvaluation(operationId, evaluatorId);
+    } catch {
+      return 'already'; // pendência já reservada por chamada concorrente / retry → não aplicar karma
+    }
+    try {
+      await applyKarma();
+      return 'ok';
+    } catch (err) {
+      this.logger.error('Erro ao aplicar karma; revertendo reserva da pendência:', err);
+      try {
+        await this.pendingEvaluationService.reopenPendingEvaluation(operationId, evaluatorId);
+      } catch (revertErr) {
+        this.logger.error('Falha ao reverter pendência após erro de karma:', revertErr);
+      }
+      return 'error';
+    }
+  }
+
    private async finalizeEvaluation(ctx: any, operationId: string, starRating: number, evaluated: any, comentario: string): Promise<void> {
      try {
        this.logger.log(`🔄 Iniciando finalização de avaliação: operação=${operationId}, estrelas=${starRating}`);
@@ -396,22 +451,23 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
        this.logger.log(`📝 Registrando avaliação no KarmaService...`);
        
        // Registrar avaliação
-        await this.karmaService.registerStarEvaluation(
-          evaluator,
-          evaluated,
-          { id: chatId },
-          starRating,
-          comentario
-        );
-        
-        this.logger.log(`✅ Avaliação registrada, marcando como concluída...`);
-        
-        // Marcar avaliação como concluída
-        await this.pendingEvaluationService.completePendingEvaluation(
+        // RESERVA atômica → karma → reverte em falha (anti dupla-contagem: double-tap no botão / corrida com /avaliar)
+        const outcome = await this.applyEvaluationAtomically(
           operationObjectId,
-          userId
+          userId,
+          () => this.karmaService.registerStarEvaluation(evaluator, evaluated, { id: chatId }, starRating, comentario),
         );
-        
+        if (outcome === 'already') {
+          try { await ctx.answerCbQuery('❌ Esta avaliação já foi registrada.', { show_alert: true }); } catch {}
+          return;
+        }
+        if (outcome === 'error') {
+          try { await ctx.answerCbQuery('❌ Erro ao registrar avaliação. Tente novamente.', { show_alert: true }); } catch {}
+          return;
+        }
+
+        this.logger.log(`✅ Avaliação registrada com sucesso.`);
+
         const starEmojis = '⭐'.repeat(starRating);
         const ratingText = this.getStarRatingText(starRating);
         const nomeAvaliado = evaluated.username ? `@${evaluated.username}` : evaluated.first_name;
@@ -789,19 +845,20 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
       // Registrar avaliação
       const chatId = ctx.chat?.id || -1002907400287; // ID do grupo principal como fallback
       
-      await this.karmaService.registerEvaluation(
-        evaluator,
-        evaluated,
-        { id: chatId },
-        pontos,
-        comentario
-      );
-      
-      // Marcar avaliação como concluída
-      await this.pendingEvaluationService.completePendingEvaluation(
+      // RESERVA atômica → karma → reverte em falha (anti dupla-contagem: double-tap no botão / corrida com /avaliar)
+      const outcome = await this.applyEvaluationAtomically(
         operationObjectId,
-        userId
+        userId,
+        () => this.karmaService.registerEvaluation(evaluator, evaluated, { id: chatId }, pontos, comentario),
       );
+      if (outcome === 'already') {
+        try { await ctx.answerCbQuery('❌ Esta avaliação já foi registrada.', { show_alert: true }); } catch {}
+        return true;
+      }
+      if (outcome === 'error') {
+        try { await ctx.answerCbQuery('❌ Erro ao registrar avaliação. Tente novamente.', { show_alert: true }); } catch {}
+        return true;
+      }
       
       const emoji = isPositive ? '⭐' : '❌';
       const tipoText = isPositive ? 'Positiva' : 'Negativa';
@@ -1003,19 +1060,20 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
       };
       
       // Registrar avaliação
-      await this.karmaService.registerStarEvaluation(
-        evaluator,
-        evaluated,
-        { id: chatId },
-        starRating,
-        comentario
-      );
-      
-      // Marcar avaliação como concluída
-      await this.pendingEvaluationService.completePendingEvaluation(
+      // RESERVA atômica → karma → reverte em falha (anti dupla-contagem: double-tap / corrida com callback)
+      const outcome = await this.applyEvaluationAtomically(
         operationObjectId,
-        userId
+        userId,
+        () => this.karmaService.registerStarEvaluation(evaluator, evaluated, { id: chatId }, starRating, comentario),
       );
+      if (outcome === 'already') {
+        await ctx.reply('❌ Esta avaliação já foi registrada.');
+        return;
+      }
+      if (outcome === 'error') {
+        await ctx.reply('❌ Erro ao registrar avaliação. Tente novamente.');
+        return;
+      }
       
       const starEmojis = '⭐'.repeat(starRating);
       const ratingText = this.getStarRatingText(starRating);

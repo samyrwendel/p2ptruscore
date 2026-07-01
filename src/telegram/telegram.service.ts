@@ -615,8 +615,11 @@ export class TelegramService implements OnModuleInit, OnApplicationShutdown {
         return false;
       }
       
-      // Para outros erros, assumir que é membro (fallback seguro)
-      this.logger.warn(`Assumindo que usuário ${userId} é membro devido a erro na verificação`);
+      // O não-membro REAL já foi negado acima (ramo "not found"). Aqui sobra só erro TRANSIENTE (rate-limit/rede/
+      // timeout): o usuário é quase sempre membro legítimo. Como esta checagem roda a CADA comando SEM cache,
+      // negar aqui bloquearia membros reais em qualquer instabilidade da API (regressão pega na revisão pré-deploy).
+      // Fail-open consistente com group-membership.utils.ts — o controle de segurança é a negação do "not found".
+      this.logger.warn(`Não foi possível verificar membership de ${userId} (erro transiente na API) → assumindo membro`);
       return true;
     }
   }

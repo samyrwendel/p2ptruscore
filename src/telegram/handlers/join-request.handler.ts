@@ -386,6 +386,13 @@ export class JoinRequestHandler {
 
   // Processar aprovação do admin
   async processAdminApproval(ctx: any, userId: number): Promise<void> {
+    // SEGURANÇA: só admin ATUAL do grupo pode aprovar. Não confiar na posse do botão (ex-admin, callback
+    // encaminhada/forjada). getGroupAdmins() retorna [] em erro de API → fail-CLOSED (nega). (audit CRÍTICO)
+    const admins = await this.getGroupAdmins();
+    if (!ctx.from || !admins.includes(ctx.from.id)) {
+      await ctx.answerCbQuery('❌ Sem permissão — apenas admins do grupo podem aprovar', { show_alert: true });
+      return;
+    }
     const request = this.pendingRequests.get(userId);
     if (!request || request.status !== 'pending_approval') {
       await ctx.answerCbQuery('❌ Solicitação não encontrada ou já processada', { show_alert: true });
@@ -620,6 +627,12 @@ export class JoinRequestHandler {
 
   // Processar recusa do admin
   async processAdminRejection(ctx: any, userId: number): Promise<void> {
+    // SEGURANÇA: só admin ATUAL do grupo pode recusar (mesmo guard da aprovação). Fail-closed. (audit CRÍTICO)
+    const admins = await this.getGroupAdmins();
+    if (!ctx.from || !admins.includes(ctx.from.id)) {
+      await ctx.answerCbQuery('❌ Sem permissão — apenas admins do grupo podem recusar', { show_alert: true });
+      return;
+    }
     const request = this.pendingRequests.get(userId);
     if (!request || request.status !== 'pending_approval') {
       await ctx.answerCbQuery('❌ Solicitação não encontrada ou já processada', { show_alert: true });

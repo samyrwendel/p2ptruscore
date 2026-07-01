@@ -231,6 +231,12 @@ export class KarmaService {
       this.usersService.findOrCreate(evaluatedData),
     ]);
 
+    // SEGURANÇA (audit ALTO): choke point anti-auto-avaliação. Bloqueia farmar a própria reputação —
+    // vale pra QUALQUER handler que chegue aqui (defense-in-depth).
+    if (String(evaluatorUserDoc._id) === String(evaluatedUserDoc._id)) {
+      throw new BadRequestException('Você não pode avaliar a si mesmo.');
+    }
+
     try {
       // Atualizar karma do avaliador (quem deu a avaliação)
       const evaluatorKarma = await this.karmaRepository.updateSenderKarmaWithComment(
@@ -283,6 +289,12 @@ export class KarmaService {
       this.usersService.findOrCreate(evaluatorData),
       this.usersService.findOrCreate(evaluatedData),
     ]);
+
+    // SEGURANÇA (audit ALTO): choke point anti-auto-avaliação. Bloqueia farmar a própria reputação —
+    // vale pra QUALQUER handler que chegue aqui (defense-in-depth).
+    if (String(evaluatorUserDoc._id) === String(evaluatedUserDoc._id)) {
+      throw new BadRequestException('Você não pode avaliar a si mesmo.');
+    }
 
     try {
       // Atualizar karma do avaliador (quem deu a avaliação)

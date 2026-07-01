@@ -48,6 +48,14 @@ export class PendingEvaluationService implements OnApplicationBootstrap {
     return completed;
   }
 
+  async reopenPendingEvaluation(
+    operationId: Types.ObjectId,
+    evaluatorId: Types.ObjectId
+  ): Promise<PendingEvaluation | null> {
+    // Reverte a reserva atômica quando o karma falha depois de reservar — evita perder avaliação legítima.
+    return this.pendingEvaluationRepository.reopenPendingEvaluation(operationId, evaluatorId);
+  }
+
   async canUserCreateOperations(userId: Types.ObjectId): Promise<{ canCreate: boolean; reason?: string }> {
     const hasPending = await this.hasPendingEvaluations(userId);
     if (hasPending) {

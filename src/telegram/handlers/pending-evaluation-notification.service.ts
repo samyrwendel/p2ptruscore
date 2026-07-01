@@ -271,50 +271,34 @@ export class PendingEvaluationNotificationService implements OnModuleInit {
       const targetName = targetUser.userName ? `@${targetUser.userName}` : targetUser.firstName;
       const evaluatorName = evaluatorUser.userName ? `@${evaluatorUser.userName}` : evaluatorUser.firstName;
 
-      // Registrar avaliação automática de 5 estrelas
-      const chatId = this.configService.get<string>('TELEGRAM_GROUP_ID') || operation.group?.toString();
-
-      const evaluator = {
-        id: evaluatorUser.userId,
-        username: evaluatorUser.userName,
-        first_name: evaluatorUser.firstName
-      };
-
-      const target = {
-        id: targetUser.userId,
-        username: targetUser.userName,
-        first_name: targetUser.firstName
-      };
-
-      // Registrar a avaliação automática
-      await this.karmaService.registerStarEvaluation(
-        evaluator,
-        target,
-        { id: parseInt(chatId) || -1 },
-        5, // 5 estrelas (máxima pontuação)
-        `[Avaliação Automática] Usuário não avaliou após ${MAX_NOTIFICATIONS} lembretes`
-      );
-
-      // Marcar como auto-avaliado E completed para desbloquear o usuário
-      await this.pendingEvaluationRepository.findOneAndUpdate(
-        { _id: pending._id },
-        {
-          notificationCount: MAX_NOTIFICATIONS,
-          lastNotificationAt: new Date(),
-          autoEvaluated: true,
-          autoEvaluatedAt: new Date(),
-          autoEvaluationReason: `Avaliação automática após ${MAX_NOTIFICATIONS} lembretes sem resposta`,
-          completed: true, // Auto-avaliação concluída — desbloqueia o usuário
-          completedAt: new Date(),
-        }
-      );
+      // TIMEOUT = SEM avaliação (audit MEDIUM/ALTO). NÃO registra karma: neutro REAL, sem presentear reputação nem
+      // creditar +1 givenKarma ao avaliador por inação. RESERVA ATÔMICA com gate completed:false — se um /avaliar
+      // manual venceu a corrida (avaliou de verdade entre o cron e este ponto), o update não casa e abortamos SEM
+      // sobrescrever a avaliação real nem duplicar nada. findOneAndUpdate do AbstractRepository LANÇA em miss.
+      try {
+        await this.pendingEvaluationRepository.findOneAndUpdate(
+          { _id: pending._id, completed: false },
+          {
+            notificationCount: MAX_NOTIFICATIONS,
+            lastNotificationAt: new Date(),
+            autoEvaluated: true,
+            autoEvaluatedAt: new Date(),
+            autoEvaluationReason: `Encerrada como neutra (sem avaliação) após ${MAX_NOTIFICATIONS} lembretes sem resposta`,
+            completed: true, // desbloqueia o usuário
+            completedAt: new Date(),
+          }
+        );
+      } catch {
+        this.logger.log(`Auto-avaliação ignorada: pendência ${pending._id} já concluída (o usuário avaliou manualmente).`);
+        return;
+      }
 
       // Notificar o avaliador que a avaliação foi feita automaticamente
       const messageToEvaluator =
         `🤖 **Avaliação Automática Aplicada**\n\n` +
         `Você não respondeu aos ${MAX_NOTIFICATIONS} lembretes para avaliar ${targetName}.\n\n` +
-        `✅ Uma **avaliação positiva (5 estrelas)** foi aplicada automaticamente para não prejudicar a contraparte.\n\n` +
-        `📝 **Você pode revisar esta avaliação a qualquer momento** clicando no botão abaixo:\n\n` +
+        `➖ O prazo expirou, então a pendência foi **encerrada como neutra** (nenhuma reputação foi alterada) para te desbloquear.\n\n` +
+        `📝 **Você ainda pode dar sua avaliação real** clicando no botão abaixo:\n\n` +
         `⚠️ Seus bloqueios foram removidos - você pode criar e aceitar operações novamente.`;
 
       const keyboard = {
@@ -342,10 +326,10 @@ export class PendingEvaluationNotificationService implements OnModuleInit {
       const messageToTarget =
         `🎉 **Você Recebeu uma Avaliação**\n\n` +
         `👤 **De:** ${evaluatorName}\n` +
-        `⭐⭐⭐⭐⭐ **Avaliação:** Excelente\n` +
+        `⭐⭐⭐ **Avaliação:** Neutra (automática)\n` +
         `💬 **Comentário:** [Avaliação Automática]\n\n` +
-        `ℹ️ Esta avaliação foi aplicada automaticamente pelo sistema após o prazo de avaliação ter expirado.\n\n` +
-        `✨ Sua reputação foi atualizada!`;
+        `ℹ️ A contraparte não avaliou no prazo, então o sistema registrou uma avaliação **neutra** automaticamente.\n\n` +
+        `➖ Avaliação neutra — **não altera** sua reputação.`;
 
       try {
         await this.bot.telegram.sendMessage(
