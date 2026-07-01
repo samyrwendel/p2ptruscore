@@ -988,6 +988,22 @@ export class OperationsBroadcastService {
         this.logger.warn(`⚠️ Não foi possível remover teclado da DM do criador: ${dmError.message}`);
       }
 
+      // Remover o teclado da DM de avaliação do NEGOCIADOR (audit #8): senão, após a conclusão, ele ainda
+      // veria "Solicitar Conclusão / Contestar / Voltar" ativos numa op já concluída.
+      try {
+        if (operation.privateEvaluationMessageId && acceptor) {
+          await this.sendWithBackoff(() => this.bot.telegram.editMessageReplyMarkup(
+            acceptor.userId,
+            operation.privateEvaluationMessageId,
+            undefined,
+            { inline_keyboard: [] }
+          ));
+          this.logger.log(`✅ Teclado removido da DM do negociador para operação ${operation._id}`);
+        }
+      } catch (dmError: any) {
+        this.logger.warn(`⚠️ Não foi possível remover teclado da DM do negociador: ${dmError.message}`);
+      }
+
       // Enviar mensagens de avaliação bidirecional
       if (creator && acceptor) {
         await this.sendBidirectionalEvaluationMessages(operation, creator, acceptor);
@@ -1845,6 +1861,33 @@ export class OperationsBroadcastService {
         this.logger.log(`Defendant notification sent to user ${defendant.userId} for disputed operation ${operation._id}`);
       } catch (defendantError: any) {
         this.logger.error(`Failed to notify defendant ${defendant.userId}:`, defendantError);
+      }
+
+      // Remover os teclados de AÇÃO das DMs de ambas as partes (audit #9): durante a disputa não deve sobrar
+      // "Solicitar Conclusão / Contestar / Voltar" clicável. A atomicidade já rejeita o clique; aqui o botão some.
+      try {
+        if (operation.creatorAcceptanceDmMessageId) {
+          const creatorUser = await this.usersService.findById(operation.creator.toString());
+          if (creatorUser) {
+            await this.sendWithBackoff(() => this.bot.telegram.editMessageReplyMarkup(
+              creatorUser.userId, operation.creatorAcceptanceDmMessageId, undefined, { inline_keyboard: [] }
+            ));
+          }
+        }
+      } catch (e: any) {
+        this.logger.warn(`⚠️ Não foi possível limpar teclado da DM do criador na disputa: ${e.message}`);
+      }
+      try {
+        if (operation.privateEvaluationMessageId && operation.acceptor) {
+          const acceptorUser = await this.usersService.findById(operation.acceptor.toString());
+          if (acceptorUser) {
+            await this.sendWithBackoff(() => this.bot.telegram.editMessageReplyMarkup(
+              acceptorUser.userId, operation.privateEvaluationMessageId, undefined, { inline_keyboard: [] }
+            ));
+          }
+        }
+      } catch (e: any) {
+        this.logger.warn(`⚠️ Não foi possível limpar teclado da DM do negociador na disputa: ${e.message}`);
       }
 
       // 2. Atualizar mensagem no grupo (se existir messageId)
