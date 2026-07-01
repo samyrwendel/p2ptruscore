@@ -35,7 +35,10 @@ import { NotificarTermosCommandHandler } from './handlers/notificar-termos.comma
 import { DesbloquearUsuarioCommandHandler } from './handlers/desbloquear-usuario.command.handler';
 import { ValidityCheckCommandHandler } from './handlers/validity-check.command.handler';
 import { NotificarCommandHandler } from './handlers/notificar.command.handler';
+import { MongooseModule } from '@nestjs/mongoose';
 import { JoinRequestHandler } from '../handlers/join-request.handler';
+import { JoinRequestRepository } from '../handlers/join-request.repository';
+import { JoinRequest, JoinRequestSchema } from '../schemas/join-request.schema';
 import { OperationsModule } from '../../operations/operations.module';
 import { UsersModule } from '../../users/users.module';
 import { GroupsModule } from '../../groups/groups.module';
@@ -84,8 +87,9 @@ const commandHandlers = [
 ];
 
 @Module({
-  imports: [OperationsModule, UsersModule, GroupsModule, KarmaModule, TelegramSharedModule, IntegrationsModule, SharedModule],
-  providers: [...commandHandlers, JoinRequestHandler],
+  imports: [OperationsModule, UsersModule, GroupsModule, KarmaModule, TelegramSharedModule, IntegrationsModule, SharedModule,
+    MongooseModule.forFeature([{ name: JoinRequest.name, schema: JoinRequestSchema }])],
+  providers: [...commandHandlers, JoinRequestHandler, JoinRequestRepository],
   exports: [...commandHandlers, JoinRequestHandler],
 })
 export class CommandsModule {}

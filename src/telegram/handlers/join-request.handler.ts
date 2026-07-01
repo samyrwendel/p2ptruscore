@@ -7,25 +7,11 @@ import { UsersService } from '../../users/users.service';
 import { ConfigService } from '@nestjs/config';
 import { TelegramRetryService } from '../../shared/telegram-retry.service';
 import { approvedUsersSet } from './new-member.handler';
-
-interface JoinRequest {
-  userId: number;
-  userName: string;
-  requestedAt: Date;
-  termsAccepted: boolean;
-  termsAcceptedAt?: Date;
-  status: 'pending_terms' | 'pending_approval' | 'approved' | 'rejected';
-  adminMessageId?: number;
-  adminMessageIds?: Map<number, number>; // IDs das mensagens enviadas para cada admin (adminId -> messageId)
-  approvalMessageId?: number; // ID da mensagem de aprovação enviada ao usuário
-}
+import { JoinRequestRepository, PendingJoinRequest } from './join-request.repository';
 
 @Injectable()
 export class JoinRequestHandler {
   private readonly logger = new Logger(JoinRequestHandler.name);
-
-  // Armazena solicitações pendentes em memória (pode ser migrado para MongoDB depois)
-  private readonly pendingRequests = new Map<number, JoinRequest>();
 
   constructor(
     @InjectBot() private readonly bot: Telegraf<Context<Update>>,
@@ -33,6 +19,7 @@ export class JoinRequestHandler {
     private readonly usersService: UsersService,
     private readonly configService: ConfigService,
     private readonly retryService: TelegramRetryService,
+    private readonly joinRequestRepo: JoinRequestRepository,
   ) {}
 
   // Verificar se usuário é membro do grupo
@@ -87,7 +74,7 @@ export class JoinRequestHandler {
     }
 
     // Verificar se já tem solicitação pendente
-    const existingRequest = this.pendingRequests.get(userId);
+    const existingRequest = await this.joinRequestRepo.findByUserId(userId);
     if (existingRequest) {
       if (existingRequest.status === 'pending_approval') {
         await ctx.reply(
@@ -102,7 +89,7 @@ export class JoinRequestHandler {
     }
 
     // Criar nova solicitação e mostrar termos
-    this.pendingRequests.set(userId, {
+    await this.joinRequestRepo.upsert({
       userId,
       userName,
       requestedAt: new Date(),
@@ -208,7 +195,7 @@ export class JoinRequestHandler {
       return;
     }
 
-    const request = this.pendingRequests.get(odId);
+    const request = await this.joinRequestRepo.findByUserId(odId);
     if (!request || request.status !== 'pending_terms') {
       await ctx.answerCbQuery('❌ Solicitação não encontrada ou já processada', { show_alert: true });
       return;
@@ -218,7 +205,7 @@ export class JoinRequestHandler {
     request.termsAccepted = true;
     request.termsAcceptedAt = new Date();
     request.status = 'pending_approval';
-    this.pendingRequests.set(odId, request);
+    await this.joinRequestRepo.upsert(request);
 
     // Atualizar mensagem do usuário
     await ctx.editMessageText(
@@ -244,7 +231,7 @@ export class JoinRequestHandler {
     }
 
     // Remover solicitação
-    this.pendingRequests.delete(odId);
+    await this.joinRequestRepo.deleteByUserId(odId);
 
     await ctx.editMessageText(
       `❌ **Termos Não Aceitos**\n\n` +
@@ -278,13 +265,13 @@ export class JoinRequestHandler {
   }
 
   // Enviar solicitação para admins do grupo (direto no privado de cada admin)
-  private async sendJoinRequestToAdmins(userId: number, request: JoinRequest): Promise<void> {
+  private async sendJoinRequestToAdmins(userId: number, request: PendingJoinRequest): Promise<void> {
     // Envia diretamente para os admins humanos do grupo
     await this.sendJoinRequestToIndividualAdmins(userId, request);
   }
 
   // Construir mensagem de solicitação de entrada
-  private buildJoinRequestMessage(userId: number, request: JoinRequest): string {
+  private buildJoinRequestMessage(userId: number, request: PendingJoinRequest): string {
     return (
       `🆕 **Nova Solicitação de Entrada**\n\n` +
       `👤 **Usuário:** ${request.userName}\n` +
@@ -320,7 +307,7 @@ export class JoinRequestHandler {
   }
 
   // Enviar solicitação para cada admin individualmente
-  private async sendJoinRequestToIndividualAdmins(userId: number, request: JoinRequest): Promise<void> {
+  private async sendJoinRequestToIndividualAdmins(userId: number, request: PendingJoinRequest): Promise<void> {
     const admins = await this.getGroupAdmins();
 
     if (admins.length === 0) {
@@ -353,13 +340,13 @@ export class JoinRequestHandler {
 
     // Salvar IDs das mensagens para atualizar depois
     request.adminMessageIds = adminMessageIds;
-    this.pendingRequests.set(userId, request);
+    await this.joinRequestRepo.upsert(request);
 
     this.logger.log(`✅ Solicitação de entrada enviada para ${sentCount}/${admins.length} admins: ${userId}`);
   }
 
   // Atualizar mensagens de outros admins quando um admin aprova/recusa
-  private async updateOtherAdminMessages(request: JoinRequest, newText: string, actionAdminId: number): Promise<void> {
+  private async updateOtherAdminMessages(request: PendingJoinRequest, newText: string, actionAdminId: number): Promise<void> {
     if (!request.adminMessageIds || request.adminMessageIds.size === 0) {
       return; // Não foi enviado individualmente
     }
@@ -393,7 +380,7 @@ export class JoinRequestHandler {
       await ctx.answerCbQuery('❌ Sem permissão — apenas admins do grupo podem aprovar', { show_alert: true });
       return;
     }
-    const request = this.pendingRequests.get(userId);
+    const request = await this.joinRequestRepo.findByUserId(userId);
     if (!request || request.status !== 'pending_approval') {
       await ctx.answerCbQuery('❌ Solicitação não encontrada ou já processada', { show_alert: true });
       return;
@@ -431,7 +418,7 @@ export class JoinRequestHandler {
 
       // Atualizar status
       request.status = 'approved';
-      this.pendingRequests.set(userId, request);
+      await this.joinRequestRepo.upsert(request);
 
       // Mensagem de aprovação
       const approvalText = (
@@ -480,7 +467,7 @@ export class JoinRequestHandler {
 
       // Salvar ID da mensagem para deletar depois
       request.approvalMessageId = approvalMsg.message_id;
-      this.pendingRequests.set(userId, request);
+      await this.joinRequestRepo.upsert(request);
 
       this.logger.log(`✅ Usuário ${userId} aprovado por ${adminName} - Aguardando clique`);
 
@@ -497,7 +484,7 @@ export class JoinRequestHandler {
       return;
     }
 
-    const request = this.pendingRequests.get(userId);
+    const request = await this.joinRequestRepo.findByUserId(userId);
     if (!request || request.status !== 'approved') {
       await ctx.answerCbQuery('❌ Solicitação não encontrada ou já utilizada', { show_alert: true });
       return;
@@ -573,7 +560,7 @@ export class JoinRequestHandler {
 
       // Marcar como usado para não gerar mais links
       request.status = 'approved'; // Manter approved mas vamos deletar em breve
-      this.pendingRequests.set(userId, request);
+      await this.joinRequestRepo.upsert(request);
 
       this.logger.log(`✅ Link de entrada gerado para ${userId}`);
 
@@ -616,12 +603,12 @@ export class JoinRequestHandler {
       }
 
       // Limpar da lista de pendentes
-      this.pendingRequests.delete(userId);
+      await this.joinRequestRepo.deleteByUserId(userId);
 
     } catch (error) {
       this.logger.warn(`Erro ao verificar entrada do usuário ${userId}:`, error);
       // Limpar mesmo assim após um tempo
-      setTimeout(() => this.pendingRequests.delete(userId), 60000);
+      setTimeout(() => { void this.joinRequestRepo.deleteByUserId(userId); }, 60000);
     }
   }
 
@@ -633,7 +620,7 @@ export class JoinRequestHandler {
       await ctx.answerCbQuery('❌ Sem permissão — apenas admins do grupo podem recusar', { show_alert: true });
       return;
     }
-    const request = this.pendingRequests.get(userId);
+    const request = await this.joinRequestRepo.findByUserId(userId);
     if (!request || request.status !== 'pending_approval') {
       await ctx.answerCbQuery('❌ Solicitação não encontrada ou já processada', { show_alert: true });
       return;
@@ -643,7 +630,7 @@ export class JoinRequestHandler {
 
     // Atualizar status
     request.status = 'rejected';
-    this.pendingRequests.set(userId, request);
+    await this.joinRequestRepo.upsert(request);
 
     // Mensagem de rejeição
     const rejectionText = (
@@ -682,7 +669,7 @@ export class JoinRequestHandler {
     this.logger.log(`❌ Usuário ${userId} recusado por ${adminName}`);
 
     // Limpar solicitação após um tempo
-    setTimeout(() => this.pendingRequests.delete(userId), 60000);
+    setTimeout(() => { void this.joinRequestRepo.deleteByUserId(userId); }, 60000);
   }
 
   // Handler de callbacks
@@ -727,14 +714,14 @@ export class JoinRequestHandler {
   }
 
   // Verificar se usuário tem solicitação pendente
-  hasPendingRequest(userId: number): boolean {
-    const request = this.pendingRequests.get(userId);
+  async hasPendingRequest(userId: number): Promise<boolean> {
+    const request = await this.joinRequestRepo.findByUserId(userId);
     return request?.status === 'pending_approval';
   }
 
   // Obter estatísticas
-  getPendingRequestsCount(): number {
-    return Array.from(this.pendingRequests.values())
+  async getPendingRequestsCount(): Promise<number> {
+    return (await this.joinRequestRepo.findAll())
       .filter(r => r.status === 'pending_approval').length;
   }
 }
