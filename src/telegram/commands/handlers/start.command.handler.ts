@@ -17,7 +17,7 @@ import { validateActiveMembershipForCallback } from '../../../shared/group-membe
 import { validateUserTermsForCallback } from '../../../shared/terms-validation.utils';
 import { getOrCreateUserFromCtx } from '../../shared/user.utils';
 import { pendingEvaluationGuard } from '../../shared/pending-eval.guard';
-import { safeAnswerCbQuery } from '../../shared/callback.utils';
+import { safeAnswerCbQuery, safeDeleteMessage, safeEditMessageText } from '../../shared/callback.utils';
 import { InjectBot } from 'nestjs-telegraf';
 import { Telegraf, Context } from 'telegraf';
 import { Update } from 'telegraf/types';
@@ -678,7 +678,13 @@ export class StartCommandHandler implements ITextCommandHandler {
         await this.refreshReputation(ctx, userId);
         return true; // ✅ Sair após processar para evitar answerCbQuery duplicado
       } else if (data.startsWith('reputation_close_')) {
-        await ctx.deleteMessage();
+        // NÃO-FATAL: msg >48h ou não deletável ("can't be deleted for everyone").
+        // Se não der pra apagar, degrada removendo os botões; nunca vira erro genérico.
+        const deleted = await safeDeleteMessage(ctx);
+        if (!deleted) {
+          await safeEditMessageText(ctx, '✅ Reputação fechada.', {});
+        }
+        await safeAnswerCbQuery(ctx);
         return true;
       }
       
@@ -692,7 +698,7 @@ export class StartCommandHandler implements ITextCommandHandler {
           return true; // Ainda consideramos como processado
         } else {
           this.logger.error('Erro ao responder callback query:', cbError);
-          return false; // Erro no processamento
+          return true; // callback de reputação É deste handler: encerra o dispatch mesmo com falha ao responder
         }
       }
     } catch (error) {
@@ -703,7 +709,8 @@ export class StartCommandHandler implements ITextCommandHandler {
         // Ignorar erro de callback expirado
         this.logger.warn('Callback query expirado no tratamento de erro:', cbError.message);
       }
-      return false; // Erro no processamento
+      // callback de reputação É deste handler: encerra o dispatch (evita "Callback não processado" + re-dispatch)
+      return true;
     }
   }
 
@@ -755,7 +762,7 @@ export class StartCommandHandler implements ITextCommandHandler {
         ]
       };
       
-      await ctx.editMessageText(message, {
+      await safeEditMessageText(ctx, message, {
         parse_mode: 'Markdown',
         reply_markup: keyboard
       });
@@ -824,7 +831,7 @@ export class StartCommandHandler implements ITextCommandHandler {
         ]
       };
       
-      await ctx.editMessageText(message, {
+      await safeEditMessageText(ctx, message, {
         parse_mode: 'Markdown',
         reply_markup: keyboard
       });
@@ -895,7 +902,7 @@ export class StartCommandHandler implements ITextCommandHandler {
         ]
       };
       
-      await ctx.editMessageText(message, {
+      await safeEditMessageText(ctx, message, {
         parse_mode: 'Markdown',
         reply_markup: keyboard
       });

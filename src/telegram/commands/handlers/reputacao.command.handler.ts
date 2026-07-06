@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { safeAnswerCbQuery, safeDeleteMessage, safeEditMessageText } from '../../shared/callback.utils';
 import { KarmaService } from '../../../karma/karma.service';
 import { UsersService } from '../../../users/users.service';
 import { TelegramKeyboardService } from '../../shared/telegram-keyboard.service';
@@ -336,7 +337,12 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         await this.showMainReputation(ctx, userId);
         return true; // ✅ Sair após processar para evitar answerCbQuery duplicado
       } else if (data.startsWith('reputation_close_')) {
-        await ctx.deleteMessage();
+        // NÃO-FATAL: msg >48h ou não deletável não pode virar erro genérico.
+        const deleted = await safeDeleteMessage(ctx);
+        if (!deleted) {
+          await safeEditMessageText(ctx, '✅ Reputação fechada.', {});
+        }
+        await safeAnswerCbQuery(ctx);
         return true;
       }
       
@@ -359,7 +365,8 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
         // Ignorar erro de callback expirado
         this.logger.warn('Callback query expirado no tratamento de erro:', cbError.message);
       }
-      return false; // Erro no processamento
+      // callback reputation_* É deste handler: encerra o dispatch (não é "não processado")
+      return true;
     }
   }
 
@@ -872,22 +879,17 @@ export class ReputacaoCommandHandler implements ITextCommandHandler {
       ]
     };
     
-    try {
-      await ctx.editMessageText(message, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-      });
-      
+    // NÃO-FATAL: se a mensagem for antiga/não editável, não estoura (viraria "Erro ao processar ação")
+    const rendered = await safeEditMessageText(ctx, message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+    if (rendered) {
       this.logger.log(`✅ Tela principal renderizada com sucesso`);
-    } catch (error) {
-      if (error.description && error.description.includes('message is not modified')) {
-        this.logger.log(`ℹ️ Mensagem já está atualizada, ignorando erro`);
-        await ctx.answerCbQuery('✅ Dados atualizados');
-      } else {
-        this.logger.error('Erro ao renderizar tela principal:', error);
-        throw error;
-      }
+    } else {
+      this.logger.warn('Tela principal não pôde ser editada (mensagem antiga/não editável) — não-fatal');
     }
+    await safeAnswerCbQuery(ctx, '✅ Dados atualizados');
   }
 
   private async refreshReputation(ctx: any, userId: string): Promise<void> {

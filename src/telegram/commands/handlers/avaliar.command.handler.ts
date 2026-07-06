@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { safeEditMessageText } from '../../shared/callback.utils';
 import { Types } from 'mongoose';
 import { KarmaService } from '../../../karma/karma.service';
 import { UsersService } from '../../../users/users.service';
@@ -474,7 +475,10 @@ export class AvaliarCommandHandler implements ITextCommandHandler {
         
         this.logger.log(`📤 Enviando mensagem de confirmação...`);
         
-        await ctx.editMessageText(
+        // NÃO-FATAL: o karma JÁ foi aplicado (outcome 'ok'). Se a edição de confirmação
+        // falhar (msg antiga/não editável), NÃO cair no catch que mostra "Erro ao Processar
+        // Avaliação" — seria um falso negativo sobre uma avaliação que deu certo.
+        await safeEditMessageText(ctx,
           `${starEmojis} **Avaliação ${ratingText} Registrada**\n\n` +
           `✅ **Usuário**: ${nomeAvaliado}\n` +
           `⭐ **Avaliação**: ${starRating} estrelas\n` +
