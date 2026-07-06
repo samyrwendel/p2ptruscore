@@ -188,6 +188,17 @@ export class OperationsRepository extends AbstractRepository<Operation> {
       .exec();
   }
 
+  /**
+   * Conta operações concluídas (status COMPLETED) — total acumulado da comunidade.
+   * COMPLETED é terminal (revert é bloqueado e não há transição saindo dele),
+   * então esta contagem é monotônica na prática. Índice em `status` cobre a query.
+   */
+  async countCompleted(): Promise<number> {
+    return this.model
+      .countDocuments({ status: OperationStatus.COMPLETED })
+      .exec();
+  }
+
   // ATÔMICO (defensivo — hoje sem callers; o service pede conclusão via updateOperation com expectedStatus).
   // Mantido atômico para não reintroduzir corrida se for religado no futuro.
   async requestCompletion(

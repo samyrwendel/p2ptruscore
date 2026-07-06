@@ -879,9 +879,22 @@ export class OperationsBroadcastService {
       const creatorName = creator.userName ? `@${creator.userName}` : creator.firstName || 'Usuário';
       const acceptorName = acceptor?.userName ? `@${acceptor.userName}` : acceptor?.firstName || 'Usuário';
 
-      let message = (
-        `✅ **Operação Concluída!**\n\n` +
-        `${typeEmoji} **${typeText} ${assetsText}**\n` +
+      // Contador acumulado de operações concluídas na comunidade.
+      // NÃO-FATAL: se a contagem falhar, a notificação segue sem o contador.
+      // Roda após a operação já estar COMPLETED (service:509), então já inclui esta.
+      let totalConcluidas: number | null = null;
+      try {
+        totalConcluidas = await this.operationsRepository.countCompleted();
+      } catch (err) {
+        this.logger.warn('Não foi possível contar operações concluídas (contador omitido):', err);
+      }
+
+      let message = `✅ **Operação Concluída!**\n`;
+      if (totalConcluidas && totalConcluidas > 0) {
+        message += `🏆 **${totalConcluidas}ª operação concluída na comunidade!**\n`;
+      }
+      message += (
+        `\n${typeEmoji} **${typeText} ${assetsText}**\n` +
         `🌐 **Redes:** ${networksText}\n` +
         `📦 **Quantidade:** ${operation.amount} ${operation.assets.join('/')}\n\n`
       );
