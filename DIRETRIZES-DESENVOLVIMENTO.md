@@ -119,6 +119,17 @@ Quantidade: [AMOUNT]
 - Diferentes tipos de moeda
 - Cenários de erro
 
+### **4. Segurança — Segredos e Rotação:**
+- **Nunca versionar segredos.** `.env*` fica no `.gitignore` (exceto `.env.example`). Nada de
+  token, senha ou chave hardcoded em `.ts`/`.js`, `docker-compose*`, `tasks.json` ou
+  `ecosystem.config.js` — o ecosystem deve **ler do `.env`**, nunca embutir o valor.
+- **Vazou no histórico do git? Rotacionar é obrigatório.** Remover do código não invalida o
+  que já está no histórico — só a rotação (novo token/senha/chave) fecha de fato. Validar um
+  token sem expor: `curl -4 -s "https://api.telegram.org/bot$TOKEN/getMe"` (IPv4 obrigatório).
+- **Ao trocar um segredo no `.env`:** recarregar reavaliando o ecosystem + `pm2 save`, senão o
+  PM2 mantém o valor congelado e dá `401`. Ver `docs/PM2_SETUP.md` › "Aplicar mudança no `.env`".
+- **Runbook de rotação (todas as chaves do servidor):** `/home/umbrel/ROTACAO_CHAVES.md`.
+
 ## 📚 Arquivos de Referência
 
 ### **Para Consulta:**

@@ -45,6 +45,32 @@ function loadEnvFile(filePath) {
 }
 ```
 
+### ⚠️ Aplicar mudança no `.env` (token, MONGODB_CNN, etc.) — NÃO basta `pm2 restart`
+
+O parser acima roda **só quando o PM2 avalia o `ecosystem.config.js`** (no `pm2 start`/reload do
+ecosystem). Um `pm2 restart trustp2pbot` comum **reusa o snapshot de env congelado** e **ignora o
+`.env` novo** → o bot continua com o valor antigo. Sintoma clássico: token trocado no `.env`, mas o
+boot dá `401: Unauthorized` em `getMe`/`setMyCommands` mesmo o `.env` estando certo (o processo usa
+um token velho congelado pelo PM2).
+
+**Sempre que trocar um valor no `.env`, reavalie o ecosystem E persista o dump:**
+
+```bash
+# 1) reparseia o .env e injeta os valores novos
+pm2 restart /home/umbrel/TrustP2PBot/ecosystem.config.js --update-env
+
+# 2) persiste no dump (senão o resurrect no boot volta com o valor VELHO)
+pm2 save
+
+# 3) confere: o processo novo NÃO pode ter "401: Unauthorized"
+pm2 logs trustp2pbot --lines 20
+```
+
+> Validar um token direto na API (sem expor no histórico), forçando IPv4 (IPv6 do host é
+> quebrado p/ `api.telegram.org`):
+> `T=$(grep ^TELEGRAM_BOT_TOKEN= .env | cut -d= -f2-); curl -4 -s "https://api.telegram.org/bot$T/getMe"; unset T`
+> — `"ok":true` = token válido. Runbook de rotação de segredos: `/home/umbrel/ROTACAO_CHAVES.md`.
+
 ## Comandos Básicos
 
 ### Iniciar o Bot
