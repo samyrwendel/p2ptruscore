@@ -14,7 +14,8 @@ function convertStarsToKarma(stars) {
 }
 
 async function verifyKarmaCalculations() {
-  const uri = 'mongodb://ipmais:As5173121220*@mongo.ipmais.com:27077/trustscore_bot?authSource=admin';
+  const uri = process.env.MONGODB_CNN;
+  if (!uri) { console.error('❌ Defina MONGODB_CNN no ambiente'); process.exit(1); }
   const client = new MongoClient(uri);
   
   try {

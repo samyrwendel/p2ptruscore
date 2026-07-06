@@ -595,7 +595,7 @@
           "description": "Verificar se grupo -1002907400287 existe no banco e se bot tem permissões corretas",
           "done": true,
           "approved": false,
-          "completedDetails": "✅ Verificação completa da configuração do grupo realizada:\n\n1. **Grupo existe no banco**: ✅ Confirmado - grupo -1002907400287 está registrado como \"Grupo P2P TrustScore\"\n2. **Bot tem acesso ao grupo**: ✅ Confirmado - API retorna dados completos do grupo \"Trust P2P Group\"\n3. **Bot pode enviar mensagens**: ✅ Confirmado - mensagem de teste enviada com sucesso (message_id: 231)\n4. **Permissões do bot**: ✅ Adequadas - bot pode enviar mensagens, mídia, polls, etc.\n5. **Token correto**: ✅ Usando token do arquivo .env principal (8183266791:AAHX8BMHqXBt6YZQK4w-YK_00_IONIT_LP4)\n\nO problema de broadcast NÃO está relacionado a permissões ou configuração do grupo. Bot tem acesso total e funcional ao grupo."
+          "completedDetails": "✅ Verificação completa da configuração do grupo realizada:\n\n1. **Grupo existe no banco**: ✅ Confirmado - grupo -1002907400287 está registrado como \"Grupo P2P TrustScore\"\n2. **Bot tem acesso ao grupo**: ✅ Confirmado - API retorna dados completos do grupo \"Trust P2P Group\"\n3. **Bot pode enviar mensagens**: ✅ Confirmado - mensagem de teste enviada com sucesso (message_id: 231)\n4. **Permissões do bot**: ✅ Adequadas - bot pode enviar mensagens, mídia, polls, etc.\n5. **Token correto**: ✅ Usando token do arquivo .env principal (8183266791:<TOKEN-REVOGADO>)\n\nO problema de broadcast NÃO está relacionado a permissões ou configuração do grupo. Bot tem acesso total e funcional ao grupo."
         },
         {
           "id": "task-61",

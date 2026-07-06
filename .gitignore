@@ -398,3 +398,6 @@ Temporary Items
 dist
 .webpack
 .serverless/**/*.zip
+# segredos — nunca versionar (fix auditoria hardcoded 2026-07-06)
+.env*
+!.env.example

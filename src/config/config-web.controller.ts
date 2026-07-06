@@ -28,7 +28,7 @@ export class ConfigWebController {
       TELEGRAM_BOT_USERNAME: '',
       TELEGRAM_GROUP_ID: '',
       TELEGRAM_THREAD_ID: '',
-      MONGODB_CNN: 'mongodb://admin:password123@mongodb:27017/trustscore_bot?authSource=admin',
+      MONGODB_CNN: 'mongodb://usuario:senha@host:27017/trustscore_bot?authSource=admin',
       PORT: '3000',
       NODE_ENV: 'production',
       CURRENCY_API_KEY: '',
@@ -117,7 +117,7 @@ TELEGRAM_GROUP_ID=${config.TELEGRAM_GROUP_ID || ''}
 TELEGRAM_THREAD_ID=${config.TELEGRAM_THREAD_ID || ''}
 
 # MongoDB Connection String
-MONGODB_CNN=${config.MONGODB_CNN || 'mongodb://admin:password123@mongodb:27017/trustscore_bot?authSource=admin'}
+MONGODB_CNN=${config.MONGODB_CNN || 'mongodb://usuario:senha@host:27017/trustscore_bot?authSource=admin'}
 
 # Porta da aplicação
 PORT=${config.PORT || '3000'}

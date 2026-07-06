@@ -59,10 +59,10 @@ EOF
       - NODE_ENV=production
       - PORT=3031
       # Configurações do Bot Telegram
-      - TELEGRAM_BOT_TOKEN=8183266791:AAGslEapkhiTbT_Fyw0KynXqtZc7qdhm4pw
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_BOT_USERNAME=p2pscorebot
       # MongoDB da IPMais
-      - MONGODB_CNN=mongodb://ipmais:As5173121220*@mongo.ipmais.com:27077/trustscore_bot?authSource=admin
+      - MONGODB_CNN=${MONGODB_CNN}
     networks:
       - trust-network
     healthcheck:
