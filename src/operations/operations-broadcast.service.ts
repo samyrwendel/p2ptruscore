@@ -889,12 +889,11 @@ export class OperationsBroadcastService {
         this.logger.warn('Não foi possível contar operações concluídas (contador omitido):', err);
       }
 
-      let message = `✅ **Operação Concluída!**\n`;
-      if (totalConcluidas && totalConcluidas > 0) {
-        message += `🏆 **${totalConcluidas}ª operação concluída na comunidade!**\n`;
-      }
-      message += (
-        `\n${typeEmoji} **${typeText} ${assetsText}**\n` +
+      // Contador inline no título: "✅ Operação Concluída #80!". Omite o #N se a contagem falhar.
+      const contadorTitulo = (totalConcluidas && totalConcluidas > 0) ? ` #${totalConcluidas}` : '';
+      let message = (
+        `✅ **Operação Concluída${contadorTitulo}!**\n\n` +
+        `${typeEmoji} **${typeText} ${assetsText}**\n` +
         `🌐 **Redes:** ${networksText}\n` +
         `📦 **Quantidade:** ${operation.amount} ${operation.assets.join('/')}\n\n`
       );
